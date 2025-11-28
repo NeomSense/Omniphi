@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+package pos.poc.v1;
+
+import "amino/amino.proto";
+import "gogoproto/gogo.proto";
+import "cosmos/base/v1beta1/coin.proto";
+
+option go_package = "pos/x/poc/types";
+
+// FeeMetrics tracks cumulative fee burn statistics for the PoC module
+// This provides transparency and audit trail for fee collection and burning
+message FeeMetrics {
+  option (amino.name) = "pos/x/poc/FeeMetrics";
+  option (gogoproto.equal) = true;
+
+  // total_fees_collected is the cumulative amount of submission fees collected
+  repeated cosmos.base.v1beta1.Coin total_fees_collected = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins"
+  ];
+
+  // total_burned is the cumulative amount burned from submission fees
+  repeated cosmos.base.v1beta1.Coin total_burned = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins"
+  ];
+
+  // total_reward_redirect is the cumulative amount sent to PoC reward pool
+  repeated cosmos.base.v1beta1.Coin total_reward_redirect = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins"
+  ];
+
+  // last_updated_height is the block height when metrics were last updated
+  int64 last_updated_height = 4;
+}
+
+// ContributorFeeStats tracks per-contributor fee statistics
+// This enables analytics on contributor behavior and fee rebate mechanisms
+message ContributorFeeStats {
+  option (amino.name) = "pos/x/poc/ContributorFeeStats";
+  option (gogoproto.equal) = true;
+
+  // address is the contributor's address
+  string address = 1;
+
+  // total_fees_paid is the total fees paid by this contributor
+  repeated cosmos.base.v1beta1.Coin total_fees_paid = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins"
+  ];
+
+  // total_burned is the total amount burned from this contributor's fees
+  repeated cosmos.base.v1beta1.Coin total_burned = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins"
+  ];
+
+  // submission_count is the total number of submissions by this contributor
+  uint64 submission_count = 4;
+
+  // first_submission_height is the block height of first submission
+  int64 first_submission_height = 5;
+
+  // last_submission_height is the block height of most recent submission
+  int64 last_submission_height = 6;
+}

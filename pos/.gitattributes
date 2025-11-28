@@ -1,0 +1,14 @@
+# Shell scripts should always use LF line endings
+*.sh text eol=lf
+
+# Markdown files
+*.md text
+
+# Go source files
+*.go text
+
+# Config files
+*.toml text
+*.json text
+*.yaml text
+*.yml text

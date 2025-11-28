@@ -1,0 +1,118 @@
+syntax = "proto3";
+
+package pos.poc.v1;
+
+import "amino/amino.proto";
+import "gogoproto/gogo.proto";
+import "google/api/annotations.proto";
+import "cosmos/base/query/v1beta1/pagination.proto";
+import "pos/poc/v1/params.proto";
+import "pos/poc/v1/contribution.proto";
+import "pos/poc/v1/fee_metrics.proto";
+
+option go_package = "pos/x/poc/types";
+
+// Query defines the gRPC querier service.
+service Query {
+  // Params queries the parameters of the module.
+  rpc Params(QueryParamsRequest) returns (QueryParamsResponse) {
+    option (google.api.http).get = "/pos/poc/v1/params";
+  }
+
+  // Contribution queries a contribution by ID
+  rpc Contribution(QueryContributionRequest) returns (QueryContributionResponse) {
+    option (google.api.http).get = "/pos/poc/v1/contribution/{id}";
+  }
+
+  // Contributions queries all contributions with optional filtering
+  rpc Contributions(QueryContributionsRequest) returns (QueryContributionsResponse) {
+    option (google.api.http).get = "/pos/poc/v1/contributions";
+  }
+
+  // Credits queries the credit balance for an address
+  rpc Credits(QueryCreditsRequest) returns (QueryCreditsResponse) {
+    option (google.api.http).get = "/pos/poc/v1/credits/{address}";
+  }
+
+  // FeeMetrics queries the cumulative fee burn statistics
+  rpc FeeMetrics(QueryFeeMetricsRequest) returns (QueryFeeMetricsResponse) {
+    option (google.api.http).get = "/pos/poc/v1/fee_metrics";
+  }
+
+  // ContributorFeeStats queries fee statistics for a specific contributor
+  rpc ContributorFeeStats(QueryContributorFeeStatsRequest) returns (QueryContributorFeeStatsResponse) {
+    option (google.api.http).get = "/pos/poc/v1/contributor_fee_stats/{address}";
+  }
+}
+
+// QueryParamsRequest is the request type for the Query/Params RPC method.
+message QueryParamsRequest {}
+
+// QueryParamsResponse is the response type for the Query/Params RPC method.
+message QueryParamsResponse {
+  // params holds all the parameters of this module.
+  Params params = 1 [
+    (gogoproto.nullable) = false,
+    (amino.dont_omitempty) = true
+  ];
+}
+
+// QueryContributionRequest is the request type for the Query/Contribution RPC method.
+message QueryContributionRequest {
+  uint64 id = 1;
+}
+
+// QueryContributionResponse is the response type for the Query/Contribution RPC method.
+message QueryContributionResponse {
+  Contribution contribution = 1 [(gogoproto.nullable) = false];
+}
+
+// QueryContributionsRequest is the request type for the Query/Contributions RPC method.
+message QueryContributionsRequest {
+  // contributor filters by contributor address (optional)
+  string contributor = 1;
+
+  // ctype filters by contribution type (optional)
+  string ctype = 2;
+
+  // verified filters by verification status (optional, -1 = all, 0 = unverified, 1 = verified)
+  int32 verified = 3;
+
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 4;
+}
+
+// QueryContributionsResponse is the response type for the Query/Contributions RPC method.
+message QueryContributionsResponse {
+  repeated Contribution contributions = 1 [(gogoproto.nullable) = false];
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}
+
+// QueryCreditsRequest is the request type for the Query/Credits RPC method.
+message QueryCreditsRequest {
+  string address = 1;
+}
+
+// QueryCreditsResponse is the response type for the Query/Credits RPC method.
+message QueryCreditsResponse {
+  Credits credits = 1 [(gogoproto.nullable) = false];
+  string tier = 2; // derived tier name based on credits
+}
+
+// QueryFeeMetricsRequest is the request type for the Query/FeeMetrics RPC method.
+message QueryFeeMetricsRequest {}
+
+// QueryFeeMetricsResponse is the response type for the Query/FeeMetrics RPC method.
+message QueryFeeMetricsResponse {
+  FeeMetrics metrics = 1 [(gogoproto.nullable) = false];
+}
+
+// QueryContributorFeeStatsRequest is the request type for the Query/ContributorFeeStats RPC method.
+message QueryContributorFeeStatsRequest {
+  string address = 1;
+}
+
+// QueryContributorFeeStatsResponse is the response type for the Query/ContributorFeeStats RPC method.
+message QueryContributorFeeStatsResponse {
+  ContributorFeeStats stats = 1 [(gogoproto.nullable) = false];
+}

@@ -1,0 +1,53 @@
+package types
+
+// DefaultGenesis returns the default genesis state
+func DefaultGenesis() *GenesisState {
+	return &GenesisState{
+		Params:              DefaultParams(),
+		Contributions:       []Contribution{},
+		Credits:             []Credits{},
+		NextContributionId:  1,
+	}
+}
+
+// Validate performs basic genesis state validation returning an error upon any failure
+func (gs GenesisState) Validate() error {
+	// Validate params
+	if err := gs.Params.Validate(); err != nil {
+		return err
+	}
+
+	// Validate contributions
+	contributionIDs := make(map[uint64]bool)
+	for _, contribution := range gs.Contributions {
+		if err := contribution.Validate(); err != nil {
+			return err
+		}
+		if contributionIDs[contribution.Id] {
+			return ErrContributionNotFound // Duplicate ID
+		}
+		contributionIDs[contribution.Id] = true
+	}
+
+	// Validate credits
+	creditsMap := make(map[string]bool)
+	for _, credits := range gs.Credits {
+		if credits.Address == "" {
+			return ErrInvalidCType
+		}
+		if creditsMap[credits.Address] {
+			return ErrInvalidCType // Duplicate address
+		}
+		if credits.Amount.IsNegative() {
+			return ErrNoCredits
+		}
+		creditsMap[credits.Address] = true
+	}
+
+	// Validate next contribution ID
+	if gs.NextContributionId == 0 {
+		return ErrContributionNotFound
+	}
+
+	return nil
+}

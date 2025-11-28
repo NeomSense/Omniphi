@@ -1,0 +1,96 @@
+syntax = "proto3";
+
+package pos.poc.v1;
+
+import "amino/amino.proto";
+import "cosmos/msg/v1/msg.proto";
+import "cosmos_proto/cosmos.proto";
+import "gogoproto/gogo.proto";
+import "pos/poc/v1/params.proto";
+
+option go_package = "pos/x/poc/types";
+
+// Msg defines the poc Msg service.
+service Msg {
+  option (cosmos.msg.v1.service) = true;
+
+  // SubmitContribution creates a new contribution submission
+  rpc SubmitContribution(MsgSubmitContribution) returns (MsgSubmitContributionResponse);
+
+  // Endorse allows a validator to endorse or reject a contribution
+  rpc Endorse(MsgEndorse) returns (MsgEndorseResponse);
+
+  // WithdrawPOCRewards withdraws accumulated PoC credits as coins
+  rpc WithdrawPOCRewards(MsgWithdrawPOCRewards) returns (MsgWithdrawPOCRewardsResponse);
+
+  // UpdateParams updates the module parameters (governance only)
+  rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
+}
+
+// MsgSubmitContribution is the message for submitting a new contribution
+message MsgSubmitContribution {
+  option (cosmos.msg.v1.signer) = "contributor";
+  option (amino.name) = "pos/poc/SubmitContribution";
+
+  string contributor = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  string ctype = 2;
+  string uri = 3;
+  bytes hash = 4;
+}
+
+// MsgSubmitContributionResponse is the response for MsgSubmitContribution
+message MsgSubmitContributionResponse {
+  uint64 id = 1;
+}
+
+// MsgEndorse is the message for endorsing a contribution
+message MsgEndorse {
+  option (cosmos.msg.v1.signer) = "validator";
+  option (amino.name) = "pos/poc/Endorse";
+
+  string validator = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  uint64 contribution_id = 2;
+  bool decision = 3;
+}
+
+// MsgEndorseResponse is the response for MsgEndorse
+message MsgEndorseResponse {
+  bool verified = 1;
+}
+
+// MsgWithdrawPOCRewards is the message for withdrawing PoC rewards
+message MsgWithdrawPOCRewards {
+  option (cosmos.msg.v1.signer) = "address";
+  option (amino.name) = "pos/poc/WithdrawPOCRewards";
+
+  string address = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+}
+
+// MsgWithdrawPOCRewardsResponse is the response for MsgWithdrawPOCRewards
+message MsgWithdrawPOCRewardsResponse {
+  string amount = 1 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// MsgUpdateParams is the Msg/UpdateParams request type.
+message MsgUpdateParams {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (amino.name) = "pos/poc/UpdateParams";
+
+  // authority is the address that controls the module (defaults to x/gov unless overwritten).
+  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+
+  // params defines the module parameters to update.
+  // NOTE: All parameters must be supplied.
+  Params params = 2 [
+    (gogoproto.nullable) = false,
+    (amino.dont_omitempty) = true
+  ];
+}
+
+// MsgUpdateParamsResponse defines the response structure for executing a
+// MsgUpdateParams message.
+message MsgUpdateParamsResponse {}

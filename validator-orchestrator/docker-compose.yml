@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: omniphi-orchestrator-db
+    environment:
+      POSTGRES_USER: omniphi
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-omniphi_dev_password}
+      POSTGRES_DB: validator_orchestrator
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U omniphi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - omniphi-network
+
+  # Backend Orchestrator API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: omniphi-orchestrator-api
+    environment:
+      # Database
+      DATABASE_URL: postgresql://omniphi:${POSTGRES_PASSWORD:-omniphi_dev_password}@postgres:5432/validator_orchestrator
+
+      # Chain Configuration
+      OMNIPHI_CHAIN_ID: ${OMNIPHI_CHAIN_ID:-omniphi-localnet-1}
+      OMNIPHI_RPC_URL: ${OMNIPHI_RPC_URL:-http://localhost:26657}
+      OMNIPHI_GENESIS_URL: ${OMNIPHI_GENESIS_URL:-http://localhost:26657/genesis}
+      OMNIPHI_BINARY_URL: ${OMNIPHI_BINARY_URL:-https://github.com/omniphi/releases/download/v1.0.0/posd}
+
+      # Docker Configuration
+      DOCKER_NETWORK: omniphi-validator-network
+      DOCKER_IMAGE: omniphi/validator-node:latest
+
+      # Security
+      SECRET_KEY: ${SECRET_KEY:-dev_secret_key_change_in_production}
+      DEBUG: ${DEBUG:-false}
+
+      # CORS
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      # Mount Docker socket to allow backend to manage validator containers
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount backend code for development (comment out in production)
+      - ./backend:/app
+    networks:
+      - omniphi-network
+      - omniphi-validator-network
+    restart: unless-stopped
+
+  # Frontend Portal (optional - user has their own)
+  # Uncomment if deploying full stack
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #   container_name: omniphi-orchestrator-frontend
+  #   ports:
+  #     - "5173:5173"
+  #   environment:
+  #     VITE_API_URL: http://localhost:8000
+  #   volumes:
+  #     - ./frontend:/app
+  #     - /app/node_modules
+  #   networks:
+  #     - omniphi-network
+  #   restart: unless-stopped
+  #   command: npm run dev -- --host
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  # Network for orchestrator services (backend, db, frontend)
+  omniphi-network:
+    driver: bridge
+
+  # Separate network for validator containers
+  omniphi-validator-network:
+    driver: bridge

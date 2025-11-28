@@ -1,0 +1,30 @@
+[Unit]
+Description=Omniphi Validator Node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=omniphi
+Group=omniphi
+WorkingDirectory=/home/omniphi
+ExecStart=/usr/local/bin/posd start --home /home/omniphi/.omniphi
+Restart=on-failure
+RestartSec=10
+LimitNOFILE=65535
+LimitNPROC=4096
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=posd
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+ReadWritePaths=/home/omniphi/.omniphi
+
+[Install]
+WantedBy=multi-user.target

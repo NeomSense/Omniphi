@@ -1,0 +1,301 @@
+syntax = "proto3";
+
+package pos.tokenomics.v1;
+
+import "amino/amino.proto";
+import "cosmos_proto/cosmos.proto";
+import "gogoproto/gogo.proto";
+import "pos/tokenomics/v1/params.proto";
+import "pos/tokenomics/v1/query.proto";
+
+option go_package = "pos/x/tokenomics/types";
+
+// GenesisState defines the tokenomics module's genesis state.
+message GenesisState {
+  // params defines all the parameters of the module.
+  TokenomicsParams params = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+
+  // supply_state tracks the token supply at genesis
+  SupplyState supply_state = 2 [(gogoproto.nullable) = false];
+
+  // allocations defines the initial token distribution
+  repeated GenesisAllocation allocations = 3 [(gogoproto.nullable) = false];
+
+  // burn_records contains historical burn data (optional, for chain upgrades)
+  repeated BurnRecord burn_records = 4 [(gogoproto.nullable) = false];
+
+  // emission_history contains historical emission data (optional, for chain upgrades)
+  repeated EmissionRecord emission_records = 5 [(gogoproto.nullable) = false];
+
+  // treasury_state tracks the DAO treasury at genesis
+  TreasuryState treasury_state = 6 [(gogoproto.nullable) = false];
+
+  // chain_states tracks per-chain metrics (for tri-chain coordination)
+  repeated ChainState chain_states = 7 [(gogoproto.nullable) = false];
+}
+
+// SupplyState tracks the token supply at genesis
+message SupplyState {
+  // current_total_supply is the circulating supply at genesis
+  // Default: 375,000,000 OMNI (25% of 1.5B cap)
+  string current_total_supply = 1 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // total_minted is the cumulative minted amount
+  // Default: 375,000,000 OMNI (genesis allocation)
+  string total_minted = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // total_burned is the cumulative burned amount
+  // Default: 0 OMNI (no burns at genesis)
+  string total_burned = 3 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// AllocationCategory defines the type of genesis allocation
+enum AllocationCategory {
+  ALLOCATION_CATEGORY_UNSPECIFIED = 0;
+  ALLOCATION_CATEGORY_TREASURY = 1;         // DAO treasury
+  ALLOCATION_CATEGORY_VALIDATORS = 2;       // Validator genesis stake
+  ALLOCATION_CATEGORY_TEAM = 3;             // Team allocation (vested)
+  ALLOCATION_CATEGORY_INVESTORS = 4;        // Investor allocation (vested)
+  ALLOCATION_CATEGORY_COMMUNITY = 5;        // Community airdrop/grants
+  ALLOCATION_CATEGORY_LIQUIDITY = 6;        // DEX liquidity pools
+  ALLOCATION_CATEGORY_ECOSYSTEM = 7;        // Ecosystem development fund
+  ALLOCATION_CATEGORY_RESERVE = 8;          // Emergency reserve
+}
+
+// VestingSchedule defines token vesting parameters
+message VestingSchedule {
+  // cliff_duration is the time before vesting starts (seconds)
+  uint64 cliff_duration = 1;
+
+  // vesting_duration is the total vesting period (seconds)
+  uint64 vesting_duration = 2;
+
+  // start_time is the vesting start timestamp (Unix seconds)
+  int64 start_time = 3;
+
+  // is_continuous is true for linear vesting, false for milestone-based
+  bool is_continuous = 4;
+}
+
+// GenesisAllocation defines an initial token distribution
+message GenesisAllocation {
+  // address is the recipient address or module account
+  string address = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+
+  // amount is the allocated amount in micro-OMNI
+  string amount = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // category is the allocation type
+  AllocationCategory category = 3;
+
+  // vesting_schedule defines vesting parameters (optional)
+  VestingSchedule vesting_schedule = 4;
+
+  // description explains the allocation (e.g., "Team - Co-Founder Alice")
+  string description = 5;
+
+  // is_vested is true if tokens are subject to vesting
+  bool is_vested = 6;
+
+  // percentage_of_genesis is the allocation as % of genesis supply
+  string percentage_of_genesis = 7 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// EmissionRecord tracks historical emission events
+message EmissionRecord {
+  // emission_id is a unique identifier
+  uint64 emission_id = 1;
+
+  // block_height is when the emission occurred
+  int64 block_height = 2;
+
+  // total_emitted is the total amount distributed
+  string total_emitted = 3 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // to_staking is the amount sent to PoS validators
+  string to_staking = 4 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // to_poc is the amount sent to PoC contributors
+  string to_poc = 5 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // to_sequencer is the amount sent to sequencer operators
+  string to_sequencer = 6 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // to_treasury is the amount sent to DAO treasury
+  string to_treasury = 7 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // timestamp is the block timestamp
+  int64 timestamp = 8;
+}
+
+// TreasuryState tracks the DAO treasury at genesis
+message TreasuryState {
+  // treasury_address is the DAO treasury account
+  string treasury_address = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+
+  // initial_balance is the genesis treasury allocation
+  string initial_balance = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // total_inflows is cumulative treasury deposits
+  string total_inflows = 3 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // from_inflation is the amount from emission splits
+  string from_inflation = 4 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // from_burn_redirect is the amount from burn redirection
+  string from_burn_redirect = 5 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// ChainState tracks per-chain tokenomics metrics
+message ChainState {
+  // chain_id identifies the chain (e.g., "omniphi-core", "omniphi-continuity")
+  string chain_id = 1;
+
+  // total_burned is the cumulative burns from this chain
+  string total_burned = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // total_rewards_sent is the cumulative IBC rewards sent to this chain
+  string total_rewards_sent = 3 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // ibc_channel is the IBC channel ID (e.g., "channel-0")
+  string ibc_channel = 4;
+
+  // is_active indicates if the chain is currently operational
+  bool is_active = 5;
+
+  // last_sync_height is the last block height synchronized with Core
+  int64 last_sync_height = 6;
+}
+
+// DefaultGenesisState returns the default tokenomics genesis state
+// This defines the INITIAL token distribution for mainnet launch
+message DefaultGenesisState {
+  // RECOMMENDED GENESIS ALLOCATION (375M OMNI = 25% of 1.5B cap)
+  // Adjust percentages based on tokenomics strategy
+
+  // Treasury: 30% = 112,500,000 OMNI
+  // Purpose: DAO-controlled funds for ecosystem development
+  string treasury_allocation = 1;
+
+  // Validators: 15% = 56,250,000 OMNI
+  // Purpose: Initial validator genesis stake for network security
+  string validator_allocation = 2;
+
+  // Team: 20% = 75,000,000 OMNI (4-year vest, 1-year cliff)
+  // Purpose: Core team incentive alignment
+  string team_allocation = 3;
+
+  // Investors: 15% = 56,250,000 OMNI (3-year vest, 6-month cliff)
+  // Purpose: Strategic investors and VCs
+  string investor_allocation = 4;
+
+  // Community: 10% = 37,500,000 OMNI
+  // Purpose: Airdrops, grants, community rewards
+  string community_allocation = 5;
+
+  // Liquidity: 5% = 18,750,000 OMNI
+  // Purpose: DEX liquidity pools (Osmosis, etc.)
+  string liquidity_allocation = 6;
+
+  // Ecosystem: 3% = 11,250,000 OMNI
+  // Purpose: Developer grants, hackathons, integrations
+  string ecosystem_allocation = 7;
+
+  // Reserve: 2% = 7,500,000 OMNI
+  // Purpose: Emergency reserve for unforeseen events
+  string reserve_allocation = 8;
+}
+
+// ValidateGenesisState validates the genesis state
+// Enforces:
+// 1. Total allocations = genesis supply (375M OMNI)
+// 2. Genesis supply <= total_supply_cap (1.5B OMNI)
+// 3. All allocation percentages sum to 100%
+// 4. Vesting schedules are valid (cliff < vesting_duration)
+// 5. Treasury address is valid bech32
+// 6. IBC channels are properly formatted
+message GenesisValidation {
+  // total_allocated is the sum of all genesis allocations
+  string total_allocated = 1 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // expected_genesis_supply is the target genesis supply (375M OMNI)
+  string expected_genesis_supply = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // is_valid is true if all validation checks pass
+  bool is_valid = 3;
+
+  // validation_errors contains any validation failures
+  repeated string validation_errors = 4;
+}

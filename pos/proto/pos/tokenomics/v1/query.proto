@@ -1,0 +1,624 @@
+syntax = "proto3";
+
+package pos.tokenomics.v1;
+
+import "amino/amino.proto";
+import "cosmos/base/query/v1beta1/pagination.proto";
+import "cosmos_proto/cosmos.proto";
+import "gogoproto/gogo.proto";
+import "google/api/annotations.proto";
+import "pos/tokenomics/v1/params.proto";
+import "pos/tokenomics/v1/tx.proto";
+
+option go_package = "pos/x/tokenomics/types";
+
+// Query defines the gRPC querier service.
+service Query {
+  // Parameters queries the tokenomics parameters.
+  rpc Params(QueryParamsRequest) returns (QueryParamsResponse) {
+    option (google.api.http).get = "/pos/tokenomics/v1/params";
+  }
+
+  // Supply queries the current token supply metrics
+  rpc Supply(QuerySupplyRequest) returns (QuerySupplyResponse) {
+    option (google.api.http).get = "/pos/tokenomics/v1/supply";
+  }
+
+  // Inflation queries the current inflation metrics
+  rpc Inflation(QueryInflationRequest) returns (QueryInflationResponse) {
+    option (google.api.http).get = "/pos/tokenomics/v1/inflation";
+  }
+
+  // Emissions queries the current emission distribution
+  rpc Emissions(QueryEmissionsRequest) returns (QueryEmissionsResponse) {
+    option (google.api.http).get = "/pos/tokenomics/v1/emissions";
+  }
+
+  // Burns queries burn history and statistics
+  rpc Burns(QueryBurnsRequest) returns (QueryBurnsResponse) {
+    option (google.api.http).get = "/pos/tokenomics/v1/burns";
+  }
+
+  // BurnsBySource queries burns filtered by source
+  rpc BurnsBySource(QueryBurnsBySourceRequest) returns (QueryBurnsBySourceResponse) {
+    option (google.api.http).get = "/pos/tokenomics/v1/burns/source/{source}";
+  }
+
+  // BurnsByChain queries burns filtered by chain
+  rpc BurnsByChain(QueryBurnsByChainRequest) returns (QueryBurnsByChainResponse) {
+    option (google.api.http).get = "/pos/tokenomics/v1/burns/chain/{chain_id}";
+  }
+
+  // Treasury queries the DAO treasury status
+  rpc Treasury(QueryTreasuryRequest) returns (QueryTreasuryResponse) {
+    option (google.api.http).get = "/pos/tokenomics/v1/treasury";
+  }
+
+  // Projections queries future supply projections
+  rpc Projections(QueryProjectionsRequest) returns (QueryProjectionsResponse) {
+    option (google.api.http).get = "/pos/tokenomics/v1/projections";
+  }
+
+  // ChainMetrics queries per-chain tokenomics metrics
+  rpc ChainMetrics(QueryChainMetricsRequest) returns (QueryChainMetricsResponse) {
+    option (google.api.http).get = "/pos/tokenomics/v1/chain/{chain_id}";
+  }
+
+  // FeeStats queries fee burn statistics (90/10 mechanism)
+  rpc FeeStats(QueryFeeStatsRequest) returns (QueryFeeStatsResponse) {
+    option (google.api.http).get = "/pos/tokenomics/v1/fees/stats";
+  }
+
+  // BurnRate queries the current adaptive burn rate and trigger
+  rpc BurnRate(QueryBurnRateRequest) returns (QueryBurnRateResponse) {
+    option (google.api.http).get = "/pos/tokenomics/v1/burn-rate";
+  }
+}
+
+// QueryParamsRequest is request type for the Query/Params RPC method.
+message QueryParamsRequest {}
+
+// QueryParamsResponse is response type for the Query/Params RPC method.
+message QueryParamsResponse {
+  // params holds all the parameters of this module.
+  TokenomicsParams params = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+}
+
+// QuerySupplyRequest is request type for the Query/Supply RPC method.
+message QuerySupplyRequest {}
+
+// QuerySupplyResponse is response type for the Query/Supply RPC method.
+message QuerySupplyResponse {
+  // total_supply_cap is the hard maximum (1.5B OMNI)
+  string total_supply_cap = 1 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // current_total_supply is the current circulating supply
+  string current_total_supply = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // total_minted is the cumulative minted amount
+  string total_minted = 3 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // total_burned is the cumulative burned amount
+  string total_burned = 4 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // remaining_mintable is how much can still be minted
+  string remaining_mintable = 5 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // supply_pct_of_cap is the current supply as % of cap (0.0-1.0)
+  string supply_pct_of_cap = 6 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // net_inflation_rate is the effective growth rate (minting - burning)
+  string net_inflation_rate = 7 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// QueryInflationRequest is request type for the Query/Inflation RPC method.
+message QueryInflationRequest {}
+
+// QueryInflationResponse is response type for the Query/Inflation RPC method.
+message QueryInflationResponse {
+  // current_inflation_rate is the current annual inflation (0.01-0.05)
+  string current_inflation_rate = 1 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // inflation_min is the DAO floor
+  string inflation_min = 2 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // inflation_max is the protocol cap
+  string inflation_max = 3 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // annual_provisions is the expected tokens minted this year
+  string annual_provisions = 4 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // block_provisions is the tokens minted per block
+  string block_provisions = 5 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // blocks_per_year is the estimated annual block count
+  uint64 blocks_per_year = 6;
+}
+
+// QueryEmissionsRequest is request type for the Query/Emissions RPC method.
+message QueryEmissionsRequest {}
+
+// EmissionAllocation shows how inflation is distributed
+message EmissionAllocation {
+  // category is the emission category (staking, poc, sequencer, treasury)
+  string category = 1;
+
+  // percentage is the allocation percentage (0.0-1.0)
+  string percentage = 2 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // annual_amount is the estimated yearly allocation
+  string annual_amount = 3 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // total_distributed is the cumulative amount distributed
+  string total_distributed = 4 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// QueryEmissionsResponse is response type for the Query/Emissions RPC method.
+message QueryEmissionsResponse {
+  // allocations shows the emission splits
+  repeated EmissionAllocation allocations = 1 [(gogoproto.nullable) = false];
+
+  // total_annual_emissions is the total yearly inflation
+  string total_annual_emissions = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // last_distribution_height is the last block that distributed rewards
+  int64 last_distribution_height = 3;
+}
+
+// QueryBurnsRequest is request type for the Query/Burns RPC method.
+message QueryBurnsRequest {
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 1;
+}
+
+// BurnRecord represents a single burn event
+message BurnRecord {
+  // burn_id is a unique identifier
+  uint64 burn_id = 1;
+
+  // amount is the burned amount
+  string amount = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // source is the burn source type
+  BurnSource source = 3;
+
+  // chain_id is where the burn occurred
+  string chain_id = 4;
+
+  // block_height is when the burn occurred
+  int64 block_height = 5;
+
+  // tx_hash is the transaction hash
+  string tx_hash = 6;
+
+  // timestamp is the block timestamp
+  int64 timestamp = 7;
+
+  // burner_address is who initiated the burn
+  string burner_address = 8;
+
+  // treasury_redirect is the amount sent to treasury instead of burned
+  string treasury_redirect = 9 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// QueryBurnsResponse is response type for the Query/Burns RPC method.
+message QueryBurnsResponse {
+  // burns is the list of burn records
+  repeated BurnRecord burns = 1 [(gogoproto.nullable) = false];
+
+  // pagination defines the pagination in the response.
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+
+  // total_burned is the cumulative burned amount
+  string total_burned = 3 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// QueryBurnsBySourceRequest is request type for the Query/BurnsBySource RPC method.
+message QueryBurnsBySourceRequest {
+  // source is the burn source to filter by
+  BurnSource source = 1;
+
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 2;
+}
+
+// BurnsBySourceStats provides statistics for a specific burn source
+message BurnsBySourceStats {
+  // source is the burn source
+  BurnSource source = 1;
+
+  // total_amount is the cumulative burned from this source
+  string total_amount = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // burn_count is the number of burn events
+  uint64 burn_count = 3;
+
+  // current_burn_rate is the configured burn percentage
+  string current_burn_rate = 4 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // average_burn_amount is the mean burn per event
+  string average_burn_amount = 5 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// QueryBurnsBySourceResponse is response type for the Query/BurnsBySource RPC method.
+message QueryBurnsBySourceResponse {
+  // burns is the list of burn records
+  repeated BurnRecord burns = 1 [(gogoproto.nullable) = false];
+
+  // pagination defines the pagination in the response.
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+
+  // stats provides aggregate statistics
+  BurnsBySourceStats stats = 3 [(gogoproto.nullable) = false];
+}
+
+// QueryBurnsByChainRequest is request type for the Query/BurnsByChain RPC method.
+message QueryBurnsByChainRequest {
+  // chain_id is the chain to filter by
+  string chain_id = 1;
+
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 2;
+}
+
+// QueryBurnsByChainResponse is response type for the Query/BurnsByChain RPC method.
+message QueryBurnsByChainResponse {
+  // burns is the list of burn records
+  repeated BurnRecord burns = 1 [(gogoproto.nullable) = false];
+
+  // pagination defines the pagination in the response.
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+
+  // total_burned_on_chain is the cumulative burns from this chain
+  string total_burned_on_chain = 3 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// QueryTreasuryRequest is request type for the Query/Treasury RPC method.
+message QueryTreasuryRequest {}
+
+// QueryTreasuryResponse is response type for the Query/Treasury RPC method.
+message QueryTreasuryResponse {
+  // treasury_balance is the current DAO treasury balance
+  string treasury_balance = 1 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // total_treasury_inflows is cumulative treasury deposits
+  string total_treasury_inflows = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // from_inflation is the amount from emission splits
+  string from_inflation = 3 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // from_burn_redirect is the amount from burn redirection
+  string from_burn_redirect = 4 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // treasury_burn_redirect_pct is the current redirect percentage
+  string treasury_burn_redirect_pct = 5 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // treasury_address is the DAO treasury account
+  string treasury_address = 6;
+}
+
+// QueryProjectionsRequest is request type for the Query/Projections RPC method.
+message QueryProjectionsRequest {
+  // years_ahead is how many years to project (1-10)
+  uint32 years_ahead = 1;
+
+  // assume_constant_burn_rate uses current burn rates for projection
+  bool assume_constant_burn_rate = 2;
+}
+
+// SupplyProjection shows projected supply at a future date
+message SupplyProjection {
+  // year is the number of years from now
+  uint32 year = 1;
+
+  // projected_supply is the estimated total supply
+  string projected_supply = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // projected_minted is the estimated cumulative minting
+  string projected_minted = 3 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // projected_burned is the estimated cumulative burning
+  string projected_burned = 4 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // net_growth_rate is the effective annual growth rate
+  string net_growth_rate = 5 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // years_until_cap is the estimated years until supply cap (0 if never)
+  uint32 years_until_cap = 6;
+}
+
+// QueryProjectionsResponse is response type for the Query/Projections RPC method.
+message QueryProjectionsResponse {
+  // projections is the list of yearly projections
+  repeated SupplyProjection projections = 1 [(gogoproto.nullable) = false];
+
+  // assumptions describes the projection assumptions
+  string assumptions = 2;
+}
+
+// QueryChainMetricsRequest is request type for the Query/ChainMetrics RPC method.
+message QueryChainMetricsRequest {
+  // chain_id is the chain to query
+  string chain_id = 1;
+}
+
+// QueryChainMetricsResponse is response type for the Query/ChainMetrics RPC method.
+message QueryChainMetricsResponse {
+  // chain_id is the chain identifier
+  string chain_id = 1;
+
+  // total_burned is the cumulative burns from this chain
+  string total_burned = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // total_rewards_received is the cumulative IBC rewards sent to this chain
+  string total_rewards_received = 3 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // net_flow is the net token flow (rewards received - burns)
+  string net_flow = 4 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // ibc_channel is the IBC channel to Core chain
+  string ibc_channel = 5;
+
+  // gas_conversion_ratio is the gas price multiplier vs Core
+  string gas_conversion_ratio = 6 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // last_reward_height is the last block that received IBC rewards
+  int64 last_reward_height = 7;
+
+  // last_burn_report_height is the last block that reported burns to Core
+  int64 last_burn_report_height = 8;
+}
+
+// QueryFeeStatsRequest is request type for the Query/FeeStats RPC method.
+message QueryFeeStatsRequest {}
+
+// QueryFeeStatsResponse is response type for the Query/FeeStats RPC method.
+message QueryFeeStatsResponse {
+  // total_fees_burned is cumulative fees burned via 90/10 mechanism
+  string total_fees_burned = 1 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // total_fees_to_treasury is cumulative fees sent to treasury (10%)
+  string total_fees_to_treasury = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // average_fees_burned_per_block is the mean fees burned per block
+  string average_fees_burned_per_block = 3 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // fee_burn_enabled indicates if the mechanism is active
+  bool fee_burn_enabled = 4;
+
+  // fee_burn_ratio is current burn percentage (default 0.90)
+  string fee_burn_ratio = 5 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // treasury_fee_ratio is current treasury percentage (default 0.10)
+  string treasury_fee_ratio = 6 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// QueryBurnRateRequest is request type for the Query/BurnRate RPC method.
+message QueryBurnRateRequest {}
+
+// QueryBurnRateResponse is response type for the Query/BurnRate RPC method.
+message QueryBurnRateResponse {
+  // adaptive_burn_enabled indicates if adaptive burn controller is active
+  bool adaptive_burn_enabled = 1;
+
+  // current_burn_ratio is the current effective burn rate (0.70-0.95)
+  string current_burn_ratio = 2 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // trigger is the reason for current burn ratio
+  // Values: "emergency_override", "adaptive_disabled", "treasury_protection",
+  //         "congestion_control", "adoption_incentive", "normal"
+  string trigger = 3;
+
+  // min_burn_ratio is the DAO-set minimum (default 0.80)
+  string min_burn_ratio = 4 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // max_burn_ratio is the DAO-set maximum (default 0.95)
+  string max_burn_ratio = 5 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // default_burn_ratio is the DAO-set default (default 0.90)
+  string default_burn_ratio = 6 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // block_congestion is current block gas usage percentage
+  string block_congestion = 7 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // treasury_pct is treasury balance as % of total supply
+  string treasury_pct = 8 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // avg_tx_per_day is 7-day rolling average of daily transactions
+  string avg_tx_per_day = 9 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // emergency_burn_override indicates if emergency override is active
+  bool emergency_burn_override = 10;
+}

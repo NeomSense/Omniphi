@@ -1,0 +1,47 @@
+# Grafana Data Sources
+
+apiVersion: 1
+
+datasources:
+  # ============================================
+  # PROMETHEUS
+  # ============================================
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: "15s"
+      httpMethod: POST
+      manageAlerts: true
+      prometheusType: Prometheus
+      prometheusVersion: "2.48.0"
+
+  # ============================================
+  # LOKI
+  # ============================================
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        - name: node_id
+          matcherRegex: 'node_id=([a-f0-9-]+)'
+          url: '/d/node-detail?var-node_id=${__value.raw}'
+          datasourceUid: self
+
+  # ============================================
+  # ALERTMANAGER
+  # ============================================
+  - name: Alertmanager
+    type: alertmanager
+    access: proxy
+    url: http://alertmanager:9093
+    editable: false
+    jsonData:
+      implementation: prometheus

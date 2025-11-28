@@ -1,0 +1,117 @@
+package types
+
+import (
+	"cosmossdk.io/math"
+)
+
+// DefaultQuorumPct is the default quorum percentage (67% or 2/3)
+var DefaultQuorumPct = math.LegacyNewDecWithPrec(67, 2) // 0.67
+
+// DefaultBaseRewardUnit is the default base reward credits
+var DefaultBaseRewardUnit = math.NewInt(1000)
+
+// DefaultInflationShare is the default inflation share (0% for now)
+var DefaultInflationShare = math.LegacyZeroDec()
+
+// DefaultMaxPerBlock is the default max submissions per block
+const DefaultMaxPerBlock uint32 = 10
+
+// DefaultRewardDenom is the default denomination for rewards
+const DefaultRewardDenom = "stake"
+
+// NewParams creates a new Params instance
+func NewParams(
+	quorumPct math.LegacyDec,
+	baseRewardUnit math.Int,
+	inflationShare math.LegacyDec,
+	maxPerBlock uint32,
+	tiers []Tier,
+	rewardDenom string,
+) Params {
+	return Params{
+		QuorumPct:      quorumPct,
+		BaseRewardUnit: baseRewardUnit,
+		InflationShare: inflationShare,
+		MaxPerBlock:    maxPerBlock,
+		Tiers:          tiers,
+		RewardDenom:    rewardDenom,
+	}
+}
+
+// DefaultParams returns default module parameters
+func DefaultParams() Params {
+	return NewParams(
+		DefaultQuorumPct,
+		DefaultBaseRewardUnit,
+		DefaultInflationShare,
+		DefaultMaxPerBlock,
+		DefaultTiers(),
+		DefaultRewardDenom,
+	)
+}
+
+// DefaultTiers returns default contribution tiers
+func DefaultTiers() []Tier {
+	return []Tier{
+		{
+			Name:   "bronze",
+			Cutoff: math.NewInt(1000),
+		},
+		{
+			Name:   "silver",
+			Cutoff: math.NewInt(10000),
+		},
+		{
+			Name:   "gold",
+			Cutoff: math.NewInt(100000),
+		},
+	}
+}
+
+// Validate performs basic validation of module parameters
+func (p Params) Validate() error {
+	if p.QuorumPct.IsNil() || p.QuorumPct.IsNegative() || p.QuorumPct.GT(math.LegacyOneDec()) {
+		return ErrInvalidQuorumPct
+	}
+
+	if p.BaseRewardUnit.IsNil() || p.BaseRewardUnit.IsNegative() {
+		return ErrInvalidRewardUnit
+	}
+
+	if p.InflationShare.IsNil() || p.InflationShare.IsNegative() || p.InflationShare.GT(math.LegacyOneDec()) {
+		return ErrInvalidInflationShare
+	}
+
+	if p.MaxPerBlock == 0 {
+		return ErrRateLimitExceeded
+	}
+
+	if p.RewardDenom == "" {
+		return ErrInvalidCType
+	}
+
+	// Validate tiers
+	for i, tier := range p.Tiers {
+		if tier.Name == "" {
+			return ErrInvalidCType
+		}
+		if tier.Cutoff.IsNil() || tier.Cutoff.IsNegative() {
+			return ErrInvalidRewardUnit
+		}
+		// Ensure tiers are in ascending order
+		if i > 0 && tier.Cutoff.LTE(p.Tiers[i-1].Cutoff) {
+			return ErrInvalidRewardUnit
+		}
+	}
+
+	return nil
+}
+
+// String returns a human-readable string representation of the parameters
+func (p Params) String() string {
+	return "Params{QuorumPct: " + p.QuorumPct.String() +
+		", BaseRewardUnit: " + p.BaseRewardUnit.String() +
+		", InflationShare: " + p.InflationShare.String() +
+		", MaxPerBlock: " + string(rune(p.MaxPerBlock)) +
+		", RewardDenom: " + p.RewardDenom + "}"
+}

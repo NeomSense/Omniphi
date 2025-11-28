@@ -1,0 +1,294 @@
+syntax = "proto3";
+
+package pos.tokenomics.v1;
+
+import "amino/amino.proto";
+import "cosmos/msg/v1/msg.proto";
+import "cosmos_proto/cosmos.proto";
+import "gogoproto/gogo.proto";
+import "pos/tokenomics/v1/params.proto";
+
+option go_package = "pos/x/tokenomics/types";
+
+// Msg defines the tokenomics Msg service.
+service Msg {
+  option (cosmos.msg.v1.service) = true;
+
+  // UpdateParams defines a governance operation for updating the tokenomics
+  // module parameters. The authority is defined in the keeper.
+  rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
+
+  // MintTokens mints new OMNI tokens (Core chain only, DAO-controlled)
+  rpc MintTokens(MsgMintTokens) returns (MsgMintTokensResponse);
+
+  // BurnTokens burns OMNI tokens (all chains, with source tracking)
+  rpc BurnTokens(MsgBurnTokens) returns (MsgBurnTokensResponse);
+
+  // DistributeRewards distributes inflationary rewards via IBC
+  rpc DistributeRewards(MsgDistributeRewards) returns (MsgDistributeRewardsResponse);
+
+  // ReportBurn reports a burn event from another chain (IBC callback)
+  rpc ReportBurn(MsgReportBurn) returns (MsgReportBurnResponse);
+}
+
+// MsgUpdateParams is the Msg/UpdateParams request type.
+message MsgUpdateParams {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (amino.name) = "pos/x/tokenomics/MsgUpdateParams";
+
+  // authority is the address that controls the module (defaults to x/gov unless
+  // overwritten).
+  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+
+  // params defines the tokenomics parameters to update.
+  //
+  // NOTE: All parameters must be supplied.
+  TokenomicsParams params = 2 [
+    (gogoproto.nullable) = false,
+    (amino.dont_omitempty) = true
+  ];
+}
+
+// MsgUpdateParamsResponse defines the response structure for executing a
+// MsgUpdateParams message.
+message MsgUpdateParamsResponse {}
+
+// MsgMintTokens defines a message for minting new OMNI tokens
+// CRITICAL: Only executable on Core chain by inflation module
+message MsgMintTokens {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (amino.name) = "pos/x/tokenomics/MsgMintTokens";
+
+  // authority is the inflation module address (only it can mint)
+  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+
+  // amount is the number of tokens to mint (micro-OMNI)
+  string amount = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // reason describes why tokens are being minted (e.g., "Block rewards", "DAO proposal #123")
+  string reason = 3;
+
+  // recipient is the address receiving the minted tokens
+  // Typically the distribution module or fee collector
+  string recipient = 4 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+}
+
+// MsgMintTokensResponse returns the new total supply after minting
+message MsgMintTokensResponse {
+  // new_total_supply is the total supply after minting
+  string new_total_supply = 1 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // new_total_minted is the cumulative minted amount
+  string new_total_minted = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // remaining_mintable is how much can still be minted before cap
+  string remaining_mintable = 3 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// BurnSource identifies where the burn originated
+enum BurnSource {
+  BURN_SOURCE_UNSPECIFIED = 0;
+  BURN_SOURCE_POS_GAS = 1;           // PoS gas fees (Core chain)
+  BURN_SOURCE_POC_ANCHORING = 2;     // PoC anchoring fees (Continuity)
+  BURN_SOURCE_SEQUENCER_GAS = 3;     // Sequencer gas fees
+  BURN_SOURCE_SMART_CONTRACTS = 4;   // Smart contract fees
+  BURN_SOURCE_AI_QUERIES = 5;        // AI query fees
+  BURN_SOURCE_MESSAGING = 6;         // Messaging fees
+  BURN_SOURCE_SLASHING = 7;          // Validator slashing
+  BURN_SOURCE_GOVERNANCE = 8;        // DAO-voted burns
+  BURN_SOURCE_OTHER = 9;             // Other sources
+}
+
+// MsgBurnTokens defines a message for burning OMNI tokens
+// Can be executed on any chain, tracked globally
+message MsgBurnTokens {
+  option (cosmos.msg.v1.signer) = "burner";
+  option (amino.name) = "pos/x/tokenomics/MsgBurnTokens";
+
+  // burner is the address burning the tokens
+  // Can be user address OR module account (e.g., fee collector)
+  string burner = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+
+  // amount is the number of tokens to burn (micro-OMNI)
+  string amount = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // source identifies the burn source for tracking
+  BurnSource source = 3;
+
+  // chain_id identifies which chain the burn occurred on
+  string chain_id = 4;
+
+  // treasury_redirect_pct is the percentage redirected to treasury (0-100)
+  // Taken from params.treasury_burn_redirect
+  string treasury_redirect_pct = 5 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// MsgBurnTokensResponse returns the new total supply after burning
+message MsgBurnTokensResponse {
+  // new_total_supply is the total supply after burning
+  string new_total_supply = 1 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // new_total_burned is the cumulative burned amount
+  string new_total_burned = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // amount_burned is the actual amount burned (after treasury redirect)
+  string amount_burned = 3 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // amount_to_treasury is the amount redirected to treasury
+  string amount_to_treasury = 4 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// RewardRecipient defines a reward distribution target
+message RewardRecipient {
+  // address is the recipient address or module account
+  string address = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+
+  // amount is the reward amount in micro-OMNI
+  string amount = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // destination_chain is the IBC channel for cross-chain rewards
+  // Empty string = local chain
+  string destination_chain = 3;
+
+  // ibc_channel is the IBC channel ID (e.g., "channel-0")
+  string ibc_channel = 4;
+}
+
+// MsgDistributeRewards distributes inflationary rewards
+// Called by inflation module in EndBlock
+message MsgDistributeRewards {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (amino.name) = "pos/x/tokenomics/MsgDistributeRewards";
+
+  // authority is the inflation module address
+  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+
+  // total_rewards is the total amount to distribute
+  string total_rewards = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // recipients defines the reward distribution
+  repeated RewardRecipient recipients = 3 [(gogoproto.nullable) = false];
+
+  // block_height is the block this distribution corresponds to
+  int64 block_height = 4;
+}
+
+// MsgDistributeRewardsResponse confirms the distribution
+message MsgDistributeRewardsResponse {
+  // total_distributed is the amount successfully distributed
+  string total_distributed = 1 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // local_distributed is the amount distributed on local chain
+  string local_distributed = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // ibc_distributed is the amount sent via IBC
+  string ibc_distributed = 3 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // ibc_packets_sent is the number of IBC packets sent
+  uint32 ibc_packets_sent = 4;
+}
+
+// MsgReportBurn reports a burn event from another chain
+// Called via IBC from Continuity or Sequencer chains
+message MsgReportBurn {
+  option (cosmos.msg.v1.signer) = "reporter";
+  option (amino.name) = "pos/x/tokenomics/MsgReportBurn";
+
+  // reporter is the IBC relayer address
+  string reporter = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+
+  // chain_id is the source chain of the burn
+  string chain_id = 2;
+
+  // amount is the burned amount
+  string amount = 3 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // source is the burn source type
+  BurnSource source = 4;
+
+  // block_height is the height on source chain
+  int64 block_height = 5;
+
+  // tx_hash is the transaction hash on source chain
+  string tx_hash = 6;
+
+  // proof is the IBC proof of burn (merkle proof)
+  bytes proof = 7;
+}
+
+// MsgReportBurnResponse confirms the burn was recorded
+message MsgReportBurnResponse {
+  // recorded is true if burn was successfully recorded
+  bool recorded = 1;
+
+  // new_total_burned is the updated global burn counter
+  string new_total_burned = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+}

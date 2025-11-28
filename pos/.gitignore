@@ -1,0 +1,220 @@
+# Cosmos SDK / Blockchain Project .gitignore
+
+# ====================================
+# Binaries and Build Artifacts
+# ====================================
+posd
+posd.exe
+*.exe
+*.test
+build/
+dist/
+vendor/
+release/
+
+# ====================================
+# Blockchain Data and Configuration
+# ====================================
+# Local blockchain data directories
+.pos/
+.posd/
+.pos-new/
+.pos-temp/
+data/
+*.db
+*.ldb
+
+# Chain configuration (contains private keys!)
+.pos*/config/priv_validator_key.json
+.pos*/config/node_key.json
+.pos*/keyring-test/
+.pos*/keyring-file/
+config/priv_validator_key.json
+config/node_key.json
+
+# ====================================
+# Keys and Secrets (NEVER COMMIT!)
+# ====================================
+*.key
+*.pem
+*.p12
+keyring-*
+mnemonic.txt
+seed.txt
+credentials.json
+.env
+.env.local
+.env.production
+
+# ====================================
+# Logs
+# ====================================
+*.log
+logs/
+chain.log
+posd.log
+debug.log
+error.log
+
+# ====================================
+# Go-specific
+# ====================================
+# Compiled Object files
+*.o
+*.a
+*.so
+
+# Go test coverage
+*.out
+coverage.txt
+coverage.html
+
+# Go workspace
+go.work
+go.work.sum
+
+# Dependency directories
+vendor/
+
+# Go build cache
+.cache/
+
+# ====================================
+# IDE and Editor files
+# ====================================
+# VSCode
+.vscode/
+*.code-workspace
+
+# GoLand / IntelliJ
+.idea/
+*.iml
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# ====================================
+# OS-specific
+# ====================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# ====================================
+# Testing and Development
+# ====================================
+# Test artifacts
+testdata/
+test_results/
+*.test
+*.prof
+
+# Temporary test chains
+test-chain-*/
+localnet/
+devnet/
+
+# PID files
+*.pid
+posd.pid
+
+# ====================================
+# Documentation Build Artifacts
+# ====================================
+# Ignore generated docs
+docs/_build/
+docs/.buildinfo
+site/
+
+# ====================================
+# Node modules (if using any JS tooling)
+# ====================================
+vue/node_modules
+vue/dist
+node_modules/
+package-lock.json
+yarn.lock
+
+# ====================================
+# Backup files
+# ====================================
+*.bak
+*.backup
+*.old
+*.orig
+*-old
+*-backup
+
+# ====================================
+# Compressed files
+# ====================================
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+*.rar
+*.7z
+
+# ====================================
+# Project-Specific
+# ====================================
+# Downloaded Go tarballs
+go*.linux-amd64.tar.gz
+
+# Test output files
+quick_test_results.txt
+comprehensive.test.exe
+keeper.test.exe
+performance.test.exe
+
+# Windows artifact
+nul
+
+# Ignite-specific
+*.dot
+*.ign
+
+# ====================================
+# INCLUDE IMPORTANT FILES
+# ====================================
+# Make sure critical files are tracked:
+!go.mod
+!go.sum
+!buf.yaml
+!buf.gen.yaml
+!Makefile
+!README.md
+!LICENSE
+!**/*.go
+!**/*.proto
+!*.md
+validator-orchestrator/docker/validator-node/posd

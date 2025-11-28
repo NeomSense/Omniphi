@@ -1,0 +1,60 @@
+syntax = "proto3";
+package pos.feemarket.v1;
+
+import "amino/amino.proto";
+import "cosmos_proto/cosmos.proto";
+import "gogoproto/gogo.proto";
+import "pos/feemarket/v1/params.proto";
+
+option go_package = "pos/x/feemarket/types";
+
+// GenesisState defines the feemarket module's genesis state.
+message GenesisState {
+  // params defines all the parameters of the module.
+  FeeMarketParams params = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+
+  // current_base_fee is the current EIP-1559 base fee
+  // Initialized to base_fee_initial at genesis
+  string current_base_fee = 2 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // previous_block_utilization is the utilization of the previous block
+  // Used for base fee calculation in BeginBlock
+  // Initialized to 0.0 at genesis
+  string previous_block_utilization = 3 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // treasury_address is the address that receives treasury fees
+  // Must be set at genesis (typically a multisig)
+  string treasury_address = 4 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+
+  // cumulative_burned is the total amount of fees burned since genesis
+  // Tracked for metrics and supply accounting
+  string cumulative_burned = 5 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // cumulative_to_treasury is the total amount sent to treasury since genesis
+  // Tracked for transparency and DAO accounting
+  string cumulative_to_treasury = 6 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // cumulative_to_validators is the total amount sent to validators since genesis
+  // Tracked for validator revenue metrics
+  string cumulative_to_validators = 7 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+}

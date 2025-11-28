@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package pos.poc.v1;
+
+import "amino/amino.proto";
+import "gogoproto/gogo.proto";
+import "pos/poc/v1/params.proto";
+import "pos/poc/v1/contribution.proto";
+import "pos/poc/v1/fee_metrics.proto";
+
+option go_package = "pos/x/poc/types";
+
+// GenesisState defines the poc module's genesis state.
+message GenesisState {
+  // params defines all the parameters of the module.
+  Params params = 1 [
+    (gogoproto.nullable) = false,
+    (amino.dont_omitempty) = true
+  ];
+
+  // contributions is the list of all contributions
+  repeated Contribution contributions = 2 [(gogoproto.nullable) = false];
+
+  // credits is the list of all credit balances
+  repeated Credits credits = 3 [(gogoproto.nullable) = false];
+
+  // next_contribution_id is the next ID to be assigned
+  uint64 next_contribution_id = 4;
+
+  // fee_metrics tracks cumulative fee burn statistics
+  FeeMetrics fee_metrics = 5 [
+    (gogoproto.nullable) = false,
+    (amino.dont_omitempty) = true
+  ];
+
+  // contributor_fee_stats is the list of per-contributor fee statistics
+  repeated ContributorFeeStats contributor_fee_stats = 6 [(gogoproto.nullable) = false];
+}

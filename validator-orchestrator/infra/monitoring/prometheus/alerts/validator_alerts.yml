@@ -1,0 +1,283 @@
+# Omniphi Cloud - Validator Alert Rules
+
+groups:
+  # ============================================
+  # NODE HEALTH ALERTS
+  # ============================================
+  - name: node_health
+    interval: 30s
+    rules:
+      # Node Down
+      - alert: ValidatorNodeDown
+        expr: up{job="validator-nodes"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: availability
+        annotations:
+          summary: "Validator node {{ $labels.moniker }} is down"
+          description: "Validator node {{ $labels.node_id }} in region {{ $labels.region }} has been unreachable for more than 2 minutes."
+          runbook_url: "https://docs.omniphi.io/runbooks/node-down"
+
+      # High CPU Usage
+      - alert: ValidatorHighCPU
+        expr: rate(process_cpu_seconds_total{job="validator-nodes"}[5m]) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "High CPU usage on {{ $labels.moniker }}"
+          description: "CPU usage on validator {{ $labels.node_id }} has been above 80% for 5 minutes. Current: {{ $value | printf \"%.1f\" }}%"
+
+      # Critical CPU Usage
+      - alert: ValidatorCriticalCPU
+        expr: rate(process_cpu_seconds_total{job="validator-nodes"}[5m]) * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+          category: performance
+        annotations:
+          summary: "Critical CPU usage on {{ $labels.moniker }}"
+          description: "CPU usage on validator {{ $labels.node_id }} has been above 95% for 2 minutes. Immediate action required."
+
+      # High Memory Usage
+      - alert: ValidatorHighMemory
+        expr: (process_resident_memory_bytes{job="validator-nodes"} / node_memory_MemTotal_bytes) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "High memory usage on {{ $labels.moniker }}"
+          description: "Memory usage on validator {{ $labels.node_id }} is above 85%. Current: {{ $value | printf \"%.1f\" }}%"
+
+      # Disk Space Low
+      - alert: ValidatorDiskSpaceLow
+        expr: (node_filesystem_avail_bytes{mountpoint="/",job="node-exporter"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 20
+        for: 10m
+        labels:
+          severity: warning
+          category: storage
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Disk space on {{ $labels.instance }} is below 20%. Current available: {{ $value | printf \"%.1f\" }}%"
+
+      # Disk Space Critical
+      - alert: ValidatorDiskSpaceCritical
+        expr: (node_filesystem_avail_bytes{mountpoint="/",job="node-exporter"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 10
+        for: 5m
+        labels:
+          severity: critical
+          category: storage
+        annotations:
+          summary: "Critical disk space on {{ $labels.instance }}"
+          description: "Disk space on {{ $labels.instance }} is below 10%. Immediate action required."
+
+  # ============================================
+  # CHAIN SYNC ALERTS
+  # ============================================
+  - name: chain_sync
+    interval: 30s
+    rules:
+      # Node Syncing
+      - alert: ValidatorSyncing
+        expr: tendermint_consensus_height{job="tendermint"} < (max(tendermint_consensus_height{job="tendermint"}) - 100)
+        for: 10m
+        labels:
+          severity: warning
+          category: sync
+        annotations:
+          summary: "Validator {{ $labels.moniker }} is syncing"
+          description: "Validator {{ $labels.node_id }} is more than 100 blocks behind the network for 10 minutes."
+
+      # Node Far Behind
+      - alert: ValidatorFarBehind
+        expr: tendermint_consensus_height{job="tendermint"} < (max(tendermint_consensus_height{job="tendermint"}) - 1000)
+        for: 5m
+        labels:
+          severity: critical
+          category: sync
+        annotations:
+          summary: "Validator {{ $labels.moniker }} is far behind"
+          description: "Validator {{ $labels.node_id }} is more than 1000 blocks behind. May require snapshot restore."
+
+      # No New Blocks
+      - alert: ValidatorNoNewBlocks
+        expr: increase(tendermint_consensus_height{job="tendermint"}[5m]) == 0
+        for: 10m
+        labels:
+          severity: critical
+          category: sync
+        annotations:
+          summary: "Validator {{ $labels.moniker }} not receiving blocks"
+          description: "Validator {{ $labels.node_id }} has not received any new blocks in 10 minutes."
+
+      # Low Peer Count
+      - alert: ValidatorLowPeers
+        expr: tendermint_p2p_peers{job="tendermint"} < 3
+        for: 10m
+        labels:
+          severity: warning
+          category: network
+        annotations:
+          summary: "Low peer count on {{ $labels.moniker }}"
+          description: "Validator {{ $labels.node_id }} has only {{ $value }} peers. Minimum recommended: 10"
+
+  # ============================================
+  # CONSENSUS ALERTS
+  # ============================================
+  - name: consensus
+    interval: 30s
+    rules:
+      # Missed Blocks
+      - alert: ValidatorMissedBlocks
+        expr: increase(tendermint_consensus_validator_missed_blocks{job="tendermint"}[1h]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          category: consensus
+        annotations:
+          summary: "Validator {{ $labels.moniker }} missing blocks"
+          description: "Validator {{ $labels.node_id }} has missed {{ $value }} blocks in the last hour."
+
+      # High Missed Blocks (Slashing Risk)
+      - alert: ValidatorSlashingRisk
+        expr: increase(tendermint_consensus_validator_missed_blocks{job="tendermint"}[1h]) > 50
+        for: 2m
+        labels:
+          severity: critical
+          category: consensus
+        annotations:
+          summary: "SLASHING RISK: {{ $labels.moniker }} missing many blocks"
+          description: "Validator {{ $labels.node_id }} has missed {{ $value }} blocks in the last hour. Risk of being jailed!"
+          runbook_url: "https://docs.omniphi.io/runbooks/slashing-prevention"
+
+      # Validator Not Signing
+      - alert: ValidatorNotSigning
+        expr: tendermint_consensus_validator_power{job="tendermint"} > 0 and increase(tendermint_consensus_validator_last_signed_height{job="tendermint"}[5m]) == 0
+        for: 5m
+        labels:
+          severity: critical
+          category: consensus
+        annotations:
+          summary: "Validator {{ $labels.moniker }} not signing blocks"
+          description: "Active validator {{ $labels.node_id }} has not signed any blocks in 5 minutes."
+
+      # Consensus Round Too Long
+      - alert: ConsensusRoundTooLong
+        expr: tendermint_consensus_round{job="tendermint"} > 3
+        for: 5m
+        labels:
+          severity: warning
+          category: consensus
+        annotations:
+          summary: "Consensus taking multiple rounds on {{ $labels.chain_id }}"
+          description: "Consensus is at round {{ $value }}, indicating possible network issues."
+
+  # ============================================
+  # REGION HEALTH ALERTS
+  # ============================================
+  - name: region_health
+    interval: 60s
+    rules:
+      # Region High Error Rate
+      - alert: RegionHighErrorRate
+        expr: (sum by (region) (rate(http_requests_total{status=~"5..",job="orchestrator-backend"}[5m])) / sum by (region) (rate(http_requests_total{job="orchestrator-backend"}[5m]))) * 100 > 5
+        for: 5m
+        labels:
+          severity: warning
+          category: region
+        annotations:
+          summary: "High error rate in region {{ $labels.region }}"
+          description: "Region {{ $labels.region }} has an error rate of {{ $value | printf \"%.1f\" }}%"
+
+      # Region Degraded
+      - alert: RegionDegraded
+        expr: (count by (region) (up{job="validator-nodes"} == 0) / count by (region) (up{job="validator-nodes"})) * 100 > 10
+        for: 5m
+        labels:
+          severity: warning
+          category: region
+        annotations:
+          summary: "Region {{ $labels.region }} is degraded"
+          description: "More than 10% of nodes in region {{ $labels.region }} are down."
+
+      # Region Outage
+      - alert: RegionOutage
+        expr: (count by (region) (up{job="validator-nodes"} == 0) / count by (region) (up{job="validator-nodes"})) * 100 > 50
+        for: 2m
+        labels:
+          severity: critical
+          category: region
+        annotations:
+          summary: "OUTAGE: Region {{ $labels.region }}"
+          description: "More than 50% of nodes in region {{ $labels.region }} are down. Initiating failover procedures."
+          runbook_url: "https://docs.omniphi.io/runbooks/region-outage"
+
+  # ============================================
+  # UPGRADE ALERTS
+  # ============================================
+  - name: upgrades
+    interval: 60s
+    rules:
+      # Upgrade Approaching
+      - alert: UpgradeApproaching
+        expr: tendermint_consensus_height > (omniphi_upgrade_height - 1000) and tendermint_consensus_height < omniphi_upgrade_height
+        for: 1m
+        labels:
+          severity: info
+          category: upgrade
+        annotations:
+          summary: "Chain upgrade approaching"
+          description: "Chain upgrade at height {{ $labels.upgrade_height }} is approaching. Current height: {{ $value }}"
+
+      # Upgrade Failed
+      - alert: UpgradeFailed
+        expr: omniphi_upgrade_status{status="failed"} == 1
+        for: 1m
+        labels:
+          severity: critical
+          category: upgrade
+        annotations:
+          summary: "Upgrade failed on {{ $labels.node_id }}"
+          description: "Upgrade {{ $labels.upgrade_name }} failed on node {{ $labels.node_id }}. Manual intervention required."
+
+  # ============================================
+  # INFRASTRUCTURE ALERTS
+  # ============================================
+  - name: infrastructure
+    interval: 30s
+    rules:
+      # Prometheus Target Down
+      - alert: PrometheusTargetDown
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: warning
+          category: monitoring
+        annotations:
+          summary: "Prometheus target {{ $labels.job }} down"
+          description: "Target {{ $labels.instance }} in job {{ $labels.job }} has been down for 5 minutes."
+
+      # High Orchestrator Latency
+      - alert: OrchestratorHighLatency
+        expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{job="orchestrator-backend"}[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "High latency on orchestrator API"
+          description: "99th percentile latency is {{ $value | printf \"%.2f\" }}s, above 2s threshold."
+
+      # Container Restart Loop
+      - alert: ContainerRestartLoop
+        expr: increase(container_last_seen{job="cadvisor"}[1h]) > 5
+        for: 10m
+        labels:
+          severity: warning
+          category: container
+        annotations:
+          summary: "Container {{ $labels.name }} in restart loop"
+          description: "Container {{ $labels.name }} has restarted {{ $value }} times in the last hour."

@@ -1,0 +1,86 @@
+version: 1
+validation: sovereign
+default_denom: stake
+
+# Production accounts with proper initial balances
+accounts:
+- name: validator1
+  coins:
+  - 1000000000stake  # 1 billion stake for operations
+  mnemonic: "settle horse fade copy grace inquiry race wheel crowd month income improve endless sheriff arm prefer cancel enlist loyal loyal coast spell ensure toe"
+
+# Production validators
+validators:
+- name: validator1
+  bonded: 100000000stake  # 100 million staked
+  commission:
+    rate: "0.10"
+    max_rate: "0.20"
+    max_change_rate: "0.01"
+
+# Genesis configuration with production parameters
+genesis:
+  chain_id: "pos-1"
+  app_state:
+    # STAKING MODULE - Production Parameters
+    staking:
+      params:
+        unbonding_time: "1814400s"        # 21 days
+        max_validators: 125                # Increased from 100
+        max_entries: 7
+        historical_entries: 10000
+        bond_denom: "stake"
+        min_commission_rate: "0.050000000000000000"  # 5% minimum
+
+    # SLASHING MODULE - Production Parameters
+    slashing:
+      params:
+        signed_blocks_window: "30000"     # ~2.5 days at 6s/block
+        min_signed_per_window: "0.050000000000000000"  # 5% uptime required
+        downtime_jail_duration: "600s"     # 10 minutes
+        slash_fraction_double_sign: "0.050000000000000000"  # 5% slash for double sign
+        slash_fraction_downtime: "0.000100000000000000"    # 0.01% slash for downtime
+
+    # MINT MODULE - Production Parameters
+    mint:
+      params:
+        mint_denom: "stake"
+        inflation_rate_change: "0.130000000000000000"  # 13% annual change
+        inflation_max: "0.200000000000000000"          # 20% max inflation
+        inflation_min: "0.070000000000000000"          # 7% min inflation
+        goal_bonded: "0.670000000000000000"            # 67% bonding target
+        blocks_per_year: "5256000"                     # ~6s per block
+
+    # GOVERNANCE MODULE - Production Parameters
+    gov:
+      params:
+        min_deposit:
+        - denom: "stake"
+          amount: "10000000"              # 10M stake to submit proposal
+        max_deposit_period: "172800s"     # 2 days
+        voting_period: "432000s"          # 5 days
+        quorum: "0.334000000000000000"    # 33.4% participation required
+        threshold: "0.500000000000000000"  # 50% yes votes to pass
+        veto_threshold: "0.334000000000000000"  # 33.4% veto threshold
+        min_initial_deposit_ratio: "0.000000000000000000"
+        burn_vote_quorum: false
+        burn_proposal_deposit_prevote: false
+        burn_vote_veto: true
+
+    # DISTRIBUTION MODULE - Production Parameters
+    distribution:
+      params:
+        community_tax: "0.020000000000000000"  # 2% community tax
+        base_proposer_reward: "0.000000000000000000"
+        bonus_proposer_reward: "0.000000000000000000"
+        withdraw_addr_enabled: true
+
+client:
+  openapi:
+    path: docs/static/openapi.json
+
+faucet:
+  name: validator1
+  coins:
+  - 100000stake
+  host: "127.0.0.1:4500"

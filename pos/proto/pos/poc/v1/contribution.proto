@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package pos.poc.v1;
+
+import "amino/amino.proto";
+import "gogoproto/gogo.proto";
+import "cosmos_proto/cosmos.proto";
+
+option go_package = "pos/x/poc/types";
+
+// Endorsement represents a validator's endorsement of a contribution
+message Endorsement {
+  // val_addr is the validator operator address (bech32)
+  string val_addr = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+
+  // decision is true for approval, false for rejection
+  bool decision = 2;
+
+  // power is the validator's consensus power at time of endorsement
+  string power = 3 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // time is the unix timestamp of the endorsement
+  int64 time = 4;
+}
+
+// Contribution represents a proof-of-contribution submission
+message Contribution {
+  // id is the unique identifier for this contribution
+  uint64 id = 1;
+
+  // contributor is the address that submitted the contribution
+  string contributor = 2 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+
+  // ctype is the contribution type (e.g., "code", "record", "relay", "green")
+  string ctype = 3;
+
+  // uri is a pointer to evidence (IPFS/Git/etc.)
+  string uri = 4;
+
+  // hash is the content hash or merkle root
+  bytes hash = 5;
+
+  // endorsements is the list of validator endorsements
+  repeated Endorsement endorsements = 6 [(gogoproto.nullable) = false];
+
+  // verified indicates if the contribution has reached quorum
+  bool verified = 7;
+
+  // block_height is the height at which this contribution was submitted
+  int64 block_height = 8;
+
+  // block_time is the unix timestamp when this contribution was submitted
+  int64 block_time = 9;
+
+  // rewarded indicates if the contribution has been rewarded
+  bool rewarded = 10;
+}
+
+// Credits represents accumulated PoC credits for an address
+message Credits {
+  // address is the contributor's address
+  string address = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+
+  // amount is the accumulated credit units
+  string amount = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+}

@@ -1,0 +1,277 @@
+package types
+
+import (
+	"context"
+
+	"cosmossdk.io/math"
+)
+
+// Params, Contribution, Credits, Endorsement, Tier types
+// These match the proto definitions and are implemented in separate files
+
+// Message types
+type (
+	MsgSubmitContribution struct {
+		Contributor string `protobuf:"bytes,1,opt,name=contributor,proto3" json:"contributor,omitempty"`
+		Ctype       string `protobuf:"bytes,2,opt,name=ctype,proto3" json:"ctype,omitempty"`
+		Uri         string `protobuf:"bytes,3,opt,name=uri,proto3" json:"uri,omitempty"`
+		Hash        []byte `protobuf:"bytes,4,opt,name=hash,proto3" json:"hash,omitempty"`
+	}
+
+	MsgSubmitContributionResponse struct {
+		Id uint64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	}
+
+	MsgEndorse struct {
+		Validator      string `protobuf:"bytes,1,opt,name=validator,proto3" json:"validator,omitempty"`
+		ContributionId uint64 `protobuf:"varint,2,opt,name=contribution_id,json=contributionId,proto3" json:"contribution_id,omitempty"`
+		Decision       bool   `protobuf:"varint,3,opt,name=decision,proto3" json:"decision,omitempty"`
+	}
+
+	MsgEndorseResponse struct {
+		Verified bool `protobuf:"varint,1,opt,name=verified,proto3" json:"verified,omitempty"`
+	}
+
+	MsgWithdrawPOCRewards struct {
+		Address string `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
+	}
+
+	MsgWithdrawPOCRewardsResponse struct {
+		Amount math.Int `protobuf:"bytes,1,opt,name=amount,proto3" json:"amount"`
+	}
+
+	MsgUpdateParams struct {
+		Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
+		Params    Params `protobuf:"bytes,2,opt,name=params,proto3" json:"params"`
+	}
+
+	MsgUpdateParamsResponse struct{}
+)
+
+// Proto message methods for messages
+func (*MsgSubmitContribution) Reset()         {}
+func (*MsgSubmitContribution) String() string { return "MsgSubmitContribution" }
+func (*MsgSubmitContribution) ProtoMessage()  {}
+func (*MsgSubmitContribution) XXX_MessageName() string { return "pos.poc.v1.MsgSubmitContribution" }
+
+func (*MsgSubmitContributionResponse) Reset()         {}
+func (*MsgSubmitContributionResponse) String() string { return "MsgSubmitContributionResponse" }
+func (*MsgSubmitContributionResponse) ProtoMessage()  {}
+func (*MsgSubmitContributionResponse) XXX_MessageName() string { return "pos.poc.v1.MsgSubmitContributionResponse" }
+
+func (*MsgEndorse) Reset()         {}
+func (*MsgEndorse) String() string { return "MsgEndorse" }
+func (*MsgEndorse) ProtoMessage()  {}
+func (*MsgEndorse) XXX_MessageName() string { return "pos.poc.v1.MsgEndorse" }
+
+func (*MsgEndorseResponse) Reset()         {}
+func (*MsgEndorseResponse) String() string { return "MsgEndorseResponse" }
+func (*MsgEndorseResponse) ProtoMessage()  {}
+func (*MsgEndorseResponse) XXX_MessageName() string { return "pos.poc.v1.MsgEndorseResponse" }
+
+func (*MsgWithdrawPOCRewards) Reset()         {}
+func (*MsgWithdrawPOCRewards) String() string { return "MsgWithdrawPOCRewards" }
+func (*MsgWithdrawPOCRewards) ProtoMessage()  {}
+func (*MsgWithdrawPOCRewards) XXX_MessageName() string { return "pos.poc.v1.MsgWithdrawPOCRewards" }
+
+func (*MsgWithdrawPOCRewardsResponse) Reset()         {}
+func (*MsgWithdrawPOCRewardsResponse) String() string { return "MsgWithdrawPOCRewardsResponse" }
+func (*MsgWithdrawPOCRewardsResponse) ProtoMessage()  {}
+func (*MsgWithdrawPOCRewardsResponse) XXX_MessageName() string { return "pos.poc.v1.MsgWithdrawPOCRewardsResponse" }
+
+func (*MsgUpdateParams) Reset()         {}
+func (*MsgUpdateParams) String() string { return "MsgUpdateParams" }
+func (*MsgUpdateParams) ProtoMessage()  {}
+func (*MsgUpdateParams) XXX_MessageName() string { return "pos.poc.v1.MsgUpdateParams" }
+
+func (*MsgUpdateParamsResponse) Reset()         {}
+func (*MsgUpdateParamsResponse) String() string { return "MsgUpdateParamsResponse" }
+func (*MsgUpdateParamsResponse) ProtoMessage()  {}
+func (*MsgUpdateParamsResponse) XXX_MessageName() string { return "pos.poc.v1.MsgUpdateParamsResponse" }
+
+// Query types
+type (
+	QueryParamsRequest struct{}
+
+	QueryParamsResponse struct {
+		Params Params
+	}
+
+	QueryContributionRequest struct {
+		Id uint64
+	}
+
+	QueryContributionResponse struct {
+		Contribution Contribution
+	}
+
+	QueryContributionsRequest struct {
+		Contributor string
+		Ctype       string
+		Verified    int32
+		Pagination  interface{} // *query.PageRequest
+	}
+
+	QueryContributionsResponse struct {
+		Contributions []Contribution
+		Pagination    interface{} // *query.PageResponse
+	}
+
+	QueryCreditsRequest struct {
+		Address string
+	}
+
+	QueryCreditsResponse struct {
+		Credits Credits
+		Tier    string
+	}
+)
+
+// Genesis types
+type (
+	GenesisState struct {
+		Params             Params         `json:"params"`
+		Contributions      []Contribution `json:"contributions"`
+		Credits            []Credits      `json:"credits"`
+		NextContributionId uint64         `json:"next_contribution_id"`
+	}
+
+	Params struct {
+		QuorumPct      math.LegacyDec `json:"quorum_pct"`
+		BaseRewardUnit math.Int       `json:"base_reward_unit"`
+		InflationShare math.LegacyDec `json:"inflation_share"`
+		MaxPerBlock    uint32         `json:"max_per_block"`
+		Tiers          []Tier         `json:"tiers"`
+		RewardDenom    string         `json:"reward_denom"`
+	}
+
+	Tier struct {
+		Name   string   `json:"name"`
+		Cutoff math.Int `json:"cutoff"`
+	}
+
+	Contribution struct {
+		Id           uint64        `json:"id"`
+		Contributor  string        `json:"contributor"`
+		Ctype        string        `json:"ctype"`
+		Uri          string        `json:"uri"`
+		Hash         []byte        `json:"hash"`
+		Endorsements []Endorsement `json:"endorsements"`
+		Verified     bool          `json:"verified"`
+		BlockHeight  int64         `json:"block_height"`
+		BlockTime    int64         `json:"block_time"`
+	}
+
+	Endorsement struct {
+		ValAddr  string   `json:"val_addr"`
+		Decision bool     `json:"decision"`
+		Power    math.Int `json:"power"`
+		Time     int64    `json:"time"`
+	}
+
+	Credits struct {
+		Address string   `json:"address"`
+		Amount  math.Int `json:"amount"`
+	}
+)
+
+// Proto message methods for state types
+func (*Params) Reset()        {}
+func (*Params) ProtoMessage() {}
+
+func (*Tier) Reset()         {}
+func (*Tier) String() string { return "Tier" }
+func (*Tier) ProtoMessage()  {}
+
+func (*Contribution) Reset()         {}
+func (*Contribution) String() string { return "Contribution" }
+func (*Contribution) ProtoMessage()  {}
+
+func (*Endorsement) Reset()         {}
+func (*Endorsement) String() string { return "Endorsement" }
+func (*Endorsement) ProtoMessage()  {}
+
+func (*Credits) Reset()         {}
+func (*Credits) String() string { return "Credits" }
+func (*Credits) ProtoMessage()  {}
+
+func (*GenesisState) Reset()         {}
+func (*GenesisState) String() string { return "GenesisState" }
+func (*GenesisState) ProtoMessage()  {}
+
+// Proto message methods for query types
+func (*QueryParamsRequest) Reset()         {}
+func (*QueryParamsRequest) String() string { return "QueryParamsRequest" }
+func (*QueryParamsRequest) ProtoMessage()  {}
+
+func (*QueryParamsResponse) Reset()         {}
+func (*QueryParamsResponse) String() string { return "QueryParamsResponse" }
+func (*QueryParamsResponse) ProtoMessage()  {}
+
+func (*QueryContributionRequest) Reset()         {}
+func (*QueryContributionRequest) String() string { return "QueryContributionRequest" }
+func (*QueryContributionRequest) ProtoMessage()  {}
+
+func (*QueryContributionResponse) Reset()         {}
+func (*QueryContributionResponse) String() string { return "QueryContributionResponse" }
+func (*QueryContributionResponse) ProtoMessage()  {}
+
+func (*QueryContributionsRequest) Reset()         {}
+func (*QueryContributionsRequest) String() string { return "QueryContributionsRequest" }
+func (*QueryContributionsRequest) ProtoMessage()  {}
+
+func (*QueryContributionsResponse) Reset()         {}
+func (*QueryContributionsResponse) String() string { return "QueryContributionsResponse" }
+func (*QueryContributionsResponse) ProtoMessage()  {}
+
+func (*QueryCreditsRequest) Reset()         {}
+func (*QueryCreditsRequest) String() string { return "QueryCreditsRequest" }
+func (*QueryCreditsRequest) ProtoMessage()  {}
+
+func (*QueryCreditsResponse) Reset()         {}
+func (*QueryCreditsResponse) String() string { return "QueryCreditsResponse" }
+func (*QueryCreditsResponse) ProtoMessage()  {}
+
+// Service descriptors
+var _Msg_serviceDesc = struct {
+	ServiceName string
+	HandlerType interface{}
+	Methods     []interface{}
+	Streams     []interface{}
+	Metadata    string
+}{
+	ServiceName: "pos.poc.v1.Msg",
+	Metadata:    "pos/poc/v1/tx.proto",
+}
+
+var _Query_serviceDesc = struct {
+	ServiceName string
+	HandlerType interface{}
+	Methods     []interface{}
+	Streams     []interface{}
+	Metadata    string
+}{
+	ServiceName: "pos.poc.v1.Query",
+	Metadata:    "pos/poc/v1/query.proto",
+}
+
+// Interface implementations
+type MsgServer interface {
+	SubmitContribution(context.Context, *MsgSubmitContribution) (*MsgSubmitContributionResponse, error)
+	Endorse(context.Context, *MsgEndorse) (*MsgEndorseResponse, error)
+	WithdrawPOCRewards(context.Context, *MsgWithdrawPOCRewards) (*MsgWithdrawPOCRewardsResponse, error)
+	UpdateParams(context.Context, *MsgUpdateParams) (*MsgUpdateParamsResponse, error)
+}
+
+type QueryServer interface {
+	Params(context.Context, *QueryParamsRequest) (*QueryParamsResponse, error)
+	Contribution(context.Context, *QueryContributionRequest) (*QueryContributionResponse, error)
+	Contributions(context.Context, *QueryContributionsRequest) (*QueryContributionsResponse, error)
+	Credits(context.Context, *QueryCreditsRequest) (*QueryCreditsResponse, error)
+}
+
+// Service registration functions (stubs)
+func RegisterMsgServer(s interface{}, srv MsgServer) {}
+func RegisterQueryServer(s interface{}, srv QueryServer) {}
+func RegisterQueryHandlerClient(ctx interface{}, mux interface{}, client interface{}) error { return nil }
+func NewQueryClient(clientCtx interface{}) interface{} { return nil }

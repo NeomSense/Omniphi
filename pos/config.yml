@@ -1,0 +1,49 @@
+version: 1
+validation: sovereign
+default_denom: stake
+
+# Production accounts
+accounts:
+- name: alice
+  coins:
+  - 20000token
+  - 200000000stake
+- name: bob
+  coins:
+  - 10000token
+  - 100000000stake
+
+# Production validators
+validators:
+- name: alice
+  bonded: 100000000stake
+
+# Genesis configuration with PRODUCTION parameters
+genesis:
+  app_state:
+    staking:
+      params:
+        unbonding_time: "1814400s"
+        max_validators: 125
+        min_commission_rate: "0.050000000000000000"
+    slashing:
+      params:
+        signed_blocks_window: "30000"
+        min_signed_per_window: "0.050000000000000000"
+        slash_fraction_downtime: "0.000100000000000000"
+    mint:
+      params:
+        blocks_per_year: "5256000"
+    gov:
+      params:
+        voting_period: "432000s"
+
+client:
+  openapi:
+    path: docs/static/openapi.json
+
+faucet:
+  name: bob
+  coins:
+  - 5token
+  - 100000stake

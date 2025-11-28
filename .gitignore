@@ -1,0 +1,43 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Go
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+vendor/
+
+# Build
+dist/
+build/
+
+# IDEs
+.idea/
+.vscode/
+
+# Logs and runtime files
+*.log
+*.pid
+*.seed
+
+# Env
+.env
+.env.local
+
+# Archives
+*.zip
+*.tar.gz
+
+# Ignore generated genesis & large blobs (adjust if you need them in VCS)
+genesis.production.json
+posd.pid
+validator-orchestrator/docker/validator-node/posd

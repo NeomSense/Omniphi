@@ -1,0 +1,37 @@
+# Omniphi Validator Node - Client Configuration Template
+# This is a TOML config file for Cosmos SDK client settings
+# This file is used by the CLI client (posd) for default values
+
+# NOTE: This is a template file with recommended settings.
+# Copy to ~/.omniphi/config/client.toml and customize for your needs.
+
+###############################################################################
+###                           Client Configuration                          ###
+###############################################################################
+
+# The network chain ID
+# PRODUCTION: omniphi-1
+# TESTNET: omniphi-testnet-1
+chain-id = "omniphi-1"
+
+# The keyring's backend, where the keys are stored (os|file|kwallet|pass|test|memory)
+# RECOMMENDED FOR VALIDATORS: "file" or "os"
+# - os: Use the operating system's native keyring (macOS Keychain, Windows Credential Manager, Linux Secret Service)
+# - file: Store keys in encrypted files (requires password on each use)
+# - test: Insecure, for testing only (stores keys unencrypted)
+# NEVER use "test" in production!
+keyring-backend = "file"
+
+# CLI output format (text|json)
+# RECOMMENDED: "text" for human-readable output, "json" for scripts/automation
+output = "text"
+
+# <host>:<port> to CometBFT RPC interface for this chain
+# RECOMMENDED: tcp://localhost:26657 for local node
+node = "tcp://localhost:26657"
+
+# Transaction broadcasting mode (sync|async)
+# - sync: Wait for the tx to pass CheckTx (recommended for most use cases)
+# - async: Return immediately (use for high throughput, check tx status separately)
+# RECOMMENDED: "sync" for validators
+broadcast-mode = "sync"

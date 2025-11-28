@@ -1,0 +1,19 @@
+{
+  "messages": [
+    {
+      "@type": "/cosmos.slashing.v1beta1.MsgUpdateParams",
+      "authority": "omni10d07y265gmmuvt4z0w9aw880jnsr700j2gz0r8",
+      "params": {
+        "signed_blocks_window": "30000",
+        "min_signed_per_window": "0.050000000000000000",
+        "downtime_jail_duration": "600s",
+        "slash_fraction_double_sign": "0.050000000000000000",
+        "slash_fraction_downtime": "0.000100000000000000"
+      }
+    }
+  ],
+  "metadata": "ipfs://CID",
+  "deposit": "10000000stake",
+  "title": "Update Slashing Parameters to Production Values",
+  "summary": "This proposal updates the slashing module parameters to production-ready values: signed_blocks_window to 30000 blocks (~2.5 days), min_signed_per_window to 5% (from 50%), and slash_fraction_downtime to 0.01% (from 1%). These changes make downtime slashing more reasonable while maintaining network security."
+}

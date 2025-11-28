@@ -1,0 +1,122 @@
+package types
+
+import (
+	"cosmossdk.io/math"
+)
+
+// NewContribution creates a new Contribution instance
+func NewContribution(
+	id uint64,
+	contributor string,
+	ctype string,
+	uri string,
+	hash []byte,
+	blockHeight int64,
+	blockTime int64,
+) Contribution {
+	return Contribution{
+		Id:           id,
+		Contributor:  contributor,
+		Ctype:        ctype,
+		Uri:          uri,
+		Hash:         hash,
+		Endorsements: []Endorsement{},
+		Verified:     false,
+		BlockHeight:  blockHeight,
+		BlockTime:    blockTime,
+	}
+}
+
+// AddEndorsement adds a validator endorsement to the contribution
+func (c *Contribution) AddEndorsement(e Endorsement) {
+	c.Endorsements = append(c.Endorsements, e)
+}
+
+// HasEndorsedBy checks if a validator has already endorsed this contribution
+func (c *Contribution) HasEndorsedBy(valAddr string) bool {
+	for _, e := range c.Endorsements {
+		if e.ValAddr == valAddr {
+			return true
+		}
+	}
+	return false
+}
+
+// GetApprovalPower returns the total voting power that approved
+func (c *Contribution) GetApprovalPower() math.Int {
+	total := math.ZeroInt()
+	for _, e := range c.Endorsements {
+		if e.Decision {
+			total = total.Add(e.Power)
+		}
+	}
+	return total
+}
+
+// GetRejectionPower returns the total voting power that rejected
+func (c *Contribution) GetRejectionPower() math.Int {
+	total := math.ZeroInt()
+	for _, e := range c.Endorsements {
+		if !e.Decision {
+			total = total.Add(e.Power)
+		}
+	}
+	return total
+}
+
+// Validate performs basic validation of a contribution
+func (c *Contribution) Validate() error {
+	if c.Id == 0 {
+		return ErrContributionNotFound
+	}
+	if c.Contributor == "" {
+		return ErrInvalidCType
+	}
+	if c.Ctype == "" {
+		return ErrInvalidCType
+	}
+	if c.Uri == "" {
+		return ErrInvalidURI
+	}
+	if len(c.Hash) == 0 {
+		return ErrInvalidHash
+	}
+	return nil
+}
+
+// NewEndorsement creates a new Endorsement instance
+func NewEndorsement(valAddr string, decision bool, power math.Int, time int64) Endorsement {
+	return Endorsement{
+		ValAddr:  valAddr,
+		Decision: decision,
+		Power:    power,
+		Time:     time,
+	}
+}
+
+// NewCredits creates a new Credits instance
+func NewCredits(address string, amount math.Int) Credits {
+	return Credits{
+		Address: address,
+		Amount:  amount,
+	}
+}
+
+// Add adds credits to the balance
+func (c *Credits) Add(amount math.Int) {
+	c.Amount = c.Amount.Add(amount)
+}
+
+// Sub subtracts credits from the balance (does not allow negative)
+func (c *Credits) Sub(amount math.Int) error {
+	if c.Amount.LT(amount) {
+		return ErrNoCredits
+	}
+	c.Amount = c.Amount.Sub(amount)
+	return nil
+}
+
+// IsPositive returns true if credits are positive
+func (c *Credits) IsPositive() bool {
+	return c.Amount.IsPositive()
+}

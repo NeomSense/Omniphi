@@ -1,0 +1,412 @@
+syntax = "proto3";
+
+package pos.tokenomics.v1;
+
+import "amino/amino.proto";
+import "gogoproto/gogo.proto";
+import "cosmos_proto/cosmos.proto";
+
+option go_package = "pos/x/tokenomics/types";
+
+// TokenomicsParams defines the DAO-controlled monetary policy parameters
+// for the Omniphi tri-chain token economy
+message TokenomicsParams {
+  option (amino.name) = "pos/x/tokenomics/Params";
+  option (gogoproto.equal) = true;
+
+  // ============================================================================
+  // SUPPLY CONTROL (Protocol-Enforced Caps)
+  // ============================================================================
+
+  // total_supply_cap is the hard maximum supply (1.5B OMNI)
+  // This is IMMUTABLE and enforced at protocol level
+  string total_supply_cap = 1 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // current_total_supply tracks minted - burned across all chains
+  string current_total_supply = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // total_minted tracks cumulative minting (monotonic increase)
+  string total_minted = 3 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // total_burned tracks cumulative burns across all chains
+  string total_burned = 4 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // ============================================================================
+  // INFLATION POLICY (DAO-Adjustable with Protocol Cap)
+  // ============================================================================
+
+  // inflation_rate is the annual inflation percentage (0.01-0.05)
+  // DAO can adjust between min and max
+  string inflation_rate = 5 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // inflation_min is the DAO-settable floor (default 1%)
+  string inflation_min = 6 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // inflation_max is the PROTOCOL-ENFORCED ceiling (max 5%)
+  // DAO proposals cannot exceed this
+  string inflation_max = 7 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // ============================================================================
+  // EMISSION SPLITS (DAO-Adjustable, must sum to 100%)
+  // ============================================================================
+
+  // emission_split_staking: % of inflation to PoS validators
+  string emission_split_staking = 8 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // emission_split_poc: % of inflation to PoC contributors
+  string emission_split_poc = 9 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // emission_split_sequencer: % of inflation to PoSeq operators
+  string emission_split_sequencer = 10 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // emission_split_treasury: % of inflation to DAO treasury
+  string emission_split_treasury = 11 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // ============================================================================
+  // BURN POLICY (DAO-Adjustable by Module/Chain)
+  // ============================================================================
+
+  // burn_rate_pos_gas: % of PoS gas fees burned (0-50%)
+  string burn_rate_pos_gas = 12 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // burn_rate_poc_anchoring: % of PoC anchoring fees burned (0-50%)
+  string burn_rate_poc_anchoring = 13 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // burn_rate_sequencer_gas: % of PoSeq gas fees burned (0-50%)
+  string burn_rate_sequencer_gas = 14 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // burn_rate_smart_contracts: % of smart contract fees burned (0-50%)
+  string burn_rate_smart_contracts = 15 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // burn_rate_ai_queries: % of AI query fees burned (0-50%)
+  string burn_rate_ai_queries = 16 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // burn_rate_messaging: % of messaging fees burned (0-50%)
+  string burn_rate_messaging = 17 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // ============================================================================
+  // TREASURY POLICY
+  // ============================================================================
+
+  // treasury_burn_redirect: % of burns redirected to treasury (0-20%)
+  // Example: If 100 OMNI burned, 10 OMNI goes to treasury instead
+  string treasury_burn_redirect = 18 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // ============================================================================
+  // FEE BURN & TREASURY SPLIT (90/10 Default)
+  // ============================================================================
+
+  // fee_burn_enabled: Enable automatic fee burning (DAO toggle)
+  bool fee_burn_enabled = 31;
+
+  // fee_burn_ratio: % of transaction fees to burn (default 0.90 = 90%)
+  // DAO-adjustable, must sum with treasury_fee_ratio to 1.0
+  string fee_burn_ratio = 32 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // treasury_fee_ratio: % of transaction fees to treasury (default 0.10 = 10%)
+  // DAO-adjustable, must sum with fee_burn_ratio to 1.0
+  string treasury_fee_ratio = 33 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // ============================================================================
+  // GAS & FEE POLICY (Cross-Chain Parity)
+  // ============================================================================
+
+  // min_gas_price: Minimum gas price for transaction acceptance
+  // Prevents free transactions and spam attacks
+  string min_gas_price = 19 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // gas_conversion_ratio_continuity: Continuity gas vs Core gas
+  // Example: 0.5 = Continuity ops cost 50% of Core ops
+  string gas_conversion_ratio_continuity = 20 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // gas_conversion_ratio_sequencer: Sequencer gas vs Core gas
+  // Example: 0.1 = Sequencer ops cost 10% of Core ops (micro-fees)
+  string gas_conversion_ratio_sequencer = 21 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // ============================================================================
+  // POC MERIT ENGINE POLICY
+  // ============================================================================
+
+  // poc_alpha: Weight factor for credit impact on effective power
+  // Formula: Power = Stake × (1 + α × Credits)
+  // Range: [0, 1.0] - bounded to prevent runaway credit multiplier
+  string poc_alpha = 22 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // ============================================================================
+  // CROSS-CHAIN REWARD STREAMS (IBC Parameters)
+  // ============================================================================
+
+  // reward_stream_interval: How often to send IBC rewards (blocks)
+  uint64 reward_stream_interval = 23;
+
+  // continuity_ibc_channel: IBC channel to PoC Continuity
+  string continuity_ibc_channel = 24;
+
+  // sequencer_ibc_channel: IBC channel to PoSeq Sequencer
+  string sequencer_ibc_channel = 25;
+
+  // ============================================================================
+  // GOVERNANCE SAFETY (Time Locks & Limits)
+  // ============================================================================
+
+  // param_change_delay: Minimum delay before param changes take effect (seconds)
+  uint64 param_change_delay = 26;
+
+  // min_proposal_deposit: Minimum OMNI deposit for proposals
+  string min_proposal_deposit = 27 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // quorum_percentage: Minimum % of voting power to pass proposal
+  string quorum_percentage = 28 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // pass_percentage: Minimum % yes votes to pass
+  string pass_percentage = 29 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // voting_period: Duration of voting period (seconds)
+  uint64 voting_period = 30;
+
+  // ============================================================================
+  // ADAPTIVE BURN CONTROLLER (Dynamic Fee Burn Scaling)
+  // ============================================================================
+
+  // adaptive_burn_enabled: Enable dynamic burn rate adjustments
+  // When true, burn ratio adjusts based on network conditions
+  // When false, uses fixed fee_burn_ratio
+  bool adaptive_burn_enabled = 34;
+
+  // min_burn_ratio: Minimum adaptive burn rate (default 0.80 = 80%)
+  // Floor to ensure some deflationary pressure
+  // Protocol bounds: 0.70 - 1.00
+  string min_burn_ratio = 35 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // max_burn_ratio: Maximum adaptive burn rate (default 0.95 = 95%)
+  // Ceiling to reserve some fees for validators/treasury
+  // Protocol bounds: 0.70 - 0.95
+  string max_burn_ratio = 36 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // default_burn_ratio: Baseline burn rate when no triggers active (default 0.90 = 90%)
+  // Used when network conditions are normal
+  string default_burn_ratio = 37 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // block_congestion_threshold: Gas usage % that triggers max burn (default 0.75 = 75%)
+  // If block gas used > threshold → increase burn to max_burn_ratio
+  // Range: 0.50 - 1.00
+  string block_congestion_threshold = 38 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // tx_per_day_target: Expected daily transaction volume (default 10,000)
+  // If avg tx/day < target → reduce burn to encourage adoption
+  // Smoothed over 7-day rolling window
+  uint64 tx_per_day_target = 39;
+
+  // treasury_floor_pct: Minimum treasury balance as % of total supply (default 0.05 = 5%)
+  // If treasury < floor → reduce burn to min_burn_ratio
+  // Ensures treasury solvency for operations
+  string treasury_floor_pct = 40 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // burn_adjustment_smoothing: Blocks over which to smooth rate changes (default 100)
+  // Prevents rapid oscillation, provides predictability
+  // Range: 10 - 1000 blocks
+  uint64 burn_adjustment_smoothing = 41;
+
+  // last_applied_burn_ratio: Read-only state tracking current burn rate
+  // Updated each block by adaptive controller
+  // Exposed via query endpoint for observability
+  string last_applied_burn_ratio = 42 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // last_burn_trigger: Read-only state tracking reason for current rate
+  // Examples: "congestion", "treasury_low", "low_adoption", "normal"
+  string last_burn_trigger = 43;
+
+  // emergency_burn_override: DAO emergency override to disable adaptive logic
+  // When true, uses fee_burn_ratio regardless of conditions
+  // Requires governance vote to enable/disable
+  bool emergency_burn_override = 44;
+}
+
+// DefaultParams returns the default tokenomics parameters
+// These are the INITIAL values; DAO can modify within protocol constraints
+message DefaultTokenomicsParams {
+  // Supply (IMMUTABLE caps)
+  string total_supply_cap = 1;              // 1,500,000,000 OMNI
+  string current_total_supply = 2;          // 375,000,000 OMNI (genesis)
+  string total_minted = 3;                  // 375,000,000 OMNI
+  string total_burned = 4;                  // 0 OMNI
+
+  // Inflation (DAO-adjustable 1-5%)
+  string inflation_rate = 5;                // 0.03 (3%)
+  string inflation_min = 6;                 // 0.01 (1%)
+  string inflation_max = 7;                 // 0.05 (5%) PROTOCOL CAP
+
+  // Emission splits (must sum to 1.0)
+  string emission_split_staking = 8;        // 0.40 (40%)
+  string emission_split_poc = 9;            // 0.30 (30%)
+  string emission_split_sequencer = 10;     // 0.20 (20%)
+  string emission_split_treasury = 11;      // 0.10 (10%)
+
+  // Burn rates (starting values, DAO-adjustable 0-50%)
+  string burn_rate_pos_gas = 12;            // 0.20 (20%)
+  string burn_rate_poc_anchoring = 13;      // 0.25 (25%)
+  string burn_rate_sequencer_gas = 14;      // 0.15 (15%)
+  string burn_rate_smart_contracts = 15;    // 0.12 (12%)
+  string burn_rate_ai_queries = 16;         // 0.10 (10%)
+  string burn_rate_messaging = 17;          // 0.08 (8%)
+
+  // Treasury
+  string treasury_burn_redirect = 18;       // 0.10 (10% of burns)
+
+  // Fee Burn & Treasury Split
+  bool fee_burn_enabled = 31;               // true (enabled)
+  string fee_burn_ratio = 32;               // 0.90 (90% of fees burned)
+  string treasury_fee_ratio = 33;           // 0.10 (10% of fees to treasury)
+
+  // Gas & Fee Policy
+  string min_gas_price = 19;                // 0.001 (0.001 OMNI minimum)
+  string gas_conversion_ratio_continuity = 20;  // 0.50 (50% of Core)
+  string gas_conversion_ratio_sequencer = 21;   // 0.10 (10% of Core)
+
+  // PoC Merit Engine
+  string poc_alpha = 22;                    // 0.10 (10% credit weight)
+
+  // IBC reward streams
+  uint64 reward_stream_interval = 23;       // 100 blocks
+  string continuity_ibc_channel = 24;       // "channel-0"
+  string sequencer_ibc_channel = 25;        // "channel-1"
+
+  // Governance
+  uint64 param_change_delay = 26;           // 172800 (48 hours)
+  string min_proposal_deposit = 27;         // 10,000 OMNI
+  string quorum_percentage = 28;            // 0.40 (40%)
+  string pass_percentage = 29;              // 0.50 (50%)
+  uint64 voting_period = 30;                // 604800 (7 days)
+}

@@ -1,0 +1,20 @@
+syntax = "proto3";
+package pos.feemarket.module.v1;
+
+import "cosmos/app/v1alpha1/module.proto";
+import "gogoproto/gogo.proto";
+
+option go_package = "pos/proto/pos/feemarket/module/v1;pos_feemarket_module_v1";
+option (gogoproto.goproto_stringer_all) = false;
+option (gogoproto.stringer_all) = true;
+option (gogoproto.goproto_getters_all) = false;
+
+// Module is the config object of the feemarket module.
+message Module {
+  option (cosmos.app.v1alpha1.module) = {
+    go_import: "pos/x/feemarket"
+  };
+
+  // authority defines the custom module authority. If not set, defaults to the governance module.
+  string authority = 1;
+}

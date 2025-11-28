@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package pos.tokenomics.module.v1;
+
+import "cosmos/app/v1alpha1/module.proto";
+
+option go_package = "pos/proto/pos/tokenomics/module/v1";
+
+// Module is the config object for the tokenomics module.
+message Module {
+  option (cosmos.app.v1alpha1.module) = {
+    go_import: "pos/x/tokenomics"
+  };
+}

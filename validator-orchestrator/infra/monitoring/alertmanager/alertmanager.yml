@@ -1,0 +1,218 @@
+# Omniphi Cloud Alertmanager Configuration
+
+global:
+  # Global SMTP settings
+  smtp_smarthost: 'smtp.gmail.com:587'
+  smtp_from: 'alerts@omniphi.io'
+  smtp_auth_username: '${SMTP_USERNAME}'
+  smtp_auth_password: '${SMTP_PASSWORD}'
+
+  # Slack settings
+  slack_api_url: '${SLACK_WEBHOOK_URL}'
+
+  # PagerDuty settings
+  pagerduty_url: 'https://events.pagerduty.com/v2/enqueue'
+
+  # Resolve timeout
+  resolve_timeout: 5m
+
+# Route tree
+route:
+  # Default receiver
+  receiver: 'default-receiver'
+
+  # Group by alert name and region
+  group_by: ['alertname', 'region', 'severity']
+
+  # Wait before sending first notification for a group
+  group_wait: 30s
+
+  # Wait before sending subsequent notifications for a group
+  group_interval: 5m
+
+  # How long to wait before repeating a notification
+  repeat_interval: 4h
+
+  # Child routes for severity-based routing
+  routes:
+    # Critical alerts - immediate notification
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      group_wait: 10s
+      repeat_interval: 1h
+      continue: true
+
+    # Slashing risk - immediate escalation
+    - match:
+        category: consensus
+        severity: critical
+      receiver: 'slashing-alerts'
+      group_wait: 0s
+      repeat_interval: 15m
+      continue: true
+
+    # Region outages - ops team
+    - match:
+        category: region
+        severity: critical
+      receiver: 'ops-team'
+      group_wait: 10s
+
+    # Upgrade failures
+    - match:
+        category: upgrade
+        severity: critical
+      receiver: 'upgrade-alerts'
+      group_wait: 30s
+
+    # Warning alerts
+    - match:
+        severity: warning
+      receiver: 'warning-alerts'
+      group_wait: 1m
+      repeat_interval: 4h
+
+    # Info alerts - low priority
+    - match:
+        severity: info
+      receiver: 'info-alerts'
+      group_wait: 5m
+      repeat_interval: 24h
+
+# Inhibition rules - suppress alerts based on other alerts
+inhibit_rules:
+  # Suppress warning if critical is firing for same alert
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'node_id']
+
+  # Suppress node alerts if region is down
+  - source_match:
+      alertname: 'RegionOutage'
+    target_match_re:
+      alertname: 'Validator.*'
+    equal: ['region']
+
+  # Suppress sync alerts if node is down
+  - source_match:
+      alertname: 'ValidatorNodeDown'
+    target_match_re:
+      alertname: 'Validator(Syncing|FarBehind|NoNewBlocks)'
+    equal: ['node_id']
+
+# Receivers
+receivers:
+  # Default receiver
+  - name: 'default-receiver'
+    email_configs:
+      - to: 'alerts@omniphi.io'
+        send_resolved: true
+    slack_configs:
+      - channel: '#alerts-general'
+        send_resolved: true
+        title: '{{ .Status | toUpper }} - {{ .CommonLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+
+  # Critical alerts - multi-channel
+  - name: 'critical-alerts'
+    email_configs:
+      - to: 'oncall@omniphi.io'
+        send_resolved: true
+        headers:
+          Subject: 'CRITICAL: {{ .CommonLabels.alertname }}'
+    slack_configs:
+      - channel: '#alerts-critical'
+        send_resolved: true
+        color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+        title: '{{ .Status | toUpper }}: {{ .CommonLabels.alertname }}'
+        title_link: '{{ (index .Alerts 0).GeneratorURL }}'
+        text: |
+          *Alert:* {{ .CommonLabels.alertname }}
+          *Severity:* {{ .CommonLabels.severity }}
+          *Region:* {{ .CommonLabels.region }}
+          {{ range .Alerts }}
+          *Description:* {{ .Annotations.description }}
+          *Runbook:* {{ .Annotations.runbook_url }}
+          {{ end }}
+    pagerduty_configs:
+      - service_key: '${PAGERDUTY_SERVICE_KEY}'
+        severity: critical
+        description: '{{ .CommonLabels.alertname }}'
+        details:
+          firing: '{{ .Alerts.Firing | len }}'
+          resolved: '{{ .Alerts.Resolved | len }}'
+          description: '{{ (index .Alerts 0).Annotations.description }}'
+
+  # Slashing risk alerts - highest priority
+  - name: 'slashing-alerts'
+    email_configs:
+      - to: 'security@omniphi.io'
+        send_resolved: true
+        headers:
+          Subject: 'URGENT SLASHING RISK: {{ .CommonLabels.moniker }}'
+    slack_configs:
+      - channel: '#alerts-slashing'
+        send_resolved: true
+        color: 'danger'
+        title: 'SLASHING RISK: {{ .CommonLabels.moniker }}'
+        text: |
+          @here IMMEDIATE ACTION REQUIRED
+          *Node:* {{ .CommonLabels.node_id }}
+          *Moniker:* {{ .CommonLabels.moniker }}
+          {{ range .Alerts }}{{ .Annotations.description }}{{ end }}
+    pagerduty_configs:
+      - service_key: '${PAGERDUTY_SLASHING_KEY}'
+        severity: critical
+    webhook_configs:
+      - url: '${OMNIPHI_FAILOVER_WEBHOOK}'
+        send_resolved: true
+
+  # Ops team for region issues
+  - name: 'ops-team'
+    email_configs:
+      - to: 'ops@omniphi.io'
+        send_resolved: true
+    slack_configs:
+      - channel: '#ops-alerts'
+        send_resolved: true
+        title: 'OPS: {{ .CommonLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+    pagerduty_configs:
+      - service_key: '${PAGERDUTY_OPS_KEY}'
+        severity: '{{ .CommonLabels.severity }}'
+
+  # Upgrade alerts
+  - name: 'upgrade-alerts'
+    email_configs:
+      - to: 'upgrades@omniphi.io'
+        send_resolved: true
+    slack_configs:
+      - channel: '#upgrades'
+        send_resolved: true
+        title: 'Upgrade: {{ .CommonLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+
+  # Warning alerts
+  - name: 'warning-alerts'
+    slack_configs:
+      - channel: '#alerts-warning'
+        send_resolved: true
+        color: 'warning'
+        title: '{{ .CommonLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+
+  # Info alerts
+  - name: 'info-alerts'
+    slack_configs:
+      - channel: '#alerts-info'
+        send_resolved: false
+        color: '#439FE0'
+        title: 'INFO: {{ .CommonLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+
+# Templates
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'

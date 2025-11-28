@@ -1,0 +1,424 @@
+syntax = "proto3";
+
+package pos.tokenomics.v1;
+
+import "cosmos_proto/cosmos.proto";
+import "gogoproto/gogo.proto";
+import "pos/tokenomics/v1/tx.proto";
+
+option go_package = "pos/x/tokenomics/types";
+
+// EventMint is emitted when new tokens are minted
+// Indexed for transparency and audit trails
+message EventMint {
+  // authority is the address that authorized minting
+  string authority = 1;
+
+  // amount is the minted amount in micro-OMNI
+  string amount = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // recipient is the address receiving the minted tokens
+  string recipient = 3;
+
+  // reason explains why tokens were minted
+  string reason = 4;
+
+  // new_total_supply is the total supply after minting
+  string new_total_supply = 5 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // new_total_minted is the cumulative minted amount
+  string new_total_minted = 6 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // remaining_mintable is how much can still be minted before cap
+  string remaining_mintable = 7 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // block_height is when the mint occurred
+  int64 block_height = 8;
+
+  // block_time is the timestamp of the mint
+  int64 block_time = 9;
+}
+
+// EventBurn is emitted when tokens are burned
+// Indexed for transparency and deflation tracking
+message EventBurn {
+  // burner is the address that burned the tokens
+  string burner = 1;
+
+  // amount is the total amount submitted for burning
+  string amount = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // amount_burned is the actual amount burned (after treasury redirect)
+  string amount_burned = 3 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // amount_to_treasury is the amount redirected to treasury
+  string amount_to_treasury = 4 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // source identifies the burn source
+  BurnSource source = 5;
+
+  // chain_id is where the burn occurred
+  string chain_id = 6;
+
+  // new_total_supply is the total supply after burning
+  string new_total_supply = 7 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // new_total_burned is the cumulative burned amount
+  string new_total_burned = 8 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // block_height is when the burn occurred
+  int64 block_height = 9;
+
+  // block_time is the timestamp of the burn
+  int64 block_time = 10;
+
+  // tx_hash is the transaction hash
+  string tx_hash = 11;
+}
+
+// EventDistributeRewards is emitted when inflation rewards are distributed
+// Tracks emission splits across staking, PoC, sequencer, and treasury
+message EventDistributeRewards {
+  // authority is the inflation module address
+  string authority = 1;
+
+  // total_rewards is the total amount distributed
+  string total_rewards = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // to_staking is the amount sent to PoS validators
+  string to_staking = 3 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // to_poc is the amount sent to PoC contributors
+  string to_poc = 4 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // to_sequencer is the amount sent to sequencer operators
+  string to_sequencer = 5 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // to_treasury is the amount sent to DAO treasury
+  string to_treasury = 6 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // local_distributed is the amount distributed on local chain
+  string local_distributed = 7 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // ibc_distributed is the amount sent via IBC
+  string ibc_distributed = 8 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // ibc_packets_sent is the number of IBC packets sent
+  uint32 ibc_packets_sent = 9;
+
+  // block_height is when the distribution occurred
+  int64 block_height = 10;
+
+  // block_time is the timestamp of the distribution
+  int64 block_time = 11;
+}
+
+// EventReportBurn is emitted when a burn is reported from another chain
+// Enables cross-chain burn tracking for supply accounting
+message EventReportBurn {
+  // reporter is the IBC relayer address
+  string reporter = 1;
+
+  // source_chain_id is where the burn occurred
+  string source_chain_id = 2;
+
+  // amount is the burned amount
+  string amount = 3 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // source is the burn source type
+  BurnSource source = 4;
+
+  // source_block_height is the height on source chain
+  int64 source_block_height = 5;
+
+  // source_tx_hash is the transaction hash on source chain
+  string source_tx_hash = 6;
+
+  // recorded is true if burn was successfully recorded
+  bool recorded = 7;
+
+  // new_total_burned is the updated global burn counter
+  string new_total_burned = 8 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // block_height is when the report was received on Core chain
+  int64 block_height = 9;
+
+  // block_time is the timestamp of the report
+  int64 block_time = 10;
+}
+
+// EventUpdateParams is emitted when tokenomics parameters are updated via governance
+// Provides audit trail for DAO parameter changes
+message EventUpdateParams {
+  // authority is the governance module address
+  string authority = 1;
+
+  // proposal_id is the governance proposal ID that triggered the update
+  uint64 proposal_id = 2;
+
+  // changed_params lists the parameter names that changed
+  repeated string changed_params = 3;
+
+  // old_inflation_rate is the previous inflation rate (if changed)
+  string old_inflation_rate = 4 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // new_inflation_rate is the new inflation rate (if changed)
+  string new_inflation_rate = 5 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // effective_height is when the changes take effect (with time lock)
+  int64 effective_height = 6;
+
+  // block_height is when the proposal passed
+  int64 block_height = 7;
+
+  // block_time is the timestamp of the update
+  int64 block_time = 8;
+}
+
+// EventCapReached is emitted when approaching or reaching the supply cap
+// WARNING event for DAO to adjust parameters
+message EventCapReached {
+  // warning_level indicates severity (0.8 = 80% of cap, 0.9 = 90%, 1.0 = 100%)
+  string warning_level = 1 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // current_supply is the current total supply
+  string current_supply = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // total_supply_cap is the hard maximum
+  string total_supply_cap = 3 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // remaining_mintable is how much can still be minted
+  string remaining_mintable = 4 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // message provides context for the warning
+  string message = 5;
+
+  // block_height is when the threshold was crossed
+  int64 block_height = 6;
+
+  // block_time is the timestamp
+  int64 block_time = 7;
+}
+
+// EventIBCRewardSent is emitted when rewards are sent via IBC
+// Tracks cross-chain reward distribution
+message EventIBCRewardSent {
+  // source_chain is the sending chain (always Core)
+  string source_chain = 1;
+
+  // destination_chain is the receiving chain (Continuity or Sequencer)
+  string destination_chain = 2;
+
+  // ibc_channel is the IBC channel ID
+  string ibc_channel = 3;
+
+  // amount is the reward amount sent
+  string amount = 4 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // recipient_module is the destination module (e.g., "poc", "sequencer")
+  string recipient_module = 5;
+
+  // sequence is the IBC packet sequence number
+  uint64 sequence = 6;
+
+  // timeout_height is the IBC timeout height
+  int64 timeout_height = 7;
+
+  // block_height is when the IBC packet was sent
+  int64 block_height = 8;
+
+  // block_time is the timestamp
+  int64 block_time = 9;
+}
+
+// EventIBCRewardReceived is emitted when rewards are received via IBC
+// Confirms successful cross-chain reward delivery
+message EventIBCRewardReceived {
+  // source_chain is the sending chain (Core)
+  string source_chain = 1;
+
+  // destination_chain is the receiving chain
+  string destination_chain = 2;
+
+  // ibc_channel is the IBC channel ID
+  string ibc_channel = 3;
+
+  // amount is the reward amount received
+  string amount = 4 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // recipient_module is the destination module
+  string recipient_module = 5;
+
+  // sequence is the IBC packet sequence number
+  uint64 sequence = 6;
+
+  // block_height is when the IBC packet was received
+  int64 block_height = 7;
+
+  // block_time is the timestamp
+  int64 block_time = 8;
+}
+
+// EventTreasuryDeposit is emitted when treasury receives funds
+// Tracks DAO treasury inflows from inflation and burn redirection
+message EventTreasuryDeposit {
+  // source is the deposit source ("inflation" or "burn_redirect")
+  string source = 1;
+
+  // amount is the deposited amount
+  string amount = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // treasury_address is the DAO treasury account
+  string treasury_address = 3;
+
+  // new_treasury_balance is the balance after deposit
+  string new_treasury_balance = 4 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // block_height is when the deposit occurred
+  int64 block_height = 5;
+
+  // block_time is the timestamp
+  int64 block_time = 6;
+}
+
+// EventInflationRateChange is emitted when inflation rate changes
+// Can happen automatically or via DAO governance
+message EventInflationRateChange {
+  // old_rate is the previous inflation rate
+  string old_rate = 1 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // new_rate is the new inflation rate
+  string new_rate = 2 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // reason explains why the rate changed ("governance" or "automatic")
+  string reason = 3;
+
+  // proposal_id is the governance proposal ID (if via governance)
+  uint64 proposal_id = 4;
+
+  // block_height is when the change took effect
+  int64 block_height = 5;
+
+  // block_time is the timestamp
+  int64 block_time = 6;
+}

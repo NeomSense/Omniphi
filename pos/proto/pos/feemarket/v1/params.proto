@@ -1,0 +1,187 @@
+syntax = "proto3";
+package pos.feemarket.v1;
+
+import "amino/amino.proto";
+import "cosmos_proto/cosmos.proto";
+import "gogoproto/gogo.proto";
+
+option go_package = "pos/x/feemarket/types";
+
+// FeeMarketParams defines the parameters for the feemarket module.
+// All parameters are governance-adjustable via ParamChangeProposal.
+message FeeMarketParams {
+  option (amino.name) = "pos/x/feemarket/FeeMarketParams";
+  option (gogoproto.equal) = true;
+
+  // ========================================
+  // Gas Pricing (EIP-1559 Style)
+  // ========================================
+
+  // min_gas_price is the minimum gas price enforced by validators (in uomni/gas)
+  // Transactions below this price will be rejected
+  // Default: 0.05 uomni/gas
+  // Governance Range: 0.01 - 1.0 uomni/gas
+  string min_gas_price = 1 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // base_fee_enabled enables EIP-1559 style dynamic base fee adjustment
+  // When true, base fee adjusts based on block utilization
+  // Default: true
+  bool base_fee_enabled = 2;
+
+  // base_fee_initial is the initial base fee (in uomni/gas) at genesis
+  // Default: 0.05 uomni/gas
+  string base_fee_initial = 3 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // elasticity_multiplier determines how much base fee changes per block
+  // If utilization > target: new_base_fee = old_base_fee * elasticity_multiplier
+  // If utilization < target: new_base_fee = old_base_fee / elasticity_multiplier
+  // Default: 1.125 (12.5% change per block)
+  // Governance Range: 1.01 - 1.50
+  string elasticity_multiplier = 4 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // max_tip_ratio is the maximum tip as a percentage of base fee
+  // Tips go to the block proposer
+  // Default: 0.20 (20% of base fee)
+  // Governance Range: 0.0 - 0.50
+  string max_tip_ratio = 5 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // ========================================
+  // Block Utilization
+  // ========================================
+
+  // target_block_utilization is the target percentage of block gas usage
+  // Base fee adjusts to maintain this target
+  // Default: 0.33 (33%)
+  // Governance Range: 0.20 - 0.80
+  string target_block_utilization = 6 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // max_tx_gas is the maximum gas allowed per transaction
+  // Prevents outlier transactions from consuming entire blocks
+  // Default: 10,000,000
+  // Governance Range: 1,000,000 - 100,000,000
+  int64 max_tx_gas = 7;
+
+  // free_tx_quota is the number of whitelisted message types per block
+  // These transactions are not counted toward utilization
+  // (e.g., MsgVote, MsgClaimRewards)
+  // Default: 100
+  // Governance Range: 0 - 1000
+  int64 free_tx_quota = 8;
+
+  // ========================================
+  // Adaptive Burn Tiers
+  // ========================================
+
+  // burn_cool is the burn percentage when utilization is below cool threshold
+  // Default: 0.10 (10%)
+  // Governance Range: 0.05 - 0.20
+  string burn_cool = 9 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // burn_normal is the burn percentage for normal utilization
+  // Default: 0.20 (20%)
+  // Governance Range: 0.10 - 0.30
+  string burn_normal = 10 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // burn_hot is the burn percentage when utilization exceeds hot threshold
+  // Default: 0.40 (40%)
+  // Governance Range: 0.20 - 0.50
+  string burn_hot = 11 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // util_cool_threshold is the utilization below which "cool" burn tier applies
+  // Default: 0.16 (16%)
+  // Governance Range: 0.05 - 0.25
+  string util_cool_threshold = 12 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // util_hot_threshold is the utilization above which "hot" burn tier applies
+  // Default: 0.33 (33%)
+  // Governance Range: 0.25 - 0.50
+  string util_hot_threshold = 13 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // ========================================
+  // Fee Distribution (Post-Burn)
+  // ========================================
+
+  // validator_fee_ratio is the percentage of post-burn fees that go to validators
+  // Default: 0.70 (70%)
+  // Governance Range: 0.50 - 0.90
+  // Note: validator_fee_ratio + treasury_fee_ratio must equal 1.0
+  string validator_fee_ratio = 14 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // treasury_fee_ratio is the percentage of post-burn fees that go to treasury
+  // Default: 0.30 (30%)
+  // Governance Range: 0.10 - 0.50
+  // Note: validator_fee_ratio + treasury_fee_ratio must equal 1.0
+  string treasury_fee_ratio = 15 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // ========================================
+  // Safety Limits
+  // ========================================
+
+  // max_burn_ratio is the hard cap on burn percentage
+  // Prevents excessive deflation during extreme congestion
+  // Default: 0.50 (50%)
+  // Protocol Enforced: Cannot exceed 0.50
+  string max_burn_ratio = 16 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // min_gas_price_floor is the absolute minimum gas price
+  // Acts as a hard floor below which governance cannot reduce min_gas_price
+  // Default: 0.025 uomni/gas
+  // Protocol Enforced: Cannot be less than 0.01
+  string min_gas_price_floor = 17 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}

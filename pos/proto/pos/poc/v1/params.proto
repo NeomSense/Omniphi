@@ -1,0 +1,149 @@
+syntax = "proto3";
+
+package pos.poc.v1;
+
+import "amino/amino.proto";
+import "gogoproto/gogo.proto";
+import "cosmos_proto/cosmos.proto";
+
+option go_package = "pos/x/poc/types";
+
+// Tier represents a contribution tier based on accumulated credits
+message Tier {
+  string name = 1;
+  string cutoff = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// Params defines the parameters for the poc module.
+message Params {
+  option (amino.name) = "pos/x/poc/Params";
+  option (gogoproto.equal) = true;
+
+  // quorum_pct is the percentage of voting power needed for verification (e.g., 0.67 for 2/3)
+  string quorum_pct = 1 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // base_reward_unit is the base credits awarded per verified contribution
+  string base_reward_unit = 2 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  // inflation_share is the share of inflation routed to PoC pool (future use)
+  string inflation_share = 3 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // max_per_block is the maximum submissions per block (rate limit)
+  uint32 max_per_block = 4;
+
+  // tiers define contribution tiers based on accumulated credits
+  repeated Tier tiers = 5 [(gogoproto.nullable) = false];
+
+  // reward_denom is the denomination for withdrawing PoC rewards
+  string reward_denom = 6;
+
+  // PERFORMANCE OPTIMIZATION: max_contributions_to_keep limits state growth
+  // Only the most recent N verified contributions are kept
+  // Older contributions are pruned during EndBlock
+  // Default: 100000 (keeps ~100k contributions in state)
+  uint64 max_contributions_to_keep = 7;
+
+  // FEE BURN MECHANISM: DAO-governed submission fee parameters
+
+  // submission_fee is the fee required to submit a contribution
+  // Default: 1000uomni (0.001 OMNI)
+  string submission_fee = 8 [
+    (gogoproto.customtype) = "github.com/cosmos/cosmos-sdk/types.Coin",
+    (gogoproto.nullable) = false
+  ];
+
+  // submission_burn_ratio is the percentage of submission_fee that gets burned
+  // The remainder goes to the PoC reward pool
+  // Default: 0.75 (75% burned, 25% to rewards)
+  // DAO-governed range: 0.50 - 0.90
+  string submission_burn_ratio = 9 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // min_submission_fee is the minimum allowed submission fee (governance bound)
+  // Prevents fee from being set too low
+  string min_submission_fee = 10 [
+    (gogoproto.customtype) = "github.com/cosmos/cosmos-sdk/types.Coin",
+    (gogoproto.nullable) = false
+  ];
+
+  // max_submission_fee is the maximum allowed submission fee (governance bound)
+  // Prevents fee from being set too high
+  string max_submission_fee = 11 [
+    (gogoproto.customtype) = "github.com/cosmos/cosmos-sdk/types.Coin",
+    (gogoproto.nullable) = false
+  ];
+
+  // min_burn_ratio is the minimum allowed burn ratio (governance bound)
+  // Default: 0.50 (at least 50% must be burned)
+  string min_burn_ratio = 12 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // max_burn_ratio is the maximum allowed burn ratio (governance bound)
+  // Default: 0.90 (at most 90% can be burned, at least 10% to rewards)
+  string max_burn_ratio = 13 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // POA ACCESS CONTROL PARAMETERS (fields 14-18 reserved)
+  // Note: PoA fields are stored separately via JSON in params.go
+  // See IMPLEMENTATION_COMPLETE.md for hybrid storage details
+
+  // 3-LAYER FEE SYSTEM PARAMETERS
+
+  // LAYER 1: Base Fee Model
+  // base_submission_fee is the static base fee for all submissions (before multipliers)
+  // Default: 30000uomni (0.03 OMNI)
+  // Split: 50% burned, 50% to reward pool
+  string base_submission_fee = 19 [
+    (gogoproto.customtype) = "github.com/cosmos/cosmos-sdk/types.Coin",
+    (gogoproto.nullable) = false
+  ];
+
+  // LAYER 2: Epoch-Adaptive Fee Model (Dynamic Congestion Fee)
+  // target_submissions_per_block is the target number of submissions per block
+  // Used to calculate dynamic congestion multiplier
+  // Default: 5
+  uint32 target_submissions_per_block = 20;
+
+  // LAYER 3: C-Score Weighted Discount Model
+  // max_cscore_discount is the maximum discount available based on C-Score
+  // Default: 0.90 (90% discount cap for C-Score 1000)
+  // C-Score range: 0-1000
+  string max_cscore_discount = 21 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // minimum_submission_fee is the absolute floor for fees after all discounts
+  // Ensures fees never drop below a minimum viable amount
+  // Default: 3000uomni (0.003 OMNI)
+  string minimum_submission_fee = 22 [
+    (gogoproto.customtype) = "github.com/cosmos/cosmos-sdk/types.Coin",
+    (gogoproto.nullable) = false
+  ];
+}
