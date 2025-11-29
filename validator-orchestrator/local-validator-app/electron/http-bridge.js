@@ -4,24 +4,10 @@
  */
 
 const express = require('express');
-const { exec } = require('child_process');
-const path = require('path');
-const os = require('os');
 const fs = require('fs').promises;
+const config = require('./config');
 
 let server = null;
-const PORT = 15000;
-
-/**
- * Get paths
- */
-function getPaths() {
-  const homeDir = os.homedir();
-  const validatorHome = path.join(homeDir, '.omniphi');
-  const binaryPath = path.join(__dirname, '../bin', process.platform === 'win32' ? 'posd.exe' : 'posd');
-
-  return { validatorHome, binaryPath };
-}
 
 /**
  * Start HTTP bridge server
@@ -35,11 +21,23 @@ async function startHttpBridge() {
   const app = express();
   app.use(express.json());
 
-  // CORS
+  // CORS with proper security
   app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type');
+    const origin = req.headers.origin;
+    const { CORS_CONFIG } = config;
+
+    // Check if origin is allowed
+    if (origin && CORS_CONFIG.allowedOrigins.includes(origin)) {
+      res.header('Access-Control-Allow-Origin', origin);
+    } else if (!origin) {
+      // Allow requests without origin (same-origin, curl, etc.)
+      res.header('Access-Control-Allow-Origin', '*');
+    }
+
+    res.header('Access-Control-Allow-Methods', CORS_CONFIG.allowedMethods.join(', '));
+    res.header('Access-Control-Allow-Headers', CORS_CONFIG.allowedHeaders.join(', '));
+    res.header('Access-Control-Max-Age', '86400'); // 24 hours
+
     if (req.method === 'OPTIONS') {
       return res.sendStatus(200);
     }
@@ -52,8 +50,8 @@ async function startHttpBridge() {
    */
   app.get('/consensus-pubkey', async (req, res) => {
     try {
-      const paths = getPaths();
-      const privKeyPath = path.join(paths.validatorHome, 'config', 'priv_validator_key.json');
+      const paths = config.getPaths();
+      const privKeyPath = paths.privKeyPath;
 
       const keyData = await fs.readFile(privKeyPath, 'utf8');
       const key = JSON.parse(keyData);
@@ -76,22 +74,25 @@ async function startHttpBridge() {
    */
   app.get('/status', async (req, res) => {
     try {
-      const paths = getPaths();
+      // Query local RPC using IPv4 explicitly
+      const [statusResponse, netInfoResponse] = await Promise.all([
+        fetch(config.RPC_ENDPOINTS.local + '/status'),
+        fetch(config.RPC_ENDPOINTS.local + '/net_info')
+      ]);
 
-      // Query local RPC
-      const response = await fetch('http://localhost:26657/status');
-      const data = await response.json();
+      const statusData = await statusResponse.json();
+      const netInfoData = await netInfoResponse.json();
 
-      if (data.result) {
+      if (statusData.result) {
         res.json({
           success: true,
           status: {
             running: true,
-            blockHeight: parseInt(data.result.sync_info.latest_block_height),
-            syncing: data.result.sync_info.catching_up,
-            peers: parseInt(data.result.sync_info.num_peers || 0),
-            moniker: data.result.node_info.moniker,
-            network: data.result.node_info.network
+            blockHeight: parseInt(statusData.result.sync_info.latest_block_height),
+            syncing: statusData.result.sync_info.catching_up,
+            peers: parseInt(netInfoData.result?.n_peers || 0),
+            moniker: statusData.result.node_info.moniker,
+            network: statusData.result.node_info.network
           }
         });
       } else {
@@ -115,8 +116,8 @@ async function startHttpBridge() {
   app.get('/logs', async (req, res) => {
     try {
       const lines = parseInt(req.query.lines) || 100;
-      const paths = getPaths();
-      const logPath = path.join(paths.validatorHome, 'logs', 'node.log');
+      const paths = config.getPaths();
+      const logPath = paths.logsPath + '/node.log';
 
       try {
         const logData = await fs.readFile(logPath, 'utf8');
@@ -186,12 +187,13 @@ async function startHttpBridge() {
   app.get('/health', (req, res) => {
     res.json({
       success: true,
-      service: 'omniphi-local-validator-bridge',
-      version: '1.0.0'
+      service: config.APP_NAME + '-bridge',
+      version: config.APP_VERSION
     });
   });
 
   // Start server
+  const PORT = config.PORTS.HTTP_BRIDGE;
   return new Promise((resolve, reject) => {
     server = app.listen(PORT, () => {
       console.log(`HTTP bridge listening on http://localhost:${PORT}`);

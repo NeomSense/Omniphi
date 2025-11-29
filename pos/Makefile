@@ -51,13 +51,18 @@ test: govet govulncheck test-unit
 
 all: install
 
+build:
+	@echo "--> Building $(APPNAME)d"
+	@go build $(BUILD_FLAGS) -mod=readonly -o build/$(APPNAME)d ./cmd/$(APPNAME)d
+	@echo "--> Binary available at build/$(APPNAME)d"
+
 install:
 	@echo "--> ensure dependencies have not been modified"
 	@go mod verify
 	@echo "--> installing $(APPNAME)d"
 	@go install $(BUILD_FLAGS) -mod=readonly ./cmd/$(APPNAME)d
 
-.PHONY: all install
+.PHONY: all build install
 
 ##################
 ###  Protobuf  ###

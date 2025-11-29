@@ -7,11 +7,20 @@ const { spawn } = require('child_process');
 const fs = require('fs').promises;
 const path = require('path');
 const os = require('os');
-const Store = require('electron-store');
 const keytar = require('keytar');
 const axios = require('axios');
+const cryptoUtils = require('./crypto-utils');
+const config = require('./config');
 
-const store = new Store();
+// Lazy-load electron-store to avoid initializing before Electron is ready
+let store = null;
+function getStore() {
+  if (!store) {
+    const Store = require('electron-store');
+    store = new Store();
+  }
+  return store;
+}
 
 // State
 let validatorProcess = null;
@@ -32,7 +41,7 @@ let setupInProgress = false; // Lock to prevent concurrent setup
  */
 function getPaths() {
   const homeDir = os.homedir();
-  const validatorHome = path.join(homeDir, '.omniphi');
+  const validatorHome = path.join(homeDir, '.pos-validator2');
   const binaryPath = path.join(__dirname, '../bin', process.platform === 'win32' ? 'posd.exe' : 'posd');
 
   return {
@@ -87,7 +96,9 @@ async function validateGenesisSetup(validatorHome) {
 
     // Check if validators array exists and has at least one validator
     const validators = genesis?.app_state?.staking?.validators || [];
-    return validators.length > 0;
+    // Also check for gen_txs (genesis transactions that create validators at chain start)
+    const genTxs = genesis?.app_state?.genutil?.gen_txs || [];
+    return validators.length > 0 || genTxs.length > 0;
   } catch (error) {
     console.error('Error validating genesis:', error);
     return false;
@@ -98,7 +109,7 @@ async function validateGenesisSetup(validatorHome) {
  * Complete genesis setup for single-node validator
  */
 async function setupGenesisForValidator(binaryPath, validatorHome, config = {}) {
-  const chainId = config.chainId || 'omniphi-localnet-1';
+  const chainId = config.chainId || 'omniphi-testnet-1';
   const moniker = config.moniker || 'local-validator';
   const keyringBackend = 'test'; // Unencrypted keyring for local dev
   const validatorKeyName = 'validator';
@@ -231,7 +242,7 @@ async function startValidator(event, config = {}) {
     if (needsInit) {
       // Initialize node
       const moniker = config.moniker || 'local-validator';
-      const chainId = config.chainId || 'omniphi-localnet-1';
+      const chainId = config.chainId || 'omniphi-testnet-1';
 
       await new Promise((resolve, reject) => {
         const initProcess = spawn(binaryPath, [
@@ -493,16 +504,24 @@ async function getValidatorStatus() {
   // Query local RPC for status
   try {
     // Use 127.0.0.1 instead of localhost to force IPv4 (blockchain only listens on IPv4)
-    const response = await axios.get('http://127.0.0.1:26657/status', { timeout: 2000 });
-    const data = response.data;
+    const [statusResponse, netInfoResponse] = await Promise.all([
+      axios.get('http://127.0.0.1:26657/status', { timeout: 2000 }),
+      axios.get('http://127.0.0.1:26657/net_info', { timeout: 2000 })
+    ]);
 
-    if (data.result) {
-      validatorStatus.blockHeight = parseInt(data.result.sync_info.latest_block_height);
-      validatorStatus.syncing = data.result.sync_info.catching_up;
-      validatorStatus.peers = parseInt(data.result.sync_info.num_peers || 0);
+    const statusData = statusResponse.data;
+    const netInfoData = netInfoResponse.data;
 
-      console.log(`✓ RPC Status: Block ${validatorStatus.blockHeight}, Syncing: ${validatorStatus.syncing}, Peers: ${validatorStatus.peers}`);
+    if (statusData.result) {
+      validatorStatus.blockHeight = parseInt(statusData.result.sync_info.latest_block_height);
+      validatorStatus.syncing = statusData.result.sync_info.catching_up;
     }
+
+    if (netInfoData.result) {
+      validatorStatus.peers = parseInt(netInfoData.result.n_peers || 0);
+    }
+
+    console.log(`✓ RPC Status: Block ${validatorStatus.blockHeight}, Syncing: ${validatorStatus.syncing}, Peers: ${validatorStatus.peers}`);
   } catch (error) {
     // RPC not ready yet
     console.log(`⚠️  RPC not responding: ${error.message}`);
@@ -531,8 +550,13 @@ async function generateConsensusKey() {
     const keyData = await fs.readFile(paths.privKeyPath, 'utf8');
     const key = JSON.parse(keyData);
 
-    // Store encrypted in keychain
-    await keytar.setPassword('omniphi-validator', 'consensus-key', keyData);
+    // Store in keychain using centralized config
+    const { KEYCHAIN_CONFIG } = config;
+    await keytar.setPassword(
+      KEYCHAIN_CONFIG.service,
+      KEYCHAIN_CONFIG.consensusKeyAccount,
+      keyData
+    );
 
     return {
       success: true,
@@ -551,6 +575,7 @@ async function generateConsensusKey() {
  */
 async function getConsensusPubkey() {
   const paths = getPaths();
+  const { KEYCHAIN_CONFIG } = config;
 
   try {
     // First try from validator home
@@ -562,9 +587,12 @@ async function getConsensusPubkey() {
       pubkey: key.pub_key
     };
   } catch (error) {
-    // Try keychain
+    // Try keychain as fallback
     try {
-      const stored = await keytar.getPassword('omniphi-validator', 'consensus-key');
+      const stored = await keytar.getPassword(
+        KEYCHAIN_CONFIG.service,
+        KEYCHAIN_CONFIG.consensusKeyAccount
+      );
       if (stored) {
         const key = JSON.parse(stored);
         return {
@@ -588,11 +616,17 @@ async function exportPrivateKey(event, password) {
   const paths = getPaths();
 
   try {
+    if (!password || password.length < 8) {
+      return {
+        success: false,
+        error: 'Password must be at least 8 characters'
+      };
+    }
+
     const keyData = await fs.readFile(paths.privKeyPath, 'utf8');
 
-    // TODO: Encrypt with password using crypto
-    // For now, return base64 encoded
-    const encrypted = Buffer.from(keyData).toString('base64');
+    // Encrypt with AES-256-GCM using PBKDF2 key derivation
+    const encrypted = cryptoUtils.encrypt(keyData, password);
 
     return {
       success: true,
@@ -613,8 +647,37 @@ async function importPrivateKey(event, { keyData, password }) {
   const paths = getPaths();
 
   try {
-    // TODO: Decrypt with password
-    const decrypted = Buffer.from(keyData, 'base64').toString('utf8');
+    if (!password || password.length < 8) {
+      return {
+        success: false,
+        error: 'Password must be at least 8 characters'
+      };
+    }
+
+    // Decrypt with AES-256-GCM
+    let decrypted;
+    try {
+      decrypted = cryptoUtils.decrypt(keyData, password);
+    } catch (decryptError) {
+      return {
+        success: false,
+        error: 'Invalid password or corrupted key data'
+      };
+    }
+
+    // Validate decrypted data is valid JSON with expected structure
+    let keyJson;
+    try {
+      keyJson = JSON.parse(decrypted);
+      if (!keyJson.pub_key || !keyJson.priv_key) {
+        throw new Error('Invalid key structure');
+      }
+    } catch (parseError) {
+      return {
+        success: false,
+        error: 'Invalid key format: expected priv_validator_key.json structure'
+      };
+    }
 
     // Ensure config directory exists
     await fs.mkdir(paths.configPath, { recursive: true });
@@ -623,7 +686,12 @@ async function importPrivateKey(event, { keyData, password }) {
     await fs.writeFile(paths.privKeyPath, decrypted);
 
     // Store in keychain
-    await keytar.setPassword('omniphi-validator', 'consensus-key', decrypted);
+    const { KEYCHAIN_CONFIG } = config;
+    await keytar.setPassword(
+      KEYCHAIN_CONFIG.service,
+      KEYCHAIN_CONFIG.consensusKeyAccount,
+      decrypted
+    );
 
     return { success: true };
   } catch (error) {
@@ -638,20 +706,14 @@ async function importPrivateKey(event, { keyData, password }) {
  * Get configuration
  */
 async function getConfig() {
-  return store.get('config', {
-    chainId: 'omniphi-localnet-1',
-    moniker: 'local-validator',
-    orchestratorUrl: 'http://localhost:8000',
-    heartbeatInterval: 60000, // 60 seconds
-    autoStart: false
-  });
+  return getStore().get('config', config.DEFAULT_CONFIG);
 }
 
 /**
  * Set configuration
  */
 async function setConfig(event, config) {
-  store.set('config', config);
+  getStore().set('config', config);
   return { success: true };
 }
 

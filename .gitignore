@@ -40,4 +40,9 @@ build/
 # Ignore generated genesis & large blobs (adjust if you need them in VCS)
 genesis.production.json
 posd.pid
+
+# Windows artifacts
+nul
+
+# Large binaries in docker
 validator-orchestrator/docker/validator-node/posd

@@ -1,0 +1,3 @@
+# Large binaries - upload these as GitHub Release assets instead
+posd.exe
+*.zip
