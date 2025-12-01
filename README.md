@@ -3,7 +3,6 @@
 A production-grade, multi-consensus blockchain ecosystem featuring Proof of Stake (PoS), Proof of Contribution (PoC), and advanced tokenomics.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Cosmos SDK](https://img.shields.io/badge/Cosmos%20SDK-v0.53-blue)](https://github.com/cosmos/cosmos-sdk)
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go)](https://go.dev/)
 
 ## Architecture
