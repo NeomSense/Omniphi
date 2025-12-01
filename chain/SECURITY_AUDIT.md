@@ -87,9 +87,9 @@
 
 | Date | Type | Auditor | Result |
 |------|------|---------|--------|
-| Nov 2025 | Internal Security Review | Claude | Passed |
-| Nov 2025 | PoA Access Control Audit | Claude | Certified |
-| Nov 2025 | Production Readiness Audit | Claude | Testnet Ready |
+| Nov 2025 | Internal Security Review | Omniphi Team | Passed |
+| Nov 2025 | PoA Access Control Audit | Omniphi Team | Certified |
+| Nov 2025 | Production Readiness Audit | Omniphi Team | Testnet Ready |
 
 ---
 

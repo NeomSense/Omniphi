@@ -92,3 +92,6 @@ out/
 *.tar.gz
 *.tar
 *.rar
+
+# AI assistant settings
+.claude/
