@@ -1,9 +1,0 @@
-cd ~/omniphi/pos
-git init
-git remote add origin https://github.com/NeomSense/PoS-PoC.git || true
-wget -O .gitignore https://raw.githubusercontent.com/github/gitignore/main/Go.gitignore
-echo -e "\n# Chain data\n.posd/\n.pos/\nconfig/\n*.log\n*.pid\n*.tar.gz" >> .gitignore
-git add -A
-git commit -m "Complete Omniphi blockchain source code"
-git branch -M main
-git push -u origin main

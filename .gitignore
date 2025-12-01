@@ -1,6 +1,76 @@
-# OS
+# ============================================
+# OMNIPHI MONOREPO - GITIGNORE
+# ============================================
+
+# ----- OS -----
 .DS_Store
 Thumbs.db
+nul
+
+# ----- IDEs -----
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ----- Logs -----
+*.log
+*.pid
+*.seed
+
+# ----- Environment -----
+.env
+.env.local
+.env.*.local
+
+# ============================================
+# BLOCKCHAIN (chain/)
+# ============================================
+
+# Go binaries
+*.exe
+*.dll
+*.so
+*.dylib
+bin/
+vendor/
+
+# Blockchain data (NEVER COMMIT!)
+**/data/
+**/keyring-test/
+**/keyring-file/
+**/config/node_key.json
+**/config/priv_validator_key.json
+**/priv_validator_state.json
+**/key_seed.json
+
+# Local validator directories
+chain/validator0/
+chain/validator1/
+chain/validator2/
+chain/testnet-2nodes/
+
+# Production genesis (generate fresh)
+genesis.production.json
+
+# ============================================
+# ORCHESTRATOR (orchestrator/)
+# ============================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+*.db
+
+# Docker binaries
+orchestrator/docker/validator-node/posd
+
+# ============================================
+# FRONTEND APPS
+# ============================================
 
 # Node
 node_modules/
@@ -8,41 +78,17 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Go
-bin/
-*.exe
-*.dll
-*.so
-*.dylib
-vendor/
-
-# Build
+# Build outputs
 dist/
 build/
+.vite/
+.next/
+out/
 
-# IDEs
-.idea/
-.vscode/
-
-# Logs and runtime files
-*.log
-*.pid
-*.seed
-
-# Env
-.env
-.env.local
-
-# Archives
+# ============================================
+# ARCHIVES
+# ============================================
 *.zip
 *.tar.gz
-
-# Ignore generated genesis & large blobs (adjust if you need them in VCS)
-genesis.production.json
-posd.pid
-
-# Windows artifacts
-nul
-
-# Large binaries in docker
-validator-orchestrator/docker/validator-node/posd
+*.tar
+*.rar
