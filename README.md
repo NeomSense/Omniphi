@@ -124,12 +124,9 @@ We welcome contributions! Please see our contributing guidelines.
 
 ## Security
 
-For security vulnerabilities, please email security@omniphi.io rather than opening a public issue.
+For security vulnerabilities, please email security@omniphichain.org rather than opening a public issue.
 
 ## License
 
 This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENSE) file for details.
 
----
-
-Built with Cosmos SDK | Powered by Tendermint
