@@ -14,7 +14,7 @@
         "total_burned": "0",
         "inflation_rate": "0.03",
         "inflation_min": "0.005",
-        "inflation_max": "0.05",
+        "inflation_max": "0.03",
         "emission_split_staking": "0.40",
         "emission_split_poc": "0.30",
         "emission_split_sequencer": "0.20",
@@ -27,9 +27,22 @@
         "burn_rate_messaging": "0.10",
         "treasury_burn_redirect": "0.10",
         "continuity_ibc_channel": "",
-        "sequencer_ibc_channel": ""
+        "sequencer_ibc_channel": "",
+        "treasury_redirect_enabled": true,
+        "treasury_redirect_ratio": "0.10",
+        "redirect_to_ecosystem_grants": "0.40",
+        "redirect_to_buy_and_burn": "0.30",
+        "redirect_to_insurance_fund": "0.20",
+        "redirect_to_research_fund": "0.10",
+        "redirect_execution_interval": 50,
+        "last_redirect_height": 0,
+        "accumulated_redirect_inflows": "0"
       },
       "treasury_address": "",
+      "ecosystem_grants_address": "",
+      "buy_and_burn_address": "",
+      "insurance_fund_address": "",
+      "research_fund_address": "",
       "burn_records": [],
       "next_burn_id": 1
     },
@@ -51,7 +64,15 @@
         "validator_fee_ratio": "0.700000000000000000",
         "treasury_fee_ratio": "0.300000000000000000",
         "max_burn_ratio": "0.500000000000000000",
-        "min_gas_price_floor": "0.025000000000000000"
+        "min_gas_price_floor": "0.025000000000000000",
+        "multiplier_messaging": "0.500000000000000000",
+        "multiplier_pos_gas": "1.000000000000000000",
+        "multiplier_poc_anchoring": "0.750000000000000000",
+        "multiplier_smart_contracts": "1.500000000000000000",
+        "multiplier_ai_queries": "1.250000000000000000",
+        "multiplier_sequencer": "1.250000000000000000",
+        "min_multiplier": "0.250000000000000000",
+        "max_multiplier": "2.000000000000000000"
       },
       "base_fee": "0.050000000000000000",
       "current_utilization": "0.000000000000000000",
@@ -161,18 +182,18 @@
       "tally_params": null,
       "params": {
         "min_deposit": [
-          {"denom": "uomni", "amount": "10000000000"}
+          {"denom": "uomni", "amount": "100000000"}
         ],
-        "max_deposit_period": "172800s",
-        "voting_period": "259200s",
-        "quorum": "0.334",
+        "max_deposit_period": "86400s",
+        "voting_period": "172800s",
+        "quorum": "0.250",
         "threshold": "0.5",
         "veto_threshold": "0.334",
         "min_initial_deposit_ratio": "0.1",
-        "expedited_voting_period": "86400s",
+        "expedited_voting_period": "43200s",
         "expedited_threshold": "0.667",
         "expedited_min_deposit": [
-          {"denom": "uomni", "amount": "50000000000"}
+          {"denom": "uomni", "amount": "500000000"}
         ],
         "burn_vote_quorum": false,
         "burn_proposal_deposit_prevote": false,

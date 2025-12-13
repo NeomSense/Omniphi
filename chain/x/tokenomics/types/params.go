@@ -6,6 +6,28 @@ import (
 	"cosmossdk.io/math"
 )
 
+// ============================================================================
+// PROTOCOL-ENFORCED SAFETY BOUNDS (Hard-coded, Immutable)
+// ============================================================================
+// These constants define absolute limits that governance CANNOT exceed.
+// They are enforced in code and covered by tests.
+
+const (
+	// MaxAnnualInflationRateHardCap is the absolute maximum inflation rate
+	// Governance CANNOT set inflation_max above this value
+	// Industry standard: Ethereum ~0.5%, Cosmos Hub ~7-20%, we use 3%
+	MaxAnnualInflationRateHardCap = "0.03" // 3% per year
+
+	// MaxSingleRecipientShare prevents any single emission recipient from
+	// receiving more than 60% of total emissions - prevents centralization
+	MaxSingleRecipientShare = "0.60" // 60% max per recipient
+
+	// MinStakingShare ensures PoS security by guaranteeing minimum staking rewards
+	// This prevents attacks where governance reduces staking rewards to zero
+	// Must maintain economic security for validators
+	MinStakingShare = "0.20" // 20% minimum to staking
+)
+
 // DefaultParams returns the default tokenomics parameters
 // These are the mainnet launch parameters
 func DefaultParams() TokenomicsParams {
@@ -16,10 +38,11 @@ func DefaultParams() TokenomicsParams {
 		TotalMinted:        math.NewInt(375_000_000_000_000),   // 375M OMNI (genesis)
 		TotalBurned:        math.ZeroInt(),
 
-		// Inflation policy (DAO-adjustable 1-5%, default 3%)
-		InflationRate: math.LegacyNewDecWithPrec(3, 2),  // 0.03 = 3%
-		InflationMin:  math.LegacyNewDecWithPrec(1, 2),  // 0.01 = 1%
-		InflationMax:  math.LegacyNewDecWithPrec(5, 2),  // 0.05 = 5% PROTOCOL CAP
+		// Inflation policy (DAO-adjustable 0.5-3%, default 3%)
+		// PROTOCOL CAP: Max 3% annually (MaxAnnualInflationRateHardCap)
+		InflationRate: math.LegacyNewDecWithPrec(3, 2),   // 0.03 = 3%
+		InflationMin:  math.LegacyNewDecWithPrec(5, 3),   // 0.005 = 0.5%
+		InflationMax:  math.LegacyNewDecWithPrec(3, 2),   // 0.03 = 3% PROTOCOL CAP
 
 		// Emission splits (must sum to 1.0 = 100%)
 		EmissionSplitStaking:   math.LegacyNewDecWithPrec(40, 2), // 0.40 = 40%
@@ -126,15 +149,17 @@ func (p TokenomicsParams) Validate() error {
 		return ErrInflationAboveMax
 	}
 
-	// P0-INF-005: Enforce protocol cap (inflation_max cannot exceed 5%)
-	protocolInflationCap := math.LegacyNewDecWithPrec(5, 2) // 0.05 = 5%
+	// P0-INF-005: Enforce protocol cap (inflation_max cannot exceed 3%)
+	// This is a HARD PROTOCOL CAP that governance CANNOT override
+	protocolInflationCap := math.LegacyMustNewDecFromStr(MaxAnnualInflationRateHardCap) // 0.03 = 3%
 	if p.InflationMax.GT(protocolInflationCap) {
-		return ErrProtocolCapViolation
+		return fmt.Errorf("%w: inflation_max (%s) exceeds protocol hard cap (%s)",
+			ErrProtocolCapViolation, p.InflationMax.String(), protocolInflationCap.String())
 	}
 
-	// Inflation min must be less than max
-	if p.InflationMin.GTE(p.InflationMax) {
-		return fmt.Errorf("inflation min (%s) must be less than max (%s)", p.InflationMin.String(), p.InflationMax.String())
+	// Inflation min must be less than or equal to max
+	if p.InflationMin.GT(p.InflationMax) {
+		return fmt.Errorf("inflation min (%s) cannot exceed max (%s)", p.InflationMin.String(), p.InflationMax.String())
 	}
 
 	// ========================================
@@ -147,10 +172,21 @@ func (p TokenomicsParams) Validate() error {
 		Add(p.EmissionSplitTreasury)
 
 	if !emissionSum.Equal(math.LegacyOneDec()) {
-		return ErrEmissionSplitInvalid
+		return fmt.Errorf("%w: emission splits sum to %s, must equal 1.0",
+			ErrEmissionSplitInvalid, emissionSum.String())
 	}
 
-	// Each split must be non-negative
+	// ========================================
+	// PROTOCOL SAFETY: Emission split bounds
+	// ========================================
+
+	// MaxSingleRecipientShare: No single recipient can exceed 60%
+	maxSingleShare := math.LegacyMustNewDecFromStr(MaxSingleRecipientShare) // 0.60 = 60%
+
+	// MinStakingShare: Staking must receive at least 20% (security requirement)
+	minStakingShare := math.LegacyMustNewDecFromStr(MinStakingShare) // 0.20 = 20%
+
+	// Validate each emission split
 	emissionSplits := []struct {
 		name  string
 		value math.LegacyDec
@@ -165,9 +201,17 @@ func (p TokenomicsParams) Validate() error {
 		if split.value.IsNegative() {
 			return fmt.Errorf("emission split %s cannot be negative, got %s", split.name, split.value.String())
 		}
-		if split.value.GT(math.LegacyOneDec()) {
-			return fmt.Errorf("emission split %s cannot exceed 100%%, got %s", split.name, split.value.String())
+		// Enforce max single recipient cap (60%)
+		if split.value.GT(maxSingleShare) {
+			return fmt.Errorf("%w: emission split %s (%s) exceeds max single recipient share (%s)",
+				ErrProtocolCapViolation, split.name, split.value.String(), maxSingleShare.String())
 		}
+	}
+
+	// Enforce minimum staking share (20%) for PoS security
+	if p.EmissionSplitStaking.LT(minStakingShare) {
+		return fmt.Errorf("%w: staking emission split (%s) below minimum required (%s) for PoS security",
+			ErrProtocolCapViolation, p.EmissionSplitStaking.String(), minStakingShare.String())
 	}
 
 	// ========================================

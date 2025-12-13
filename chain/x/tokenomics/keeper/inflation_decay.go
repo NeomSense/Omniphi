@@ -262,6 +262,13 @@ func (k Keeper) DistributeEmissions(ctx context.Context, totalAmount math.Int) e
 		}
 	}
 
+	// Record the emission for auditing and transparency
+	_, err := k.RecordEmission(ctx, totalAmount, stakingAmount, pocAmount, sequencerAmount, treasuryAmount)
+	if err != nil {
+		k.Logger(ctx).Error("failed to record emission", "error", err)
+		// Don't fail the emission, just log the error
+	}
+
 	k.Logger(ctx).Info("Emissions distributed",
 		"total", totalAmount.String(),
 		"staking", stakingAmount.String(),

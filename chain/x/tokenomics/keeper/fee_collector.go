@@ -133,6 +133,10 @@ func (k Keeper) ProcessBlockFees(ctx context.Context) error {
 
 		// Track treasury inflows
 		k.IncrementTreasuryInflows(ctx, treasuryAmount, "transaction_fees")
+
+		// Track inflows for treasury redirect mechanism
+		// This accumulates until the next redirect execution
+		k.IncrementAccumulatedRedirectInflows(ctx, treasuryAmount)
 	}
 
 	// Step 3b: Return validator portion to fee_collector (for distribution module)

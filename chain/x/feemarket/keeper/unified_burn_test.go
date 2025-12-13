@@ -17,7 +17,6 @@ func TestComputeEffectiveBurn_NormalUtilization(t *testing.T) {
 	baseBurn := math.LegacyMustNewDecFromStr("0.20")    // Normal tier
 	multiplier := math.LegacyMustNewDecFromStr("1.50")  // Smart contracts
 	maxBurn := math.LegacyMustNewDecFromStr("0.50")     // 50% cap
-	validatorRatio := math.LegacyMustNewDecFromStr("0.70")
 	treasuryRatio := math.LegacyMustNewDecFromStr("0.30")
 
 	totalFee := math.NewInt(100)

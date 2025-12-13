@@ -58,9 +58,9 @@ func TestTC023_TimeLockExactExpiry(t *testing.T) {
 	proposalTime := tc.Ctx.BlockTime()
 	timeLockDuration := 100 * time.Second
 
-	// New params (inflation 3% -> 4%)
+	// New params (inflation 2% -> 2.5%, within 3% cap)
 	newParams := currentParams
-	newParams.InflationRate = math.LegacyMustNewDecFromStr("0.04")
+	newParams.InflationRate = math.LegacyMustNewDecFromStr("0.025")
 
 	// Execute exactly at time-lock expiry
 	execCtx := tc.Ctx.WithBlockTime(proposalTime.Add(timeLockDuration))
@@ -81,37 +81,37 @@ func TestTC023_TimeLockExactExpiry(t *testing.T) {
 func TestTC024_ParamChangeCausality(t *testing.T) {
 	tc := SetupTestContext(t)
 
-	// Initial inflation: 3%
+	// Initial inflation: 2%
 	currentParams := tc.TokenomicsKeeper.GetParams(tc.Ctx)
-	currentParams.InflationRate = math.LegacyMustNewDecFromStr("0.03")
-	tc.TokenomicsKeeper.SetParams(tc.Ctx,currentParams)
+	currentParams.InflationRate = math.LegacyMustNewDecFromStr("0.02")
+	tc.TokenomicsKeeper.SetParams(tc.Ctx, currentParams)
 
-	// Proposal to change to 4% passes at block 1000
+	// Proposal to change to 2.5% passes at block 1000 (within 3% cap)
 	_ = int64(1000) // proposalBlock (reference only)
 	executionBlock := int64(1100) // After 100 block time-lock
 
-	// During time-lock (block 1050), inflation should still be 3%
+	// During time-lock (block 1050), inflation should still be 2%
 	midTimeLockCtx := tc.Ctx.WithBlockHeight(1050)
 	midParams := tc.TokenomicsKeeper.GetParams(midTimeLockCtx)
-	require.Equal(t, "0.030000000000000000", midParams.InflationRate.String(),
-		"Inflation should remain 3%% during time-lock")
+	require.Equal(t, "0.020000000000000000", midParams.InflationRate.String(),
+		"Inflation should remain 2%% during time-lock")
 
 	// At execution block (1100), update params
 	execCtx := tc.Ctx.WithBlockHeight(executionBlock)
 	newParams := currentParams
-	newParams.InflationRate = math.LegacyMustNewDecFromStr("0.04")
+	newParams.InflationRate = math.LegacyMustNewDecFromStr("0.025")
 	err := tc.TokenomicsKeeper.SetParams(execCtx, newParams)
 	require.NoError(t, err)
 
-	// After execution, inflation should be 4%
+	// After execution, inflation should be 2.5%
 	postExecParams := tc.TokenomicsKeeper.GetParams(execCtx)
-	require.Equal(t, "0.040000000000000000", postExecParams.InflationRate.String(),
-		"Inflation should be 4%% after execution")
+	require.Equal(t, "0.025000000000000000", postExecParams.InflationRate.String(),
+		"Inflation should be 2.5%% after execution")
 
 	// NOTE: Historical query test is skipped in mock-based unit tests
 	// The real keeper implementation should version params by block height
 	// This test validates that the real implementation preserves historical state
-	// In production, querying at block 1050 after execution at 1100 should still show 3%
+	// In production, querying at block 1050 after execution at 1100 should still show 2%
 
 	// To properly test this, use integration tests with real keeper and blockchain state
 	t.Log("Historical param versioning should be tested in integration tests with real keeper")
@@ -357,7 +357,7 @@ func TestTC032_SuperMajorityPass(t *testing.T) {
 	currentParams := tc.TokenomicsKeeper.GetParams(tc.Ctx)
 
 	newParams := currentParams
-	newParams.InflationRate = math.LegacyMustNewDecFromStr("0.04")
+	newParams.InflationRate = math.LegacyMustNewDecFromStr("0.025") // Within 3% cap
 
 	// Execution after time-lock should succeed
 	err := tc.TokenomicsKeeper.SetParams(tc.Ctx, newParams)
@@ -384,8 +384,8 @@ func TestTC033_AtomicExecution(t *testing.T) {
 
 	// Attempt multi-param update
 	newParams := currentParams
-	newParams.InflationRate = math.LegacyMustNewDecFromStr("0.04")
-	newParams.TotalSupplyCap = math.NewInt(1_600_000_000_000_000) // Invalid: exceeds 1.5B
+	newParams.InflationRate = math.LegacyMustNewDecFromStr("0.025") // Within 3% cap
+	newParams.TotalSupplyCap = math.NewInt(1_600_000_000_000_000)   // Invalid: exceeds 1.5B
 
 	// This should fail validation
 	err := newParams.Validate()

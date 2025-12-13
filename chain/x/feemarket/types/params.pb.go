@@ -108,6 +108,30 @@ type FeeMarketParams struct {
 	// Default: 0.025 uomni/gas
 	// Protocol Enforced: Cannot be less than 0.01
 	MinGasPriceFloor cosmossdk_io_math.LegacyDec `protobuf:"bytes,17,opt,name=min_gas_price_floor,json=minGasPriceFloor,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"min_gas_price_floor"`
+	// multiplier_messaging adjusts burn for messaging/IBC transfers
+	// Default: 0.50 (50% of base burn)
+	MultiplierMessaging cosmossdk_io_math.LegacyDec `protobuf:"bytes,18,opt,name=multiplier_messaging,json=multiplierMessaging,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"multiplier_messaging"`
+	// multiplier_pos_gas adjusts burn for standard PoS transactions
+	// Default: 1.00 (100% of base burn - no adjustment)
+	MultiplierPosGas cosmossdk_io_math.LegacyDec `protobuf:"bytes,19,opt,name=multiplier_pos_gas,json=multiplierPosGas,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"multiplier_pos_gas"`
+	// multiplier_poc_anchoring adjusts burn for PoC contribution submissions
+	// Default: 0.75 (75% of base burn)
+	MultiplierPocAnchoring cosmossdk_io_math.LegacyDec `protobuf:"bytes,20,opt,name=multiplier_poc_anchoring,json=multiplierPocAnchoring,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"multiplier_poc_anchoring"`
+	// multiplier_smart_contracts adjusts burn for smart contract execution
+	// Default: 1.50 (150% of base burn)
+	MultiplierSmartContracts cosmossdk_io_math.LegacyDec `protobuf:"bytes,21,opt,name=multiplier_smart_contracts,json=multiplierSmartContracts,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"multiplier_smart_contracts"`
+	// multiplier_ai_queries adjusts burn for AI inference operations
+	// Default: 1.25 (125% of base burn)
+	MultiplierAiQueries cosmossdk_io_math.LegacyDec `protobuf:"bytes,22,opt,name=multiplier_ai_queries,json=multiplierAiQueries,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"multiplier_ai_queries"`
+	// multiplier_sequencer adjusts burn for L2 sequencer operations
+	// Default: 1.25 (125% of base burn)
+	MultiplierSequencer cosmossdk_io_math.LegacyDec `protobuf:"bytes,23,opt,name=multiplier_sequencer,json=multiplierSequencer,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"multiplier_sequencer"`
+	// min_multiplier is the floor for activity multipliers
+	// Default: 0.25
+	MinMultiplier cosmossdk_io_math.LegacyDec `protobuf:"bytes,24,opt,name=min_multiplier,json=minMultiplier,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"min_multiplier"`
+	// max_multiplier is the ceiling for activity multipliers
+	// Default: 2.00
+	MaxMultiplier cosmossdk_io_math.LegacyDec `protobuf:"bytes,25,opt,name=max_multiplier,json=maxMultiplier,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"max_multiplier"`
 }
 
 func (m *FeeMarketParams) Reset()         { *m = FeeMarketParams{} }
@@ -284,6 +308,30 @@ func (this *FeeMarketParams) Equal(that interface{}) bool {
 	if !this.MinGasPriceFloor.Equal(that1.MinGasPriceFloor) {
 		return false
 	}
+	if !this.MultiplierMessaging.Equal(that1.MultiplierMessaging) {
+		return false
+	}
+	if !this.MultiplierPosGas.Equal(that1.MultiplierPosGas) {
+		return false
+	}
+	if !this.MultiplierPocAnchoring.Equal(that1.MultiplierPocAnchoring) {
+		return false
+	}
+	if !this.MultiplierSmartContracts.Equal(that1.MultiplierSmartContracts) {
+		return false
+	}
+	if !this.MultiplierAiQueries.Equal(that1.MultiplierAiQueries) {
+		return false
+	}
+	if !this.MultiplierSequencer.Equal(that1.MultiplierSequencer) {
+		return false
+	}
+	if !this.MinMultiplier.Equal(that1.MinMultiplier) {
+		return false
+	}
+	if !this.MaxMultiplier.Equal(that1.MaxMultiplier) {
+		return false
+	}
 	return true
 }
 func (m *FeeMarketParams) Marshal() (dAtA []byte, err error) {
@@ -306,6 +354,102 @@ func (m *FeeMarketParams) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	{
+		size := m.MaxMultiplier.Size()
+		i -= size
+		if _, err := m.MaxMultiplier.MarshalTo(dAtA[i:]); err != nil {
+			return 0, err
+		}
+		i = encodeVarintParams(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x1
+	i--
+	dAtA[i] = 0xca
+	{
+		size := m.MinMultiplier.Size()
+		i -= size
+		if _, err := m.MinMultiplier.MarshalTo(dAtA[i:]); err != nil {
+			return 0, err
+		}
+		i = encodeVarintParams(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x1
+	i--
+	dAtA[i] = 0xc2
+	{
+		size := m.MultiplierSequencer.Size()
+		i -= size
+		if _, err := m.MultiplierSequencer.MarshalTo(dAtA[i:]); err != nil {
+			return 0, err
+		}
+		i = encodeVarintParams(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x1
+	i--
+	dAtA[i] = 0xba
+	{
+		size := m.MultiplierAiQueries.Size()
+		i -= size
+		if _, err := m.MultiplierAiQueries.MarshalTo(dAtA[i:]); err != nil {
+			return 0, err
+		}
+		i = encodeVarintParams(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x1
+	i--
+	dAtA[i] = 0xb2
+	{
+		size := m.MultiplierSmartContracts.Size()
+		i -= size
+		if _, err := m.MultiplierSmartContracts.MarshalTo(dAtA[i:]); err != nil {
+			return 0, err
+		}
+		i = encodeVarintParams(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x1
+	i--
+	dAtA[i] = 0xaa
+	{
+		size := m.MultiplierPocAnchoring.Size()
+		i -= size
+		if _, err := m.MultiplierPocAnchoring.MarshalTo(dAtA[i:]); err != nil {
+			return 0, err
+		}
+		i = encodeVarintParams(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x1
+	i--
+	dAtA[i] = 0xa2
+	{
+		size := m.MultiplierPosGas.Size()
+		i -= size
+		if _, err := m.MultiplierPosGas.MarshalTo(dAtA[i:]); err != nil {
+			return 0, err
+		}
+		i = encodeVarintParams(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x1
+	i--
+	dAtA[i] = 0x9a
+	{
+		size := m.MultiplierMessaging.Size()
+		i -= size
+		if _, err := m.MultiplierMessaging.MarshalTo(dAtA[i:]); err != nil {
+			return 0, err
+		}
+		i = encodeVarintParams(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x1
+	i--
+	dAtA[i] = 0x92
 	{
 		size := m.MinGasPriceFloor.Size()
 		i -= size
@@ -526,6 +670,22 @@ func (m *FeeMarketParams) Size() (n int) {
 	l = m.MaxBurnRatio.Size()
 	n += 2 + l + sovParams(uint64(l))
 	l = m.MinGasPriceFloor.Size()
+	n += 2 + l + sovParams(uint64(l))
+	l = m.MultiplierMessaging.Size()
+	n += 2 + l + sovParams(uint64(l))
+	l = m.MultiplierPosGas.Size()
+	n += 2 + l + sovParams(uint64(l))
+	l = m.MultiplierPocAnchoring.Size()
+	n += 2 + l + sovParams(uint64(l))
+	l = m.MultiplierSmartContracts.Size()
+	n += 2 + l + sovParams(uint64(l))
+	l = m.MultiplierAiQueries.Size()
+	n += 2 + l + sovParams(uint64(l))
+	l = m.MultiplierSequencer.Size()
+	n += 2 + l + sovParams(uint64(l))
+	l = m.MinMultiplier.Size()
+	n += 2 + l + sovParams(uint64(l))
+	l = m.MaxMultiplier.Size()
 	n += 2 + l + sovParams(uint64(l))
 	return n
 }
@@ -1096,6 +1256,278 @@ func (m *FeeMarketParams) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if err := m.MinGasPriceFloor.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 18:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MultiplierMessaging", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowParams
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthParams
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthParams
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.MultiplierMessaging.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 19:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MultiplierPosGas", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowParams
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthParams
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthParams
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.MultiplierPosGas.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 20:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MultiplierPocAnchoring", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowParams
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthParams
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthParams
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.MultiplierPocAnchoring.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 21:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MultiplierSmartContracts", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowParams
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthParams
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthParams
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.MultiplierSmartContracts.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 22:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MultiplierAiQueries", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowParams
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthParams
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthParams
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.MultiplierAiQueries.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 23:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MultiplierSequencer", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowParams
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthParams
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthParams
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.MultiplierSequencer.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 24:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MinMultiplier", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowParams
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthParams
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthParams
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.MinMultiplier.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 25:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MaxMultiplier", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowParams
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthParams
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthParams
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.MaxMultiplier.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

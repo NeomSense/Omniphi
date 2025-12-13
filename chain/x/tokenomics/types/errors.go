@@ -33,8 +33,11 @@ var (
 	ErrInvalidParams     = errorsmod.Register(ModuleName, 43, "invalid parameters")
 
 	// Emission errors
-	ErrEmissionSplitInvalid = errorsmod.Register(ModuleName, 50, "emission splits do not sum to 100%")
-	ErrEmissionBudgetExceeded = errorsmod.Register(ModuleName, 51, "emission distribution exceeds budget")
+	ErrEmissionSplitInvalid       = errorsmod.Register(ModuleName, 50, "emission splits do not sum to 100%")
+	ErrEmissionBudgetExceeded     = errorsmod.Register(ModuleName, 51, "emission distribution exceeds budget")
+	ErrEmissionRecipientExceedsCap = errorsmod.Register(ModuleName, 52, "single emission recipient exceeds 60% cap")
+	ErrStakingShareBelowMinimum   = errorsmod.Register(ModuleName, 53, "staking share below 20% security minimum")
+	ErrInflationExceedsHardCap    = errorsmod.Register(ModuleName, 54, "inflation rate exceeds 3% protocol hard cap")
 
 	// IBC errors
 	ErrInvalidProof      = errorsmod.Register(ModuleName, 60, "invalid IBC proof")

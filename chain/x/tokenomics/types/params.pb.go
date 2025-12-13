@@ -148,6 +148,24 @@ type TokenomicsParams struct {
 	// When true, uses fee_burn_ratio regardless of conditions
 	// Requires governance vote to enable/disable
 	EmergencyBurnOverride bool `protobuf:"varint,44,opt,name=emergency_burn_override,json=emergencyBurnOverride,proto3" json:"emergency_burn_override,omitempty"`
+	// treasury_redirect_enabled: Enable treasury redirect mechanism
+	TreasuryRedirectEnabled bool `protobuf:"varint,45,opt,name=treasury_redirect_enabled,json=treasuryRedirectEnabled,proto3" json:"treasury_redirect_enabled,omitempty"`
+	// treasury_redirect_ratio: Max % of treasury INFLOWS to redirect (0-10%)
+	TreasuryRedirectRatio cosmossdk_io_math.LegacyDec `protobuf:"bytes,46,opt,name=treasury_redirect_ratio,json=treasuryRedirectRatio,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"treasury_redirect_ratio"`
+	// redirect_to_ecosystem_grants: % of redirected funds to ecosystem grants
+	RedirectToEcosystemGrants cosmossdk_io_math.LegacyDec `protobuf:"bytes,47,opt,name=redirect_to_ecosystem_grants,json=redirectToEcosystemGrants,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"redirect_to_ecosystem_grants"`
+	// redirect_to_buy_and_burn: % of redirected funds for buy-and-burn
+	RedirectToBuyAndBurn cosmossdk_io_math.LegacyDec `protobuf:"bytes,48,opt,name=redirect_to_buy_and_burn,json=redirectToBuyAndBurn,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"redirect_to_buy_and_burn"`
+	// redirect_to_insurance_fund: % of redirected funds to insurance
+	RedirectToInsuranceFund cosmossdk_io_math.LegacyDec `protobuf:"bytes,49,opt,name=redirect_to_insurance_fund,json=redirectToInsuranceFund,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"redirect_to_insurance_fund"`
+	// redirect_to_research_fund: % of redirected funds to research
+	RedirectToResearchFund cosmossdk_io_math.LegacyDec `protobuf:"bytes,50,opt,name=redirect_to_research_fund,json=redirectToResearchFund,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"redirect_to_research_fund"`
+	// redirect_execution_interval: Blocks between redirect executions
+	RedirectExecutionInterval uint64 `protobuf:"varint,51,opt,name=redirect_execution_interval,json=redirectExecutionInterval,proto3" json:"redirect_execution_interval,omitempty"`
+	// last_redirect_height: Block height of last redirect execution
+	LastRedirectHeight int64 `protobuf:"varint,52,opt,name=last_redirect_height,json=lastRedirectHeight,proto3" json:"last_redirect_height,omitempty"`
+	// accumulated_redirect_inflows: Treasury inflows since last redirect
+	AccumulatedRedirectInflows cosmossdk_io_math.Int `protobuf:"bytes,53,opt,name=accumulated_redirect_inflows,json=accumulatedRedirectInflows,proto3,customtype=cosmossdk.io/math.Int" json:"accumulated_redirect_inflows"`
 }
 
 func (m *TokenomicsParams) Reset()         { *m = TokenomicsParams{} }

@@ -167,6 +167,24 @@ func (m *MockBankKeeper) SpendableCoins(ctx context.Context, addr sdk.AccAddress
 	return m.GetAllBalances(ctx, addr)
 }
 
+func (m *MockBankKeeper) SendCoins(ctx context.Context, fromAddr sdk.AccAddress, toAddr sdk.AccAddress, amt sdk.Coins) error {
+	// Deduct from sender
+	if balance, ok := m.balances[fromAddr.String()]; ok {
+		newBalance := balance.Sub(amt...)
+		m.balances[fromAddr.String()] = newBalance
+	} else {
+		return fmt.Errorf("sender has no balance")
+	}
+
+	// Add to recipient
+	if balance, ok := m.balances[toAddr.String()]; ok {
+		m.balances[toAddr.String()] = balance.Add(amt...)
+	} else {
+		m.balances[toAddr.String()] = amt
+	}
+	return nil
+}
+
 func (m *MockBankKeeper) SendCoinsFromModuleToAccount(ctx context.Context, senderModule string, recipientAddr sdk.AccAddress, amt sdk.Coins) error {
 	// Deduct from module
 	moduleAddr := authtypes.NewModuleAddress(senderModule)

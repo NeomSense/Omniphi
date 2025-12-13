@@ -74,72 +74,72 @@ func TestTC002_HardCapConcurrentMints(t *testing.T) {
 
 // TC-003: Inflation Rate Bounds - Below Minimum
 // Priority: P0
-// Purpose: Verify that inflation <1% is rejected
+// Purpose: Verify that inflation <0.5% (floor) is rejected
 func TestTC003_InflationBelowMinimum(t *testing.T) {
 	tc := SetupTestContext(t)
 
 	// Get current params
 	params := tc.TokenomicsKeeper.GetParams(tc.Ctx)
 
-	// Attempt to set inflation below minimum (0.5%)
-	params.InflationRate = math.LegacyMustNewDecFromStr("0.005")
+	// Attempt to set inflation below minimum floor (0.4% < 0.5% floor)
+	params.InflationRate = math.LegacyMustNewDecFromStr("0.004")
 
 	// This should fail validation
 	err := params.Validate()
-	require.Error(t, err, "Inflation below 1% should fail validation")
+	require.Error(t, err, "Inflation below 0.5% floor should fail validation")
 
 	// Verify current inflation is still valid
 	currentParams := tc.TokenomicsKeeper.GetParams(tc.Ctx)
-	require.True(t, currentParams.InflationRate.GTE(math.LegacyMustNewDecFromStr("0.01")),
-		"Inflation rate should be >= 1%%")
+	require.True(t, currentParams.InflationRate.GTE(math.LegacyMustNewDecFromStr("0.005")),
+		"Inflation rate should be >= 0.5%%")
 }
 
 // TC-004: Inflation Rate Bounds - Above Maximum
 // Priority: P0
-// Purpose: Verify that inflation >5% is rejected
+// Purpose: Verify that inflation >3% (protocol cap) is rejected
 func TestTC004_InflationAboveMaximum(t *testing.T) {
 	tc := SetupTestContext(t)
 
 	// Get current params
 	params := tc.TokenomicsKeeper.GetParams(tc.Ctx)
 
-	// Attempt to set inflation above maximum (10%)
-	params.InflationRate = math.LegacyMustNewDecFromStr("0.10")
+	// Attempt to set inflation above protocol cap (4% > 3% cap)
+	params.InflationRate = math.LegacyMustNewDecFromStr("0.04")
 
 	// This should fail validation
 	err := params.Validate()
-	require.Error(t, err, "Inflation above 5% should fail validation")
+	require.Error(t, err, "Inflation above 3% protocol cap should fail validation")
 
 	// Verify current inflation is still valid
 	currentParams := tc.TokenomicsKeeper.GetParams(tc.Ctx)
-	require.True(t, currentParams.InflationRate.LTE(math.LegacyMustNewDecFromStr("0.05")),
-		"Inflation rate should be <= 5%%")
+	require.True(t, currentParams.InflationRate.LTE(math.LegacyMustNewDecFromStr("0.03")),
+		"Inflation rate should be <= 3%%")
 }
 
 // TC-005: Inflation Rate Update via Valid Governance
 // Priority: P0
-// Purpose: Verify inflation can be updated within valid bounds
+// Purpose: Verify inflation can be updated within valid bounds (0.5% - 3%)
 func TestTC005_ValidInflationUpdate(t *testing.T) {
 	tc := SetupTestContext(t)
 
-	// Set initial inflation to 3%
+	// Set initial inflation to 2%
 	params := tc.TokenomicsKeeper.GetParams(tc.Ctx)
-	params.InflationRate = math.LegacyMustNewDecFromStr("0.03")
+	params.InflationRate = math.LegacyMustNewDecFromStr("0.02")
 	err := tc.TokenomicsKeeper.SetParams(tc.Ctx, params)
 	require.NoError(t, err)
 
-	// Update to 4% (within bounds)
-	params.InflationRate = math.LegacyMustNewDecFromStr("0.04")
+	// Update to 2.5% (within 0.5%-3% bounds)
+	params.InflationRate = math.LegacyMustNewDecFromStr("0.025")
 	err = params.Validate()
-	require.NoError(t, err, "Inflation update to 4% should be valid")
+	require.NoError(t, err, "Inflation update to 2.5% should be valid")
 
 	err = tc.TokenomicsKeeper.SetParams(tc.Ctx, params)
 	require.NoError(t, err)
 
 	// Verify new rate is applied
 	currentParams := tc.TokenomicsKeeper.GetParams(tc.Ctx)
-	require.Equal(t, "0.040000000000000000", currentParams.InflationRate.String(),
-		"Inflation rate should be updated to 4%%")
+	require.Equal(t, "0.025000000000000000", currentParams.InflationRate.String(),
+		"Inflation rate should be updated to 2.5%%")
 }
 
 // TC-006: Genesis Supply Allocation Integrity

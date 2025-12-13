@@ -352,6 +352,80 @@ message TokenomicsParams {
   // When true, uses fee_burn_ratio regardless of conditions
   // Requires governance vote to enable/disable
   bool emergency_burn_override = 44;
+
+  // ============================================================================
+  // TREASURY REDIRECT (Post-Collection Allocation)
+  // ============================================================================
+  // Treasury Redirect is a POST-COLLECTION allocation rule, NOT a fee.
+  // It operates ONLY on funds already allocated to treasury.
+  // Flow: User → Fees → Burn → Validator/Treasury Split → Treasury Redirect
+  //
+  // This enables DAO-controlled capital allocation for:
+  // - Ecosystem grants
+  // - Buy-and-burn programs
+  // - Insurance funds
+  // - Research initiatives
+
+  // treasury_redirect_enabled: Enable treasury redirect mechanism
+  // When disabled, all treasury inflows are retained
+  bool treasury_redirect_enabled = 45;
+
+  // treasury_redirect_ratio: Max % of treasury INFLOWS to redirect (0-10%)
+  // PROTOCOL CAP: Cannot exceed 10% (hard-coded limit)
+  // Example: If treasury receives 1000 OMNI, max redirect = 100 OMNI
+  string treasury_redirect_ratio = 46 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // redirect_to_ecosystem_grants: % of redirected funds to ecosystem grants
+  // Purpose: Developer grants, integrations, hackathons
+  string redirect_to_ecosystem_grants = 47 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // redirect_to_buy_and_burn: % of redirected funds for buy-and-burn
+  // Purpose: Market buy OMNI and burn (additional deflationary pressure)
+  string redirect_to_buy_and_burn = 48 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // redirect_to_insurance_fund: % of redirected funds to insurance
+  // Purpose: Protocol insurance, slashing protection, user protection
+  string redirect_to_insurance_fund = 49 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // redirect_to_research_fund: % of redirected funds to research
+  // Purpose: Protocol research, security audits, academic partnerships
+  string redirect_to_research_fund = 50 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+
+  // redirect_execution_interval: Blocks between redirect executions
+  // Default: 100 blocks (~10 minutes)
+  // Range: 1 - 10000 blocks
+  uint64 redirect_execution_interval = 51;
+
+  // last_redirect_height: Block height of last redirect execution (read-only)
+  int64 last_redirect_height = 52;
+
+  // accumulated_redirect_inflows: Treasury inflows since last redirect (read-only)
+  // Reset to 0 after each redirect execution
+  string accumulated_redirect_inflows = 53 [
+    (cosmos_proto.scalar) = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
 }
 
 // DefaultParams returns the default tokenomics parameters

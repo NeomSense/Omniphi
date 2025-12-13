@@ -103,7 +103,7 @@
         "total_burned": "0",
         "inflation_rate": "0.03",
         "inflation_min": "0.005",
-        "inflation_max": "0.05",
+        "inflation_max": "0.03",
         "emission_split_staking": "0.40",
         "emission_split_poc": "0.30",
         "emission_split_sequencer": "0.20",
@@ -116,9 +116,22 @@
         "burn_rate_messaging": "0.10",
         "treasury_burn_redirect": "0.10",
         "continuity_ibc_channel": "",
-        "sequencer_ibc_channel": ""
+        "sequencer_ibc_channel": "",
+        "treasury_redirect_enabled": true,
+        "treasury_redirect_ratio": "0.10",
+        "redirect_to_ecosystem_grants": "0.40",
+        "redirect_to_buy_and_burn": "0.30",
+        "redirect_to_insurance_fund": "0.20",
+        "redirect_to_research_fund": "0.10",
+        "redirect_execution_interval": 100,
+        "last_redirect_height": 0,
+        "accumulated_redirect_inflows": "0"
       },
       "treasury_address": "TREASURY_MULTISIG_ADDRESS",
+      "ecosystem_grants_address": "ECOSYSTEM_GRANTS_ADDRESS",
+      "buy_and_burn_address": "BUY_AND_BURN_ADDRESS",
+      "insurance_fund_address": "INSURANCE_FUND_ADDRESS",
+      "research_fund_address": "RESEARCH_FUND_ADDRESS",
       "burn_records": [],
       "next_burn_id": 1
     },
@@ -262,10 +275,10 @@
       "tally_params": null,
       "params": {
         "min_deposit": [
-          {"denom": "uomni", "amount": "10000000000"}
+          {"denom": "uomni", "amount": "1000000000"}
         ],
         "max_deposit_period": "172800s",
-        "voting_period": "259200s",
+        "voting_period": "432000s",
         "quorum": "0.334",
         "threshold": "0.5",
         "veto_threshold": "0.334",
@@ -273,7 +286,7 @@
         "expedited_voting_period": "86400s",
         "expedited_threshold": "0.667",
         "expedited_min_deposit": [
-          {"denom": "uomni", "amount": "50000000000"}
+          {"denom": "uomni", "amount": "5000000000"}
         ],
         "burn_vote_quorum": false,
         "burn_proposal_deposit_prevote": false,

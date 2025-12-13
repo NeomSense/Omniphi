@@ -31,7 +31,8 @@ var (
 	KeyTotalBurned   = []byte{0x12}
 
 	// Counter keys
-	KeyNextBurnID = []byte{0x20}
+	KeyNextBurnID     = []byte{0x20}
+	KeyNextEmissionID = []byte{0x21}
 
 	// Treasury keys
 	KeyTreasuryAddress = []byte{0x30}
@@ -40,6 +41,17 @@ var (
 	// Fee burn tracking keys
 	KeyTotalFeesBurned     = []byte{0x32}
 	KeyTotalFeesToTreasury = []byte{0x33}
+
+	// Treasury redirect keys
+	KeyAccumulatedRedirectInflows = []byte{0x34}
+	KeyLastRedirectHeight         = []byte{0x35}
+	KeyTotalRedirected            = []byte{0x36}
+
+	// Redirect target addresses (whitelisted accounts)
+	KeyEcosystemGrantsAddress = []byte{0x37}
+	KeyBuyAndBurnAddress      = []byte{0x38}
+	KeyInsuranceFundAddress   = []byte{0x39}
+	KeyResearchFundAddress    = []byte{0x3A}
 
 	// Burn record prefix
 	BurnRecordPrefix = []byte{0x40}
@@ -59,15 +71,37 @@ var (
 
 // Event types
 const (
-	EventTypeMint = "mint_inflation"
-	EventTypeBurn = "burn_tokens"
+	EventTypeMint               = "mint_inflation"
+	EventTypeBurn               = "burn_tokens"
+	EventTypeTreasuryRedirect   = "treasury_redirect"
+	EventTypeTreasuryAllocation = "treasury_allocation"
+	EventTypeEmissionAllocated  = "emission_allocated"
 
-	AttributeKeyInflationRate   = "inflation_rate"
+	AttributeKeyInflationRate    = "inflation_rate"
 	AttributeKeyAnnualProvisions = "annual_provisions"
-	AttributeKeyBlockProvision  = "block_provision"
-	AttributeKeyYear            = "year"
-	AttributeKeyBurnAmount      = "burn_amount"
-	AttributeKeyBurnSource      = "burn_source"
+	AttributeKeyBlockProvision   = "block_provision"
+	AttributeKeyYear             = "year"
+	AttributeKeyBurnAmount       = "burn_amount"
+	AttributeKeyBurnSource       = "burn_source"
+
+	// Treasury redirect event attributes
+	AttributeKeyTotalInflows        = "total_inflows"
+	AttributeKeyRedirectAmount      = "redirect_amount"
+	AttributeKeyRetainedAmount      = "retained_amount"
+	AttributeKeyRedirectRatio       = "redirect_ratio"
+	AttributeKeyAllocationTarget    = "allocation_target"
+	AttributeKeyAllocationAmount    = "allocation_amount"
+	AttributeKeyAllocationRatio     = "allocation_ratio"
+	AttributeKeyRedirectBlockHeight = "redirect_block_height"
+
+	// Emission record event attributes
+	AttributeKeyEmissionID  = "emission_id"
+	AttributeKeyTotalEmitted = "total_emitted"
+	AttributeKeyToStaking    = "to_staking"
+	AttributeKeyToPoc        = "to_poc"
+	AttributeKeyToSequencer  = "to_sequencer"
+	AttributeKeyToTreasury   = "to_treasury"
+	AttributeKeyBlockHeight  = "block_height"
 )
 
 // GetBurnRecordKey returns the store key for a burn record

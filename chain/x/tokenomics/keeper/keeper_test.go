@@ -111,6 +111,31 @@ func (m *MockBankKeeper) SendCoinsFromAccountToModule(ctx context.Context, sende
 	return nil
 }
 
+func (m *MockBankKeeper) SendCoins(ctx context.Context, fromAddr sdk.AccAddress, toAddr sdk.AccAddress, amt sdk.Coins) error {
+	fromStr := fromAddr.String()
+	toStr := toAddr.String()
+
+	// Deduct from sender
+	if bal, ok := m.balances[fromStr]; ok {
+		newBal, hasNeg := bal.SafeSub(amt...)
+		if hasNeg {
+			return types.ErrInsufficientFunds
+		}
+		m.balances[fromStr] = newBal
+	} else {
+		return types.ErrInsufficientFunds
+	}
+
+	// Add to recipient
+	if bal, ok := m.balances[toStr]; ok {
+		m.balances[toStr] = bal.Add(amt...)
+	} else {
+		m.balances[toStr] = amt
+	}
+
+	return nil
+}
+
 func (m *MockBankKeeper) SendCoinsFromModuleToModule(ctx context.Context, senderModule, recipientModule string, amt sdk.Coins) error {
 	senderAddr := authtypes.NewModuleAddress(senderModule).String()
 	recipientAddr := authtypes.NewModuleAddress(recipientModule).String()
