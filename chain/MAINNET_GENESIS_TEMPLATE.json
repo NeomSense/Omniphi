@@ -140,7 +140,15 @@
         "validator_fee_ratio": "0.700000000000000000",
         "treasury_fee_ratio": "0.300000000000000000",
         "max_burn_ratio": "0.500000000000000000",
-        "min_gas_price_floor": "0.025000000000000000"
+        "min_gas_price_floor": "0.025000000000000000",
+        "multiplier_messaging": "0.500000000000000000",
+        "multiplier_pos_gas": "1.000000000000000000",
+        "multiplier_poc_anchoring": "0.750000000000000000",
+        "multiplier_smart_contracts": "1.500000000000000000",
+        "multiplier_ai_queries": "1.250000000000000000",
+        "multiplier_sequencer": "1.250000000000000000",
+        "min_multiplier": "0.250000000000000000",
+        "max_multiplier": "2.000000000000000000"
       },
       "base_fee": "0.050000000000000000",
       "current_utilization": "0.000000000000000000",
