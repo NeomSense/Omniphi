@@ -4,13 +4,18 @@
 package types
 
 import (
+	context "context"
 	cosmossdk_io_math "cosmossdk.io/math"
 	fmt "fmt"
 	_ "github.com/cosmos/cosmos-proto"
 	_ "github.com/cosmos/cosmos-sdk/types/tx/amino"
 	_ "github.com/cosmos/gogoproto/gogoproto"
+	grpc1 "github.com/cosmos/gogoproto/grpc"
 	proto "github.com/cosmos/gogoproto/proto"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
+	grpc "google.golang.org/grpc"
+	codes "google.golang.org/grpc/codes"
+	status "google.golang.org/grpc/status"
 	io "io"
 	math "math"
 	math_bits "math/bits"
@@ -535,6 +540,241 @@ var fileDescriptor_0218a747192d7298 = []byte{
 	0xf9, 0xe3, 0xaa, 0xaa, 0x7c, 0x7b, 0x5d, 0xcd, 0x9c, 0x5f, 0x57, 0x33, 0xbf, 0x5e, 0x57, 0x33,
 	0xfb, 0xa5, 0xa8, 0xea, 0x78, 0xa0, 0x8e, 0xf7, 0x03, 0x60, 0xcd, 0x39, 0xf1, 0x17, 0xe5, 0xdd,
 	0xbf, 0x03, 0x00, 0x00, 0xff, 0xff, 0x1f, 0xd9, 0x31, 0x61, 0x55, 0x09, 0x00, 0x00,
+}
+
+// Reference imports to suppress errors if they are not otherwise used.
+var _ context.Context
+var _ grpc.ClientConn
+
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the grpc package it is being compiled against.
+const _ = grpc.SupportPackageIsVersion4
+
+// QueryClient is the client API for Query service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
+type QueryClient interface {
+	// Params queries the parameters of the feemarket module.
+	Params(ctx context.Context, in *QueryParamsRequest, opts ...grpc.CallOption) (*QueryParamsResponse, error)
+	// BaseFee queries the current EIP-1559 base fee.
+	BaseFee(ctx context.Context, in *QueryBaseFeeRequest, opts ...grpc.CallOption) (*QueryBaseFeeResponse, error)
+	// BlockUtilization queries the current block utilization.
+	BlockUtilization(ctx context.Context, in *QueryBlockUtilizationRequest, opts ...grpc.CallOption) (*QueryBlockUtilizationResponse, error)
+	// BurnTier queries the current burn tier based on utilization.
+	BurnTier(ctx context.Context, in *QueryBurnTierRequest, opts ...grpc.CallOption) (*QueryBurnTierResponse, error)
+	// FeeStats queries cumulative fee statistics.
+	FeeStats(ctx context.Context, in *QueryFeeStatsRequest, opts ...grpc.CallOption) (*QueryFeeStatsResponse, error)
+}
+
+type queryClient struct {
+	cc grpc1.ClientConn
+}
+
+func NewQueryClient(cc grpc1.ClientConn) QueryClient {
+	return &queryClient{cc}
+}
+
+func (c *queryClient) Params(ctx context.Context, in *QueryParamsRequest, opts ...grpc.CallOption) (*QueryParamsResponse, error) {
+	out := new(QueryParamsResponse)
+	err := c.cc.Invoke(ctx, "/pos.feemarket.v1.Query/Params", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *queryClient) BaseFee(ctx context.Context, in *QueryBaseFeeRequest, opts ...grpc.CallOption) (*QueryBaseFeeResponse, error) {
+	out := new(QueryBaseFeeResponse)
+	err := c.cc.Invoke(ctx, "/pos.feemarket.v1.Query/BaseFee", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *queryClient) BlockUtilization(ctx context.Context, in *QueryBlockUtilizationRequest, opts ...grpc.CallOption) (*QueryBlockUtilizationResponse, error) {
+	out := new(QueryBlockUtilizationResponse)
+	err := c.cc.Invoke(ctx, "/pos.feemarket.v1.Query/BlockUtilization", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *queryClient) BurnTier(ctx context.Context, in *QueryBurnTierRequest, opts ...grpc.CallOption) (*QueryBurnTierResponse, error) {
+	out := new(QueryBurnTierResponse)
+	err := c.cc.Invoke(ctx, "/pos.feemarket.v1.Query/BurnTier", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *queryClient) FeeStats(ctx context.Context, in *QueryFeeStatsRequest, opts ...grpc.CallOption) (*QueryFeeStatsResponse, error) {
+	out := new(QueryFeeStatsResponse)
+	err := c.cc.Invoke(ctx, "/pos.feemarket.v1.Query/FeeStats", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// QueryServer is the server API for Query service.
+type QueryServer interface {
+	// Params queries the parameters of the feemarket module.
+	Params(context.Context, *QueryParamsRequest) (*QueryParamsResponse, error)
+	// BaseFee queries the current EIP-1559 base fee.
+	BaseFee(context.Context, *QueryBaseFeeRequest) (*QueryBaseFeeResponse, error)
+	// BlockUtilization queries the current block utilization.
+	BlockUtilization(context.Context, *QueryBlockUtilizationRequest) (*QueryBlockUtilizationResponse, error)
+	// BurnTier queries the current burn tier based on utilization.
+	BurnTier(context.Context, *QueryBurnTierRequest) (*QueryBurnTierResponse, error)
+	// FeeStats queries cumulative fee statistics.
+	FeeStats(context.Context, *QueryFeeStatsRequest) (*QueryFeeStatsResponse, error)
+}
+
+// UnimplementedQueryServer can be embedded to have forward compatible implementations.
+type UnimplementedQueryServer struct {
+}
+
+func (*UnimplementedQueryServer) Params(ctx context.Context, req *QueryParamsRequest) (*QueryParamsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Params not implemented")
+}
+func (*UnimplementedQueryServer) BaseFee(ctx context.Context, req *QueryBaseFeeRequest) (*QueryBaseFeeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BaseFee not implemented")
+}
+func (*UnimplementedQueryServer) BlockUtilization(ctx context.Context, req *QueryBlockUtilizationRequest) (*QueryBlockUtilizationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BlockUtilization not implemented")
+}
+func (*UnimplementedQueryServer) BurnTier(ctx context.Context, req *QueryBurnTierRequest) (*QueryBurnTierResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BurnTier not implemented")
+}
+func (*UnimplementedQueryServer) FeeStats(ctx context.Context, req *QueryFeeStatsRequest) (*QueryFeeStatsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FeeStats not implemented")
+}
+
+func RegisterQueryServer(s grpc1.Server, srv QueryServer) {
+	s.RegisterService(&_Query_serviceDesc, srv)
+}
+
+func _Query_Params_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryParamsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).Params(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/pos.feemarket.v1.Query/Params",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).Params(ctx, req.(*QueryParamsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Query_BaseFee_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryBaseFeeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).BaseFee(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/pos.feemarket.v1.Query/BaseFee",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).BaseFee(ctx, req.(*QueryBaseFeeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Query_BlockUtilization_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryBlockUtilizationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).BlockUtilization(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/pos.feemarket.v1.Query/BlockUtilization",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).BlockUtilization(ctx, req.(*QueryBlockUtilizationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Query_BurnTier_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryBurnTierRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).BurnTier(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/pos.feemarket.v1.Query/BurnTier",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).BurnTier(ctx, req.(*QueryBurnTierRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Query_FeeStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryFeeStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).FeeStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/pos.feemarket.v1.Query/FeeStats",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).FeeStats(ctx, req.(*QueryFeeStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+var Query_serviceDesc = _Query_serviceDesc
+var _Query_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "pos.feemarket.v1.Query",
+	HandlerType: (*QueryServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Params",
+			Handler:    _Query_Params_Handler,
+		},
+		{
+			MethodName: "BaseFee",
+			Handler:    _Query_BaseFee_Handler,
+		},
+		{
+			MethodName: "BlockUtilization",
+			Handler:    _Query_BlockUtilization_Handler,
+		},
+		{
+			MethodName: "BurnTier",
+			Handler:    _Query_BurnTier_Handler,
+		},
+		{
+			MethodName: "FeeStats",
+			Handler:    _Query_FeeStats_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "pos/feemarket/v1/query.proto",
 }
 
 func (m *QueryParamsRequest) Marshal() (dAtA []byte, err error) {

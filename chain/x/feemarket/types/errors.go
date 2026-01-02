@@ -19,4 +19,6 @@ var (
 	ErrInvalidGasPrice          = errors.Register(ModuleName, 11, "invalid gas price")
 	ErrMaxBurnExceeded          = errors.Register(ModuleName, 12, "burn ratio exceeds maximum")
 	ErrInvalidThreshold         = errors.Register(ModuleName, 13, "invalid utilization threshold")
+	ErrInvalidMaxBlockGas       = errors.Register(ModuleName, 14, "invalid max block gas for anchor lane")
+	ErrInvalidMaxTxGas          = errors.Register(ModuleName, 15, "invalid max transaction gas")
 )

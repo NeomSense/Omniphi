@@ -9,11 +9,12 @@ import (
 
 // DefaultGenesis returns the default genesis state
 func DefaultGenesis() *GenesisState {
+	params := DefaultParams()
 	return &GenesisState{
-		Params:                   DefaultParams(),
-		CurrentBaseFee:           math.LegacyMustNewDecFromStr("0.05"), // Match BaseFeeInitial
+		Params:                   params,
+		CurrentBaseFee:           params.BaseFeeInitial, // Match BaseFeeInitial from params
 		PreviousBlockUtilization: math.LegacyZeroDec(),
-		TreasuryAddress:          "",  // Must be set before genesis
+		TreasuryAddress:          "", // Must be set before genesis
 		CumulativeBurned:         math.ZeroInt(),
 		CumulativeToTreasury:     math.ZeroInt(),
 		CumulativeToValidators:   math.ZeroInt(),

@@ -36,4 +36,10 @@ var (
 
 	// CumulativeToValidatorsKey is the key for cumulative validator amount
 	CumulativeToValidatorsKey = []byte{0x07}
+
+	// PreviousBlockGasUsedKey is the key for previous block gas used
+	PreviousBlockGasUsedKey = []byte{0x08}
+
+	// MaxBlockGasKey is the key for max block gas limit
+	MaxBlockGasKey = []byte{0x09}
 )

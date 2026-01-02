@@ -21,10 +21,5 @@ func RegisterInterfaces(registry codectypes.InterfaceRegistry) {
 		&MsgUpdateParams{},
 	)
 
-	// NOTE: msgservice.RegisterMsgServiceDesc is intentionally not called here
-	// because there's an issue with the generated proto file descriptor that causes
-	// "error unzipping file description" panic. The module works fine without it
-	// since we only use UpdateParams via governance and don't need gRPC reflection.
-	// This can be re-enabled once proto generation is fixed.
-	_ = msgservice.RegisterMsgServiceDesc
+	msgservice.RegisterMsgServiceDesc(registry, &_Msg_serviceDesc)
 }
