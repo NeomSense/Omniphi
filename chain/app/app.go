@@ -25,6 +25,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	"github.com/cosmos/cosmos-sdk/x/auth"
+	"github.com/cosmos/cosmos-sdk/x/auth/ante"
 	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
 	authsims "github.com/cosmos/cosmos-sdk/x/auth/simulation"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
@@ -45,6 +46,9 @@ import (
 	ibckeeper "github.com/cosmos/ibc-go/v10/modules/core/keeper"
 
 	"pos/docs"
+
+	feegrantkeeper "cosmossdk.io/x/feegrant/keeper"
+	feemarketkeeper "pos/x/feemarket/keeper"
 )
 
 const (
@@ -91,6 +95,8 @@ type App struct {
 	ConsensusParamsKeeper consensuskeeper.Keeper
 	CircuitBreakerKeeper  circuitkeeper.Keeper
 	ParamsKeeper          paramskeeper.Keeper
+	FeegrantKeeper        feegrantkeeper.Keeper
+	FeemarketKeeper       feemarketkeeper.Keeper
 
 	// ibc keepers
 	IBCKeeper           *ibckeeper.Keeper
@@ -171,6 +177,8 @@ func New(
 		&app.ConsensusParamsKeeper,
 		&app.CircuitBreakerKeeper,
 		&app.ParamsKeeper,
+		&app.FeegrantKeeper,
+		&app.FeemarketKeeper,
 	); err != nil {
 		panic(err)
 	}
@@ -186,6 +194,24 @@ func New(
 	if err := app.registerIBCModules(appOpts); err != nil {
 		panic(err)
 	}
+
+	// Set custom ante handler with MaxTxGasDecorator for anchor lane enforcement
+	anteHandler, err := NewAnteHandler(
+		HandlerOptions{
+			HandlerOptions: ante.HandlerOptions{
+				AccountKeeper:   app.AuthKeeper,
+				BankKeeper:      app.BankKeeper,
+				FeegrantKeeper:  app.FeegrantKeeper,
+				SignModeHandler: app.txConfig.SignModeHandler(),
+			},
+			CircuitKeeper:   &app.CircuitBreakerKeeper,
+			FeemarketKeeper: &app.FeemarketKeeper,
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
+	app.SetAnteHandler(anteHandler)
 
 	/****  Module Options ****/
 
