@@ -135,8 +135,26 @@ func (am AppModule) BeginBlock(ctx context.Context) error {
 func (am AppModule) EndBlock(ctx context.Context) error {
 	am.keeper.Logger(ctx).Debug("feemarket EndBlock started")
 
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
 	// Get current block utilization before processing fees
 	currentUtilization := am.keeper.GetBlockUtilization(ctx)
+
+	// Store block gas metrics for queries
+	if sdkCtx.BlockGasMeter() != nil {
+		blockGasUsed := int64(sdkCtx.BlockGasMeter().GasConsumed())
+		if err := am.keeper.SetPreviousBlockGasUsed(ctx, blockGasUsed); err != nil {
+			am.keeper.Logger(ctx).Error("failed to set previous block gas used", "error", err)
+		}
+	}
+
+	// Store max block gas from consensus params
+	if consParams := sdkCtx.ConsensusParams(); consParams.Block != nil {
+		maxBlockGas := consParams.Block.MaxGas
+		if err := am.keeper.SetMaxBlockGas(ctx, maxBlockGas); err != nil {
+			am.keeper.Logger(ctx).Error("failed to set max block gas", "error", err)
+		}
+	}
 
 	// Process all fees collected in this block
 	if err := am.keeper.ProcessBlockFees(ctx); err != nil {

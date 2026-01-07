@@ -214,3 +214,61 @@ func (k Keeper) SetPreviousBlockUtilization(ctx context.Context, util math.Legac
 	}
 	return store.Set(types.PreviousBlockUtilizationKey, bz)
 }
+
+// GetPreviousBlockGasUsed returns the gas used in the previous block
+func (k Keeper) GetPreviousBlockGasUsed(ctx context.Context) int64 {
+	store := k.storeService.OpenKVStore(ctx)
+	bz, err := store.Get(types.PreviousBlockGasUsedKey)
+	if err != nil || len(bz) == 0 {
+		return 0
+	}
+	if len(bz) != 8 {
+		return 0
+	}
+	return int64(bz[0]) | int64(bz[1])<<8 | int64(bz[2])<<16 | int64(bz[3])<<24 |
+		int64(bz[4])<<32 | int64(bz[5])<<40 | int64(bz[6])<<48 | int64(bz[7])<<56
+}
+
+// SetPreviousBlockGasUsed sets the gas used in the previous block
+func (k Keeper) SetPreviousBlockGasUsed(ctx context.Context, gasUsed int64) error {
+	store := k.storeService.OpenKVStore(ctx)
+	bz := make([]byte, 8)
+	bz[0] = byte(gasUsed)
+	bz[1] = byte(gasUsed >> 8)
+	bz[2] = byte(gasUsed >> 16)
+	bz[3] = byte(gasUsed >> 24)
+	bz[4] = byte(gasUsed >> 32)
+	bz[5] = byte(gasUsed >> 40)
+	bz[6] = byte(gasUsed >> 48)
+	bz[7] = byte(gasUsed >> 56)
+	return store.Set(types.PreviousBlockGasUsedKey, bz)
+}
+
+// GetMaxBlockGas returns the max block gas limit
+func (k Keeper) GetMaxBlockGas(ctx context.Context) int64 {
+	store := k.storeService.OpenKVStore(ctx)
+	bz, err := store.Get(types.MaxBlockGasKey)
+	if err != nil || len(bz) == 0 {
+		return 0
+	}
+	if len(bz) != 8 {
+		return 0
+	}
+	return int64(bz[0]) | int64(bz[1])<<8 | int64(bz[2])<<16 | int64(bz[3])<<24 |
+		int64(bz[4])<<32 | int64(bz[5])<<40 | int64(bz[6])<<48 | int64(bz[7])<<56
+}
+
+// SetMaxBlockGas sets the max block gas limit
+func (k Keeper) SetMaxBlockGas(ctx context.Context, maxGas int64) error {
+	store := k.storeService.OpenKVStore(ctx)
+	bz := make([]byte, 8)
+	bz[0] = byte(maxGas)
+	bz[1] = byte(maxGas >> 8)
+	bz[2] = byte(maxGas >> 16)
+	bz[3] = byte(maxGas >> 24)
+	bz[4] = byte(maxGas >> 32)
+	bz[5] = byte(maxGas >> 40)
+	bz[6] = byte(maxGas >> 48)
+	bz[7] = byte(maxGas >> 56)
+	return store.Set(types.MaxBlockGasKey, bz)
+}

@@ -384,3 +384,4 @@ func ParseCoinFromString(s string) (sdk.Coin, error) {
 }
 
 // Note: String() method is auto-generated in params.pb.go
+// Note: Equal() method for Tier is defined in helpers.go

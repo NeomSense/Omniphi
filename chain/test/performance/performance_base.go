@@ -423,6 +423,21 @@ func (m *MockBankKeeper) SpendableCoins(ctx context.Context, addr sdk.AccAddress
 	return m.GetAllBalances(ctx, addr)
 }
 
+func (m *MockBankKeeper) SendCoins(ctx context.Context, fromAddr sdk.AccAddress, toAddr sdk.AccAddress, amt sdk.Coins) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Deduct from sender
+	senderBalance := m.balances[fromAddr.String()]
+	m.balances[fromAddr.String()] = senderBalance.Sub(amt...)
+
+	// Add to recipient
+	recipientBalance := m.balances[toAddr.String()]
+	m.balances[toAddr.String()] = recipientBalance.Add(amt...)
+
+	return nil
+}
+
 func (m *MockBankKeeper) GetModuleBalance(moduleName string) sdk.Coins {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

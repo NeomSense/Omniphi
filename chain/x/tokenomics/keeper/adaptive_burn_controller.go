@@ -122,37 +122,189 @@ func (k Keeper) GetTreasuryPct(ctx context.Context) math.LegacyDec {
 	return treasuryPct
 }
 
+// BlocksPerDay is the estimated number of blocks per day (~6 second block time)
+const BlocksPerDay = int64(14400)
+
+// RollingWindowDays is the number of days in the rolling average window
+const RollingWindowDays = 7
+
 // GetAvgTxPerDay returns the 7-day rolling average of transactions per day
 // This provides a smoothed metric for adoption tracking
 func (k Keeper) GetAvgTxPerDay(ctx context.Context) math.Int {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 
-	// For initial implementation, estimate from current block
-	// In production, this should track historical tx counts in state
-
-	// Estimate: Average block time is ~6 seconds
-	// Blocks per day = 86400 / 6 = 14400 blocks
-	currentHeight := sdkCtx.BlockHeight()
-
 	// If we're in early blocks, return 0 to trigger adoption incentive
-	if currentHeight < 100 {
+	if sdkCtx.BlockHeight() < BlocksPerDay {
 		return math.ZeroInt()
 	}
 
-	// For now, use a simple heuristic:
-	// Count txs in current block and multiply by blocks/day
-	// TODO: Implement proper 7-day rolling average with state storage
-	txCount := len(sdkCtx.TxBytes())
-	if txCount == 0 {
-		// Check if we have access to tx count in a different way
-		// For now, return a conservative estimate
-		return math.NewInt(1000) // Assume some baseline activity
+	// Sum up all 7 days of transaction counts
+	var totalTx int64
+	var daysWithData int64
+
+	for i := uint8(0); i < RollingWindowDays; i++ {
+		dayCount := k.getDailyTxCount(ctx, i)
+		if dayCount > 0 {
+			totalTx += dayCount
+			daysWithData++
+		}
 	}
 
-	blocksPerDay := int64(14400) // ~6 second blocks
-	estimatedTxPerDay := int64(txCount) * blocksPerDay
+	// If no data yet, return 0 to trigger adoption incentive
+	if daysWithData == 0 {
+		return math.ZeroInt()
+	}
 
-	return math.NewInt(estimatedTxPerDay)
+	// Calculate average (total / days with data gives us average tx per day)
+	avgTxPerDay := totalTx / daysWithData
+	return math.NewInt(avgTxPerDay)
+}
+
+// RecordBlockTransactions should be called in EndBlock to track transaction counts
+// It manages the rolling window, rotating days as needed
+func (k Keeper) RecordBlockTransactions(ctx context.Context, txCount int64) error {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	currentHeight := sdkCtx.BlockHeight()
+
+	// Get the last rotation height
+	lastRotationHeight := k.getLastDayRotationHeight(ctx)
+
+	// Check if we need to rotate to a new day
+	blocksSinceRotation := currentHeight - lastRotationHeight
+	if blocksSinceRotation >= BlocksPerDay {
+		// Time to rotate: save current day's count and move to next day
+		currentDayIndex := k.getCurrentDayIndex(ctx)
+		currentDayTxCount := k.getCurrentDayTxCount(ctx)
+
+		// Store the completed day's transaction count
+		if err := k.setDailyTxCount(ctx, currentDayIndex, currentDayTxCount); err != nil {
+			return fmt.Errorf("failed to set daily tx count: %w", err)
+		}
+
+		// Move to next day (circular buffer: 0->1->2->...->6->0)
+		nextDayIndex := (currentDayIndex + 1) % RollingWindowDays
+		if err := k.setCurrentDayIndex(ctx, nextDayIndex); err != nil {
+			return fmt.Errorf("failed to set current day index: %w", err)
+		}
+
+		// Reset the new day's count to 0
+		if err := k.setCurrentDayTxCount(ctx, 0); err != nil {
+			return fmt.Errorf("failed to reset current day tx count: %w", err)
+		}
+
+		// Update rotation height
+		if err := k.setLastDayRotationHeight(ctx, currentHeight); err != nil {
+			return fmt.Errorf("failed to set last day rotation height: %w", err)
+		}
+
+		k.Logger(ctx).Debug("rotated tx tracking day",
+			"completed_day", currentDayIndex,
+			"tx_count", currentDayTxCount,
+			"new_day", nextDayIndex)
+	}
+
+	// Add this block's transaction count to current day
+	currentDayTxCount := k.getCurrentDayTxCount(ctx)
+	newCount := currentDayTxCount + txCount
+	if err := k.setCurrentDayTxCount(ctx, newCount); err != nil {
+		return fmt.Errorf("failed to update current day tx count: %w", err)
+	}
+
+	return nil
+}
+
+// getDailyTxCount returns the transaction count for a specific day in the rolling window
+func (k Keeper) getDailyTxCount(ctx context.Context, dayIndex uint8) int64 {
+	store := k.storeService.OpenKVStore(ctx)
+	bz, err := store.Get(types.GetDailyTxCountKey(dayIndex))
+	if err != nil || len(bz) == 0 {
+		return 0
+	}
+	return int64(bz[0])<<56 | int64(bz[1])<<48 | int64(bz[2])<<40 | int64(bz[3])<<32 |
+		int64(bz[4])<<24 | int64(bz[5])<<16 | int64(bz[6])<<8 | int64(bz[7])
+}
+
+// setDailyTxCount sets the transaction count for a specific day
+func (k Keeper) setDailyTxCount(ctx context.Context, dayIndex uint8, count int64) error {
+	store := k.storeService.OpenKVStore(ctx)
+	bz := make([]byte, 8)
+	bz[0] = byte(count >> 56)
+	bz[1] = byte(count >> 48)
+	bz[2] = byte(count >> 40)
+	bz[3] = byte(count >> 32)
+	bz[4] = byte(count >> 24)
+	bz[5] = byte(count >> 16)
+	bz[6] = byte(count >> 8)
+	bz[7] = byte(count)
+	return store.Set(types.GetDailyTxCountKey(dayIndex), bz)
+}
+
+// getCurrentDayIndex returns the current day index in the rolling window (0-6)
+func (k Keeper) getCurrentDayIndex(ctx context.Context) uint8 {
+	store := k.storeService.OpenKVStore(ctx)
+	bz, err := store.Get(types.KeyCurrentDayIndex)
+	if err != nil || len(bz) == 0 {
+		return 0
+	}
+	return bz[0]
+}
+
+// setCurrentDayIndex sets the current day index
+func (k Keeper) setCurrentDayIndex(ctx context.Context, dayIndex uint8) error {
+	store := k.storeService.OpenKVStore(ctx)
+	return store.Set(types.KeyCurrentDayIndex, []byte{dayIndex})
+}
+
+// getLastDayRotationHeight returns the block height of the last day rotation
+func (k Keeper) getLastDayRotationHeight(ctx context.Context) int64 {
+	store := k.storeService.OpenKVStore(ctx)
+	bz, err := store.Get(types.KeyLastDayRotationHeight)
+	if err != nil || len(bz) == 0 {
+		return 0
+	}
+	return int64(bz[0])<<56 | int64(bz[1])<<48 | int64(bz[2])<<40 | int64(bz[3])<<32 |
+		int64(bz[4])<<24 | int64(bz[5])<<16 | int64(bz[6])<<8 | int64(bz[7])
+}
+
+// setLastDayRotationHeight sets the last day rotation height
+func (k Keeper) setLastDayRotationHeight(ctx context.Context, height int64) error {
+	store := k.storeService.OpenKVStore(ctx)
+	bz := make([]byte, 8)
+	bz[0] = byte(height >> 56)
+	bz[1] = byte(height >> 48)
+	bz[2] = byte(height >> 40)
+	bz[3] = byte(height >> 32)
+	bz[4] = byte(height >> 24)
+	bz[5] = byte(height >> 16)
+	bz[6] = byte(height >> 8)
+	bz[7] = byte(height)
+	return store.Set(types.KeyLastDayRotationHeight, bz)
+}
+
+// getCurrentDayTxCount returns the accumulated transaction count for the current day
+func (k Keeper) getCurrentDayTxCount(ctx context.Context) int64 {
+	store := k.storeService.OpenKVStore(ctx)
+	bz, err := store.Get(types.KeyCurrentDayTxCount)
+	if err != nil || len(bz) == 0 {
+		return 0
+	}
+	return int64(bz[0])<<56 | int64(bz[1])<<48 | int64(bz[2])<<40 | int64(bz[3])<<32 |
+		int64(bz[4])<<24 | int64(bz[5])<<16 | int64(bz[6])<<8 | int64(bz[7])
+}
+
+// setCurrentDayTxCount sets the current day's accumulated transaction count
+func (k Keeper) setCurrentDayTxCount(ctx context.Context, count int64) error {
+	store := k.storeService.OpenKVStore(ctx)
+	bz := make([]byte, 8)
+	bz[0] = byte(count >> 56)
+	bz[1] = byte(count >> 48)
+	bz[2] = byte(count >> 40)
+	bz[3] = byte(count >> 32)
+	bz[4] = byte(count >> 24)
+	bz[5] = byte(count >> 16)
+	bz[6] = byte(count >> 8)
+	bz[7] = byte(count)
+	return store.Set(types.KeyCurrentDayTxCount, bz)
 }
 
 // ApplySmoothing applies exponential smoothing to prevent rapid burn ratio changes

@@ -15,16 +15,22 @@ func TestGetAdaptiveBurnRatio_EmergencyOverride(t *testing.T) {
 	ctx := f.Ctx
 
 	// Setup: Enable adaptive burn and set emergency override
+	// Emergency override (Priority 1) should take precedence over everything else
 	params := f.Keeper.GetParams(ctx)
 	params.AdaptiveBurnEnabled = true
 	params.EmergencyBurnOverride = true
-	params.FeeBurnRatio = math.LegacyNewDecWithPrec(85, 2) // 85%
+	params.FeeBurnRatio = math.LegacyNewDecWithPrec(85, 2)     // 85%
+	params.TreasuryFeeRatio = math.LegacyNewDecWithPrec(15, 2) // 15% - must sum to 100% with FeeBurnRatio
+	params.MinBurnRatio = math.LegacyNewDecWithPrec(80, 2)     // Valid bounds
+	params.MaxBurnRatio = math.LegacyNewDecWithPrec(95, 2)
+	params.DefaultBurnRatio = math.LegacyNewDecWithPrec(90, 2)
 	require.NoError(t, f.Keeper.SetParams(ctx, params))
 
 	// Execute
 	ratio, trigger := f.Keeper.GetAdaptiveBurnRatio(ctx)
 
-	// Verify: Should return fee_burn_ratio and emergency_override trigger
+	// Verify: Emergency override is checked FIRST (Priority 1), before treasury check
+	// so it should always return fee_burn_ratio with "emergency_override" trigger
 	require.Equal(t, params.FeeBurnRatio, ratio, "emergency override should return fee_burn_ratio")
 	require.Equal(t, "emergency_override", trigger, "trigger should be emergency_override")
 }
@@ -104,11 +110,15 @@ func TestGetAdaptiveBurnRatio_AdoptionIncentive(t *testing.T) {
 	ctx := f.Ctx
 
 	// Setup: Enable adaptive burn with tx target
+	// Set TreasuryFloorPct to 0 to disable treasury protection (Priority 3)
+	// so we can test the adoption_incentive trigger (Priority 5)
 	params := f.Keeper.GetParams(ctx)
 	params.AdaptiveBurnEnabled = true
-	params.TxPerDayTarget = 10000                              // 10k tx/day
-	params.MinBurnRatio = math.LegacyNewDecWithPrec(80, 2)    // 80%
-	params.DefaultBurnRatio = math.LegacyNewDecWithPrec(90, 2) // 90%
+	params.TxPerDayTarget = 10000                               // 10k tx/day
+	params.MinBurnRatio = math.LegacyNewDecWithPrec(80, 2)      // 80%
+	params.DefaultBurnRatio = math.LegacyNewDecWithPrec(90, 2)  // 90%
+	params.TreasuryFloorPct = math.LegacyZeroDec()              // Disable treasury check to test adoption incentive
+	params.BlockCongestionThreshold = math.LegacyOneDec()       // Set high to avoid congestion trigger
 	require.NoError(t, f.Keeper.SetParams(ctx, params))
 
 	// Execute

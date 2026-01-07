@@ -58,9 +58,9 @@ func (qs queryServer) BlockUtilization(ctx context.Context, req *types.QueryBloc
 	currentUtilization := qs.k.GetBlockUtilization(ctx)
 	params := qs.k.GetParams(ctx)
 
-	// TODO: Get actual block gas values from context
-	blockGasUsed := int64(0)
-	maxBlockGas := int64(0)
+	// Get stored block gas values from previous block
+	blockGasUsed := qs.k.GetPreviousBlockGasUsed(ctx)
+	maxBlockGas := qs.k.GetMaxBlockGas(ctx)
 
 	return &types.QueryBlockUtilizationResponse{
 		Utilization:       currentUtilization,

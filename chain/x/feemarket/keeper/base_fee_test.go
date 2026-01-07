@@ -231,10 +231,10 @@ func TestBaseFeeElasticityMultiplier(t *testing.T) {
 			initialBaseFee, newBaseFee, newBaseFee.Quo(initialBaseFee).MustFloat64())
 	})
 
-	// Test with higher elasticity
+	// Test with higher elasticity (max allowed is 1.50)
 	t.Run("high elasticity multiplier", func(t *testing.T) {
 		params := f.keeper.GetParams(f.ctx)
-		params.ElasticityMultiplier = math.LegacyMustNewDecFromStr("2.0")
+		params.ElasticityMultiplier = math.LegacyMustNewDecFromStr("1.45") // Near max allowed
 		err := f.keeper.SetParams(f.ctx, params)
 		require.NoError(t, err)
 
@@ -255,7 +255,7 @@ func TestBaseFeeElasticityMultiplier(t *testing.T) {
 		// Should increase more aggressively with higher elasticity
 		require.True(t, newBaseFee.GT(initialBaseFee))
 
-		t.Logf("With 2x elasticity - Initial: %s, New: %s, Effect: %.2fx",
+		t.Logf("With 1.45x elasticity - Initial: %s, New: %s, Effect: %.2fx",
 			initialBaseFee, newBaseFee, newBaseFee.Quo(initialBaseFee).MustFloat64())
 	})
 }

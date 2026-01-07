@@ -12,32 +12,41 @@ import (
 func TestInitGenesis(t *testing.T) {
 	f := setupTest(t)
 
-	// Create custom genesis state
+	// Create custom genesis state with valid anchor lane parameters
 	genesisState := types.GenesisState{
 		Params: types.FeeMarketParams{
 			MinGasPrice:            math.LegacyMustNewDecFromStr("0.100"),
 			BaseFeeEnabled:         true,
 			BaseFeeInitial:         math.LegacyMustNewDecFromStr("0.075"),
-			ElasticityMultiplier:   math.LegacyMustNewDecFromStr("1.5"),
+			ElasticityMultiplier:   math.LegacyMustNewDecFromStr("1.40"), // Max 1.50
 			MaxTipRatio:            math.LegacyMustNewDecFromStr("0.25"),
 			TargetBlockUtilization: math.LegacyMustNewDecFromStr("0.40"),
-			MaxTxGas:               15000000,
+			MaxTxGas:               5000000, // Anchor lane max tx gas
 			FreeTxQuota:            200,
 			BurnCool:               math.LegacyMustNewDecFromStr("0.15"),
 			BurnNormal:             math.LegacyMustNewDecFromStr("0.25"),
-			BurnHot:                math.LegacyMustNewDecFromStr("0.50"),
+			BurnHot:                math.LegacyMustNewDecFromStr("0.45"), // Must be <= MaxBurnRatio
 			UtilCoolThreshold:      math.LegacyMustNewDecFromStr("0.20"),
 			UtilHotThreshold:       math.LegacyMustNewDecFromStr("0.40"),
 			ValidatorFeeRatio:      math.LegacyMustNewDecFromStr("0.80"),
 			TreasuryFeeRatio:       math.LegacyMustNewDecFromStr("0.20"),
-			MaxBurnRatio:           math.LegacyMustNewDecFromStr("0.60"),
+			MaxBurnRatio:           math.LegacyMustNewDecFromStr("0.50"), // Max allowed is 0.50
 			MinGasPriceFloor:       math.LegacyMustNewDecFromStr("0.050"),
+			// Include activity multipliers from defaults
+			MultiplierMessaging:      math.LegacyMustNewDecFromStr("0.50"),
+			MultiplierPosGas:         math.LegacyMustNewDecFromStr("1.00"),
+			MultiplierPocAnchoring:   math.LegacyMustNewDecFromStr("0.75"),
+			MultiplierSmartContracts: math.LegacyMustNewDecFromStr("1.50"),
+			MultiplierAiQueries:      math.LegacyMustNewDecFromStr("1.25"),
+			MultiplierSequencer:      math.LegacyMustNewDecFromStr("1.25"),
+			MinMultiplier:            math.LegacyMustNewDecFromStr("0.25"),
+			MaxMultiplier:            math.LegacyMustNewDecFromStr("2.00"),
 		},
-		CurrentBaseFee:             math.LegacyMustNewDecFromStr("0.080"),
-		PreviousBlockUtilization:   math.LegacyMustNewDecFromStr("0.30"),
-		CumulativeBurned:           math.NewInt(1000000000),
-		CumulativeToValidators:     math.NewInt(4000000000),
-		CumulativeToTreasury:       math.NewInt(1000000000),
+		CurrentBaseFee:           math.LegacyMustNewDecFromStr("0.080"),
+		PreviousBlockUtilization: math.LegacyMustNewDecFromStr("0.30"),
+		CumulativeBurned:         math.NewInt(1000000000),
+		CumulativeToValidators:   math.NewInt(4000000000),
+		CumulativeToTreasury:     math.NewInt(1000000000),
 	}
 
 	// Initialize genesis
@@ -48,7 +57,7 @@ func TestInitGenesis(t *testing.T) {
 	params := f.keeper.GetParams(f.ctx)
 	requireDecEqual(t, math.LegacyMustNewDecFromStr("0.100"), params.MinGasPrice)
 	requireDecEqual(t, math.LegacyMustNewDecFromStr("0.075"), params.BaseFeeInitial)
-	require.Equal(t, uint64(15000000), params.MaxTxGas)
+	require.Equal(t, int64(5000000), params.MaxTxGas)
 
 	// Verify base fee was set
 	baseFee := f.keeper.GetCurrentBaseFee(f.ctx)
@@ -117,7 +126,7 @@ func TestExportGenesis(t *testing.T) {
 func TestGenesisRoundTrip(t *testing.T) {
 	f := setupTest(t)
 
-	// Create initial genesis state
+	// Create initial genesis state with valid anchor lane parameters
 	initialGenesis := types.GenesisState{
 		Params: types.FeeMarketParams{
 			MinGasPrice:            math.LegacyMustNewDecFromStr("0.080"),
@@ -126,23 +135,32 @@ func TestGenesisRoundTrip(t *testing.T) {
 			ElasticityMultiplier:   math.LegacyMustNewDecFromStr("1.25"),
 			MaxTipRatio:            math.LegacyMustNewDecFromStr("0.30"),
 			TargetBlockUtilization: math.LegacyMustNewDecFromStr("0.35"),
-			MaxTxGas:               12000000,
+			MaxTxGas:               5000000, // Anchor lane max
 			FreeTxQuota:            150,
 			BurnCool:               math.LegacyMustNewDecFromStr("0.12"),
 			BurnNormal:             math.LegacyMustNewDecFromStr("0.22"),
-			BurnHot:                math.LegacyMustNewDecFromStr("0.45"),
+			BurnHot:                math.LegacyMustNewDecFromStr("0.45"), // <= MaxBurnRatio
 			UtilCoolThreshold:      math.LegacyMustNewDecFromStr("0.18"),
 			UtilHotThreshold:       math.LegacyMustNewDecFromStr("0.35"),
 			ValidatorFeeRatio:      math.LegacyMustNewDecFromStr("0.75"),
 			TreasuryFeeRatio:       math.LegacyMustNewDecFromStr("0.25"),
-			MaxBurnRatio:           math.LegacyMustNewDecFromStr("0.55"),
+			MaxBurnRatio:           math.LegacyMustNewDecFromStr("0.50"), // Max allowed
 			MinGasPriceFloor:       math.LegacyMustNewDecFromStr("0.040"),
+			// Include activity multipliers
+			MultiplierMessaging:      math.LegacyMustNewDecFromStr("0.50"),
+			MultiplierPosGas:         math.LegacyMustNewDecFromStr("1.00"),
+			MultiplierPocAnchoring:   math.LegacyMustNewDecFromStr("0.75"),
+			MultiplierSmartContracts: math.LegacyMustNewDecFromStr("1.50"),
+			MultiplierAiQueries:      math.LegacyMustNewDecFromStr("1.25"),
+			MultiplierSequencer:      math.LegacyMustNewDecFromStr("1.25"),
+			MinMultiplier:            math.LegacyMustNewDecFromStr("0.25"),
+			MaxMultiplier:            math.LegacyMustNewDecFromStr("2.00"),
 		},
-		CurrentBaseFee:             math.LegacyMustNewDecFromStr("0.070"),
-		PreviousBlockUtilization:   math.LegacyMustNewDecFromStr("0.38"),
-		CumulativeBurned:           math.NewInt(2500000000),
-		CumulativeToValidators:     math.NewInt(5000000000),
-		CumulativeToTreasury:       math.NewInt(1500000000),
+		CurrentBaseFee:           math.LegacyMustNewDecFromStr("0.070"),
+		PreviousBlockUtilization: math.LegacyMustNewDecFromStr("0.38"),
+		CumulativeBurned:         math.NewInt(2500000000),
+		CumulativeToValidators:   math.NewInt(5000000000),
+		CumulativeToTreasury:     math.NewInt(1500000000),
 	}
 
 	// Initialize genesis
@@ -183,10 +201,10 @@ func TestDefaultGenesis(t *testing.T) {
 	defaultGenesis := types.DefaultGenesisState()
 	require.NotNil(t, defaultGenesis)
 
-	// Verify defaults
+	// Verify defaults (anchor lane: 0.025 gas price)
 	require.True(t, defaultGenesis.Params.BaseFeeEnabled)
-	requireDecEqual(t, math.LegacyMustNewDecFromStr("0.050000000000000000"), defaultGenesis.Params.MinGasPrice)
-	requireDecEqual(t, math.LegacyMustNewDecFromStr("0.050000000000000000"), defaultGenesis.CurrentBaseFee)
+	requireDecEqual(t, math.LegacyMustNewDecFromStr("0.025000000000000000"), defaultGenesis.Params.MinGasPrice)
+	requireDecEqual(t, math.LegacyMustNewDecFromStr("0.025000000000000000"), defaultGenesis.CurrentBaseFee)
 	require.True(t, defaultGenesis.PreviousBlockUtilization.IsZero())
 	require.True(t, defaultGenesis.CumulativeBurned.IsZero())
 
@@ -199,5 +217,5 @@ func TestDefaultGenesis(t *testing.T) {
 	require.NotNil(t, params)
 
 	baseFee := f.keeper.GetCurrentBaseFee(f.ctx)
-	requireDecEqual(t, math.LegacyMustNewDecFromStr("0.050000000000000000"), baseFee)
+	requireDecEqual(t, math.LegacyMustNewDecFromStr("0.025000000000000000"), baseFee)
 }

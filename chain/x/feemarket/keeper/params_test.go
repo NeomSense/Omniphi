@@ -16,11 +16,12 @@ func TestGetSetParams(t *testing.T) {
 	params := f.keeper.GetParams(f.ctx)
 	require.NotNil(t, params)
 
-	// Verify default values
-	requireDecEqual(t, math.LegacyMustNewDecFromStr("0.050000000000000000"), params.MinGasPrice)
+	// Verify default values (anchor lane defaults: 0.025 gas price, 2M max tx gas)
+	// MaxTxGas = 2M ensures no single transaction can dominate a block (3.3% of 60M block)
+	requireDecEqual(t, math.LegacyMustNewDecFromStr("0.025000000000000000"), params.MinGasPrice)
 	require.True(t, params.BaseFeeEnabled)
-	requireDecEqual(t, math.LegacyMustNewDecFromStr("0.050000000000000000"), params.BaseFeeInitial)
-	require.Equal(t, uint64(10000000), params.MaxTxGas)
+	requireDecEqual(t, math.LegacyMustNewDecFromStr("0.025000000000000000"), params.BaseFeeInitial)
+	require.Equal(t, int64(2000000), params.MaxTxGas) // Anchor lane: 2M max tx gas (3.3% of block)
 
 	// Update params
 	newParams := params
@@ -156,15 +157,15 @@ func TestTreasuryAddress(t *testing.T) {
 
 	// Get treasury address
 	addr := f.keeper.GetTreasuryAddress(f.ctx)
-	require.Equal(t, treasuryAddr, addr)
+	require.Equal(t, treasuryAddr, []byte(addr))
 }
 
 func TestBaseFeeGetSet(t *testing.T) {
 	f := setupTest(t)
 
-	// Get initial base fee
+	// Get initial base fee (anchor lane default: 0.025)
 	baseFee := f.keeper.GetCurrentBaseFee(f.ctx)
-	requireDecEqual(t, math.LegacyMustNewDecFromStr("0.050000000000000000"), baseFee)
+	requireDecEqual(t, math.LegacyMustNewDecFromStr("0.025000000000000000"), baseFee)
 
 	// Set new base fee
 	newBaseFee := math.LegacyMustNewDecFromStr("0.075")

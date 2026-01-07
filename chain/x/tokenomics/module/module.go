@@ -199,10 +199,19 @@ func (am AppModule) BeginBlock(ctx context.Context) error {
 func (am AppModule) EndBlock(ctx context.Context) error {
 	// Process block fees FIRST (90/10 burn/treasury split)
 	// This must happen before IBC acknowledgements to ensure all fees from this block are processed
-	if err := am.keeper.ProcessBlockFees(ctx); err != nil {
+	// Also returns the count of transactions (based on whether fees were processed)
+	txCount, err := am.keeper.ProcessBlockFeesWithCount(ctx)
+	if err != nil {
 		// Log error but don't halt chain - fee processing is important but not critical
 		am.keeper.Logger(ctx).Error("failed to process block fees", "error", err)
 		// Don't return error to avoid halting the chain
+	}
+
+	// Record block transactions for 7-day rolling average (used by adaptive burn)
+	// Even empty blocks should be recorded (txCount=0) to maintain accurate averages
+	if err := am.keeper.RecordBlockTransactions(ctx, txCount); err != nil {
+		am.keeper.Logger(ctx).Error("failed to record block transactions", "error", err)
+		// Don't halt chain - this is a metrics tracking feature
 	}
 
 	// Process IBC packet acknowledgements

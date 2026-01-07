@@ -493,8 +493,9 @@ func (suite *KeeperTestSuite) TestInflationBounds_P0_INF_001() {
 func (suite *KeeperTestSuite) TestInflationBounds_P0_INF_002() {
 	params := suite.keeper.GetParams(suite.ctx)
 
-	// Attempt to set inflation below minimum
-	params.InflationRate = params.InflationMin.Sub(math.LegacyNewDecWithPrec(1, 2)) // min - 1%
+	// Attempt to set inflation below minimum (use a small positive value below min)
+	// min is 0.5% (0.005), so 0.3% (0.003) is below min but still positive
+	params.InflationRate = math.LegacyNewDecWithPrec(3, 3) // 0.3%
 	err := suite.keeper.SetParams(suite.ctx, params)
 
 	suite.Require().Error(err)
@@ -513,32 +514,32 @@ func (suite *KeeperTestSuite) TestInflationBounds_P0_INF_003() {
 	suite.Require().ErrorIs(err, types.ErrInflationAboveMax)
 }
 
-// TestInflationProtocolCap_P0_INF_004 tests 5% protocol cap cannot be exceeded
+// TestInflationProtocolCap_P0_INF_004 tests 3% protocol cap cannot be exceeded
 func (suite *KeeperTestSuite) TestInflationProtocolCap_P0_INF_004() {
 	params := suite.keeper.GetParams(suite.ctx)
 
-	// Attempt to set inflation_max above 5%
-	params.InflationMax = math.LegacyNewDecWithPrec(6, 2) // 6%
+	// Attempt to set inflation_max above 3% (protocol hard cap)
+	params.InflationMax = math.LegacyNewDecWithPrec(4, 2) // 4%
 	err := suite.keeper.SetParams(suite.ctx, params)
 
 	suite.Require().Error(err)
 	suite.Require().ErrorIs(err, types.ErrProtocolCapViolation)
 }
 
-// TestInflationProtocolCap_P0_INF_005 tests setting inflation_max to exactly 5% succeeds
+// TestInflationProtocolCap_P0_INF_005 tests setting inflation_max to exactly 3% succeeds
 func (suite *KeeperTestSuite) TestInflationProtocolCap_P0_INF_005() {
 	params := suite.keeper.GetParams(suite.ctx)
 
-	// Set inflation_max to exactly 5%
-	params.InflationMax = math.LegacyNewDecWithPrec(5, 2)
-	params.InflationRate = math.LegacyNewDecWithPrec(5, 2) // Also set rate to 5%
+	// Set inflation_max to exactly 3% (protocol hard cap)
+	params.InflationMax = math.LegacyNewDecWithPrec(3, 2)
+	params.InflationRate = math.LegacyNewDecWithPrec(3, 2) // Also set rate to 3%
 	err := suite.keeper.SetParams(suite.ctx, params)
 
 	suite.Require().NoError(err)
 
 	// Verify it was set
 	newParams := suite.keeper.GetParams(suite.ctx)
-	suite.Require().True(newParams.InflationMax.Equal(math.LegacyNewDecWithPrec(5, 2)))
+	suite.Require().True(newParams.InflationMax.Equal(math.LegacyNewDecWithPrec(3, 2)))
 }
 
 // TestBlockProvisions_P0_INF_006 tests block provisions calculation accuracy

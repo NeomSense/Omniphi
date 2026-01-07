@@ -67,6 +67,19 @@ var (
 
 	// Emission record prefix
 	EmissionRecordPrefix = []byte{0x60}
+
+	// Transaction tracking for 7-day rolling average
+	// Stores daily tx counts: key = DailyTxCountPrefix + day_index (0-6)
+	DailyTxCountPrefix = []byte{0x70}
+
+	// Current day index in the rolling window (0-6)
+	KeyCurrentDayIndex = []byte{0x71}
+
+	// Last recorded block height for day rotation
+	KeyLastDayRotationHeight = []byte{0x72}
+
+	// Current day's accumulated transaction count
+	KeyCurrentDayTxCount = []byte{0x73}
 )
 
 // Event types
@@ -148,4 +161,10 @@ func GetEmissionRecordKey(emissionID uint64) []byte {
 	b[7] = byte(emissionID)
 
 	return append(EmissionRecordPrefix, b...)
+}
+
+// GetDailyTxCountKey returns the store key for a specific day's transaction count
+// dayIndex should be 0-6 representing the 7 days in the rolling window
+func GetDailyTxCountKey(dayIndex uint8) []byte {
+	return append(DailyTxCountPrefix, dayIndex)
 }
