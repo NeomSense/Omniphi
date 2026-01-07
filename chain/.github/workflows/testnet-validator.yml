@@ -1,0 +1,101 @@
+# Omniphi Testnet Validator Setup
+# Automated validator node deployment
+
+name: Testnet Validator Setup
+
+on:
+  workflow_dispatch:
+    inputs:
+      moniker:
+        description: 'Validator moniker (name)'
+        required: true
+        default: 'omniphi-validator'
+      chain_id:
+        description: 'Chain ID'
+        required: true
+        default: 'omniphi-testnet-1'
+      genesis_url:
+        description: 'Genesis file URL (optional)'
+        required: false
+        default: ''
+      seeds:
+        description: 'Seed nodes (comma-separated)'
+        required: false
+        default: ''
+
+jobs:
+  setup-validator:
+    name: Setup Validator Node
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: true
+
+      - name: Build posd
+        working-directory: ./chain
+        run: |
+          make build
+          sudo mv ./build/posd /usr/local/bin/
+
+      - name: Initialize node
+        run: |
+          posd init ${{ github.event.inputs.moniker }} --chain-id ${{ github.event.inputs.chain_id }}
+
+      - name: Configure node
+        run: |
+          # Set minimum gas prices
+          sed -i 's/minimum-gas-prices = ""/minimum-gas-prices = "0.025uomni"/' ~/.pos/config/app.toml
+
+          # Enable API and unsafe CORS
+          sed -i 's/enable = false/enable = true/' ~/.pos/config/app.toml
+          sed -i 's/enabled-unsafe-cors = false/enabled-unsafe-cors = true/' ~/.pos/config/app.toml
+
+          # Configure seeds if provided
+          if [ -n "${{ github.event.inputs.seeds }}" ]; then
+            sed -i 's/seeds = ""/seeds = "${{ github.event.inputs.seeds }}"/' ~/.pos/config/config.toml
+          fi
+
+      - name: Download genesis (if provided)
+        if: github.event.inputs.genesis_url != ''
+        run: |
+          curl -L ${{ github.event.inputs.genesis_url }} -o ~/.pos/config/genesis.json
+
+      - name: Create validator key
+        run: |
+          echo "Creating validator key..."
+          posd keys add validator --keyring-backend test 2>&1 | tee validator-key.txt
+
+      - name: Upload validator info
+        uses: actions/upload-artifact@v4
+        with:
+          name: validator-info
+          path: |
+            ~/.pos/config/config.toml
+            ~/.pos/config/app.toml
+            validator-key.txt
+
+      - name: Print setup summary
+        run: |
+          echo "=================================="
+          echo "Validator Setup Complete!"
+          echo "=================================="
+          echo ""
+          echo "Chain ID: ${{ github.event.inputs.chain_id }}"
+          echo "Moniker: ${{ github.event.inputs.moniker }}"
+          echo ""
+          echo "Node ID:"
+          posd tendermint show-node-id
+          echo ""
+          echo "Validator Address:"
+          posd keys show validator -a --keyring-backend test
+          echo ""
+          echo "Next steps:"
+          echo "1. Download the validator-info artifact"
+          echo "2. Fund the validator address with tokens"
+          echo "3. Create the validator with: posd tx staking create-validator ..."

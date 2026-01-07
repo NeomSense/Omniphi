@@ -1,0 +1,26 @@
+{
+  "title": "Update block.max_gas to 60M for Anchor Lane",
+  "summary": "This proposal sets the consensus block.max_gas to 60,000,000 (60M) to enforce the anchor lane capacity limit.\n\nRationale:\n- 60M block gas is calculated for ~100 TPS at 4-second blocks (100 × 4 × 150k avg gas)\n- Combined with max_tx_gas=2M, ensures ~30+ transactions needed to fill a block\n- Prevents single-tx dominance and protects validator resources\n- Leaves 67% headroom for burst absorption at 33% target utilization\n- Enforces protocol-level capacity constraints for anchor lane\n\nThe current value of -1 (unlimited) provides no protection against block bloat attacks.",
+  "messages": [
+    {
+      "@type": "/cosmos.consensus.v1.MsgUpdateParams",
+      "authority": "omni10d07y265gmmuvt4z0w9aw880jnsr700j2gz0r8",
+      "block": {
+        "max_bytes": "22020096",
+        "max_gas": "60000000"
+      },
+      "evidence": {
+        "max_age_num_blocks": "100000",
+        "max_age_duration": "48h",
+        "max_bytes": "1048576"
+      },
+      "validator": {
+        "pub_key_types": [
+          "ed25519"
+        ]
+      }
+    }
+  ],
+  "deposit": "10000000omniphi",
+  "metadata": "Anchor Lane Block Gas Limit: unlimited -> 60M"
+}

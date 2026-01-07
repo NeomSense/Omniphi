@@ -1,0 +1,45 @@
+{
+  "_comment": "Template for updating feemarket parameters.",
+  "_instructions": [
+    "1. Query current params: posd query feemarket params --output json",
+    "2. Copy this template and update the values you want to change",
+    "3. Include the complete params object"
+  ],
+  "messages": [
+    {
+      "@type": "/omniphi.feemarket.v1.MsgUpdateParams",
+      "authority": "omni10d07y265gmmuvt4z0w9aw880jnsr700j2gz0r8",
+      "params": {
+        "min_gas_price": "0.025000000000000000",
+        "base_fee_enabled": true,
+        "base_fee_initial": "0.025000000000000000",
+        "elasticity_multiplier": "1.125000000000000000",
+        "max_tip_ratio": "0.200000000000000000",
+        "target_block_utilization": "0.330000000000000000",
+        "max_tx_gas": "2000000",
+        "free_tx_quota": "100",
+        "burn_cool": "0.100000000000000000",
+        "burn_normal": "0.200000000000000000",
+        "burn_hot": "0.400000000000000000",
+        "util_cool_threshold": "0.160000000000000000",
+        "util_hot_threshold": "0.330000000000000000",
+        "validator_fee_ratio": "0.700000000000000000",
+        "treasury_fee_ratio": "0.300000000000000000",
+        "max_burn_ratio": "0.500000000000000000",
+        "min_gas_price_floor": "0.010000000000000000",
+        "multiplier_messaging": "0.500000000000000000",
+        "multiplier_pos_gas": "1.000000000000000000",
+        "multiplier_poc_anchoring": "0.750000000000000000",
+        "multiplier_smart_contracts": "1.500000000000000000",
+        "multiplier_ai_queries": "1.250000000000000000",
+        "multiplier_sequencer": "1.250000000000000000",
+        "min_multiplier": "0.250000000000000000",
+        "max_multiplier": "2.000000000000000000"
+      }
+    }
+  ],
+  "metadata": "Update feemarket parameters",
+  "deposit": "10000000omniphi",
+  "title": "Update Feemarket Parameters",
+  "summary": "This proposal updates the feemarket parameters for the chain."
+}

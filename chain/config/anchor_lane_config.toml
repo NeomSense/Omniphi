@@ -1,0 +1,242 @@
+# ===============================================================================
+# OMNIPHI ANCHOR LANE - CometBFT Configuration
+# ===============================================================================
+# This configuration is optimized for the Anchor Lane:
+# - Block time: ~4 seconds
+# - Target TPS: ~100
+# - Security & decentralization first
+# - Mixed validator hardware must remain viable
+#
+# IMPORTANT: This is NOT a smart contract execution environment.
+# The anchor lane exists solely for: staking, governance, PoC, and protocol state.
+# High-throughput smart contracts run on PoSeq, which commits to this anchor.
+# ===============================================================================
+
+#######################################################
+###         Consensus Configuration Options         ###
+#######################################################
+[consensus]
+
+wal_file = "data/cs.wal/wal"
+
+# ===============================================================================
+# TIMEOUT CALCULATIONS FOR 4-SECOND BLOCK TIME
+# ===============================================================================
+# Target: 4.0 second average block time
+#
+# Block time breakdown:
+#   - Propose phase:    1.5s (timeout_propose)
+#   - Prevote phase:    0.5s (timeout_prevote)
+#   - Precommit phase:  0.5s (timeout_precommit)
+#   - Commit delay:     1.5s (timeout_commit)
+#   - Network overhead: ~0.5s (propagation, verification)
+#   - Total: ~4.0s
+#
+# Design considerations:
+#   - Tolerates global validator latency (up to 200ms RTT)
+#   - Allows PoC verification overhead
+#   - Works with lower-end validators (4 core, 8GB RAM)
+#   - Conservative to prevent chain halts
+# ===============================================================================
+
+# timeout_propose: How long to wait for a proposal before prevoting nil
+# Set to 1.5s to give proposer time to:
+# - Gather transactions from mempool
+# - Execute block (should be <2.5s with 2M max tx gas)
+# - Broadcast to all validators
+timeout_propose = "1500ms"
+
+# timeout_propose_delta: Additional time per round
+# 200ms per round allows graceful degradation if rounds fail
+timeout_propose_delta = "200ms"
+
+# timeout_prevote: How long to wait for 2/3+ prevotes
+# 500ms is sufficient for global propagation with healthy network
+timeout_prevote = "500ms"
+
+# timeout_prevote_delta: Additional time per round
+timeout_prevote_delta = "200ms"
+
+# timeout_precommit: How long to wait for 2/3+ precommits
+# 500ms mirrors prevote timing
+timeout_precommit = "500ms"
+
+# timeout_precommit_delta: Additional time per round
+timeout_precommit_delta = "200ms"
+
+# timeout_commit: Delay between commit and next block proposal
+# 1.5s allows:
+# - Block finalization and broadcast
+# - Slow validators to catch up
+# - PoC scoring completion
+# - Network propagation buffer
+timeout_commit = "1500ms"
+
+# ===============================================================================
+# TIMING SUMMARY
+# ===============================================================================
+# Round 0 (normal):
+#   propose(1.5) + prevote(0.5) + precommit(0.5) + commit(1.5) = 4.0s
+#
+# Round 1 (if needed):
+#   Each phase adds delta (0.2s each) = 4.8s
+#
+# Round 2+:
+#   Continues adding deltas, allowing recovery from temporary issues
+# ===============================================================================
+
+# Double-sign protection: Check last N blocks for same validator key
+# Set to 0 to disable (recommended for testnets, enable in production)
+double_sign_check_height = 0
+
+# Skip timeout commit: Start new height immediately after precommit
+# MUST be false for consistent block times
+skip_timeout_commit = false
+
+# Empty blocks: Create blocks even with no transactions
+# Required for liveness - ensures chain progresses
+create_empty_blocks = true
+create_empty_blocks_interval = "0s"
+
+# Gossip sleep durations
+peer_gossip_sleep_duration = "100ms"
+peer_query_maj23_sleep_duration = "2s"
+
+
+#######################################################
+###          Mempool Configuration Option          ###
+#######################################################
+[mempool]
+
+# Mempool type: "flood" for standard gossip
+type = "flood"
+
+# Recheck transactions after each block
+recheck = true
+
+# Recheck timeout: 1s is sufficient for anchor lane tx sizes
+recheck_timeout = "1s"
+
+# Broadcast transactions to peers
+broadcast = true
+
+# Maximum transactions in mempool
+# 5000 txs at 150k gas avg = 750M gas = ~12.5 blocks at 60M/block
+size = 5000
+
+# Maximum total bytes for all txs in mempool
+# 1GB allows for burst absorption
+max_txs_bytes = 1073741824
+
+# Cache size for filtering duplicate transactions
+cache_size = 10000
+
+# Keep invalid transactions in cache
+keep-invalid-txs-in-cache = false
+
+# Maximum size of a single transaction in bytes
+# 1MB is generous for anchor lane operations (no smart contracts)
+max_tx_bytes = 1048576
+
+
+#######################################################
+###       RPC Server Configuration Options          ###
+#######################################################
+[rpc]
+
+# RPC listen address
+laddr = "tcp://0.0.0.0:26657"
+
+# CORS configuration (restrict in production)
+cors_allowed_origins = []
+cors_allowed_methods = ["HEAD", "GET", "POST"]
+cors_allowed_headers = ["Origin", "Accept", "Content-Type", "X-Requested-With", "X-Server-Time"]
+
+# Maximum connections
+max_open_connections = 900
+
+# Timeout for broadcast_tx_commit
+# 10s allows for ~2.5 blocks to confirm
+timeout_broadcast_tx_commit = "10s"
+
+
+#######################################################
+###           P2P Configuration Options             ###
+#######################################################
+[p2p]
+
+# P2P listen address
+laddr = "tcp://0.0.0.0:26656"
+
+# Seed nodes (comma-separated)
+seeds = ""
+
+# Persistent peers (comma-separated)
+persistent_peers = ""
+
+# Address book settings
+addr_book_file = "config/addrbook.json"
+addr_book_strict = true
+
+# Peer limits
+max_num_inbound_peers = 40
+max_num_outbound_peers = 10
+
+# Connection timeouts
+handshake_timeout = "20s"
+dial_timeout = "3s"
+
+# Message packet size (1KB default)
+max_packet_msg_payload_size = 1024
+
+# Bandwidth rates (5MB/s each direction)
+send_rate = 5120000
+recv_rate = 5120000
+
+# Peer exchange
+pex = true
+seed_mode = false
+
+
+#######################################################
+###       Instrumentation Configuration Options     ###
+#######################################################
+[instrumentation]
+
+# Enable Prometheus metrics
+# REQUIRED for anchor lane monitoring
+prometheus = true
+
+# Prometheus listen address
+prometheus_listen_addr = ":26660"
+
+# Maximum connections for metrics endpoint
+max_open_connections = 10
+
+# Metrics namespace
+namespace = "cometbft"
+
+
+# ===============================================================================
+# ANCHOR LANE MONITORING TARGETS
+# ===============================================================================
+# Monitor these metrics for anchor lane health:
+#
+# Block Time:
+#   - cometbft_consensus_block_interval_seconds
+#   - Target: 4.0s, Warning: >4.5s, Critical: >5.0s
+#
+# Block Execution:
+#   - Target: <2.5s, Warning: >2.5s, Critical: >3.5s
+#
+# Mempool:
+#   - cometbft_mempool_size
+#   - Target: <1000, Warning: >3000, Critical: >5000
+#
+# Gas Utilization:
+#   - Target: 33%, Warning: >70%, Critical: >90%
+#
+# Consensus:
+#   - cometbft_consensus_rounds (should be 0 most of the time)
+#   - cometbft_consensus_validators_power
+# ===============================================================================

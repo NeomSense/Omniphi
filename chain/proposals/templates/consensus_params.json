@@ -1,0 +1,34 @@
+{
+  "_comment": "Template for updating consensus parameters. All fields are REQUIRED.",
+  "_instructions": [
+    "1. Query current params: posd query consensus params --output json",
+    "2. Copy this template and update the values you want to change",
+    "3. Make sure to include ALL sections (block, evidence, validator, abci)",
+    "4. The authority address is the gov module address"
+  ],
+  "messages": [
+    {
+      "@type": "/cosmos.consensus.v1.MsgUpdateParams",
+      "authority": "omni10d07y265gmmuvt4z0w9aw880jnsr700j2gz0r8",
+      "block": {
+        "max_bytes": "22020096",
+        "max_gas": "60000000"
+      },
+      "evidence": {
+        "max_age_num_blocks": "100000",
+        "max_age_duration": "172800s",
+        "max_bytes": "1048576"
+      },
+      "validator": {
+        "pub_key_types": ["ed25519"]
+      },
+      "abci": {
+        "vote_extensions_enable_height": "0"
+      }
+    }
+  ],
+  "metadata": "Update consensus parameters",
+  "deposit": "10000000omniphi",
+  "title": "Update Consensus Parameters",
+  "summary": "This proposal updates the consensus parameters for the chain."
+}
