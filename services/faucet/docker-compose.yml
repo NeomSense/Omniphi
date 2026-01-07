@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  faucet:
+    build: .
+    container_name: omniphi-faucet
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - FAUCET_PORT=8080
+      - FAUCET_HOST=0.0.0.0
+      - CHAIN_ID=omniphi-testnet-2
+      - RPC_ENDPOINT=http://host.docker.internal:26657
+      - GRPC_ENDPOINT=host.docker.internal:9090
+      - DENOM=uomni
+      - BECH32_PREFIX=omni
+      - FAUCET_MNEMONIC=${FAUCET_MNEMONIC}
+      - DISTRIBUTION_AMOUNT=10000000000  # 10,000 OMNI
+      - COOLDOWN_SECONDS=86400  # 24 hours
+      - DAILY_CAP=1000
+      - ALLOWED_ORIGINS=*
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
