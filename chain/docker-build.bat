@@ -1,3 +1,0 @@
-@echo off
-echo Building blockchain with Ignite CLI Docker...
-docker run --rm -v "%cd%:/workspace" -w /workspace ignitehq/cli:latest chain build
