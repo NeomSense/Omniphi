@@ -196,6 +196,7 @@ func New(
 	}
 
 	// Set custom ante handler with MaxTxGasDecorator for anchor lane enforcement
+	// and ProposalValidationDecorator for governance proposal validation
 	anteHandler, err := NewAnteHandler(
 		HandlerOptions{
 			HandlerOptions: ante.HandlerOptions{
@@ -206,6 +207,10 @@ func New(
 			},
 			CircuitKeeper:   &app.CircuitBreakerKeeper,
 			FeemarketKeeper: &app.FeemarketKeeper,
+			// Governance proposal validation options
+			Codec:     app.appCodec,
+			MsgRouter: app.MsgServiceRouter(),
+			Logger:    logger,
 		},
 	)
 	if err != nil {

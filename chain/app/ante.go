@@ -2,14 +2,18 @@ package app
 
 import (
 	"cosmossdk.io/errors"
+	"cosmossdk.io/log"
 	circuitante "cosmossdk.io/x/circuit/ante"
 	circuitkeeper "cosmossdk.io/x/circuit/keeper"
+	"github.com/cosmos/cosmos-sdk/baseapp"
+	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/cosmos/cosmos-sdk/x/auth/ante"
 
 	feemarketante "pos/x/feemarket/ante"
 	feemarketkeeper "pos/x/feemarket/keeper"
+	govante "pos/x/gov/ante"
 )
 
 // HandlerOptions extends the SDK's AnteHandler options with custom module keepers
@@ -18,6 +22,11 @@ type HandlerOptions struct {
 
 	CircuitKeeper   *circuitkeeper.Keeper
 	FeemarketKeeper *feemarketkeeper.Keeper
+
+	// ProposalValidation options for governance proposal validation
+	Codec     codec.Codec
+	MsgRouter baseapp.MessageRouter
+	Logger    log.Logger
 }
 
 // NewAnteHandler returns an AnteHandler that checks and increments sequence
@@ -58,6 +67,20 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 		ante.NewSigGasConsumeDecorator(options.AccountKeeper, options.SigGasConsumer),
 		ante.NewSigVerificationDecorator(options.AccountKeeper, options.SignModeHandler),
 		ante.NewIncrementSequenceDecorator(options.AccountKeeper),
+	}
+
+	// Add proposal validation decorator if codec and logger are provided
+	// This validates governance proposals before they are accepted into the mempool
+	if options.Codec != nil && options.Logger != nil {
+		// Insert ProposalValidationDecorator after ValidateBasicDecorator
+		// This ensures proposals are validated early but after basic tx validation
+		proposalValidator := govante.NewProposalValidationDecorator(
+			options.Codec,
+			options.MsgRouter,
+			options.Logger,
+		)
+		// Insert at position 4 (after ValidateBasicDecorator)
+		anteDecorators = append(anteDecorators[:4], append([]sdk.AnteDecorator{proposalValidator}, anteDecorators[4:]...)...)
 	}
 
 	return sdk.ChainAnteDecorators(anteDecorators...), nil
