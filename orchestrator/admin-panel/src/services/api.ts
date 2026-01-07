@@ -373,7 +373,7 @@ function generateMockSystemHealth(): SystemHealth {
         last_check: new Date().toISOString(),
       },
       {
-        chain_id: 'omniphi-testnet-1',
+        chain_id: 'omniphi-testnet-2',
         endpoint: 'https://rpc.testnet.omniphi.network',
         status: 'healthy',
         latency_ms: 62,

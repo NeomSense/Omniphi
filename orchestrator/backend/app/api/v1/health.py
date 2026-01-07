@@ -101,7 +101,7 @@ async def system_health():
             "last_check": now.isoformat()
         },
         {
-            "chain_id": "omniphi-testnet-1",
+            "chain_id": "omniphi-testnet-2",
             "endpoint": "https://rpc.testnet.omniphi.network",
             "status": "healthy",
             "latency_ms": random.randint(20, 60),

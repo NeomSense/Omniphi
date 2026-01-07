@@ -11,7 +11,7 @@
 
 # The network chain ID
 # PRODUCTION: omniphi-1
-# TESTNET: omniphi-testnet-1
+# TESTNET: omniphi-testnet-2
 chain-id = "omniphi-1"
 
 # The keyring's backend, where the keys are stored (os|file|kwallet|pass|test|memory)

@@ -57,7 +57,7 @@ async def provision_cloud_validator(setup_request_id: UUID, redeploy: bool = Fal
             container_info = await docker_manager.create_validator_container(
                 validator_name=f"{setup_request.wallet_address[:8]}-{setup_request.id}",
                 moniker=setup_request.validator_name,
-                chain_id="omniphi-testnet-1"  # Use testnet for now
+                chain_id="omniphi-testnet-2"  # Use testnet for now
             )
 
             # Update setup request status to configuring
