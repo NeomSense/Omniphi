@@ -190,10 +190,6 @@ func New(
 	// build app
 	app.App = appBuilder.Build(db, traceStore, baseAppOptions...)
 
-	// Configure store upgrades BEFORE Load() is called
-	// This must happen after Build() but before Load()
-	app.setupStoreUpgrades()
-
 	// register legacy modules
 	if err := app.registerIBCModules(appOpts); err != nil {
 		panic(err)
@@ -232,9 +228,6 @@ func New(
 
 	app.sm.RegisterStoreDecoders()
 
-	// Register upgrade handlers for adding new modules to existing chains
-	app.RegisterUpgradeHandlers()
-
 	// A custom InitChainer sets if extra pre-init-genesis logic is required.
 	// This is necessary for manually registered modules that do not support app wiring.
 	// Manually set the module version map as shown below.
@@ -245,6 +238,10 @@ func New(
 		}
 		return app.App.InitChainer(ctx, req)
 	})
+
+	// Register upgrade handlers and configure store loaders BEFORE Load()
+	// This is required for adding new module stores to existing chains
+	app.RegisterUpgradeHandlers()
 
 	if err := app.Load(loadLatest); err != nil {
 		panic(err)
