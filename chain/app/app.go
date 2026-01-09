@@ -228,6 +228,9 @@ func New(
 
 	app.sm.RegisterStoreDecoders()
 
+	// Register upgrade handlers for adding new modules to existing chains
+	app.RegisterUpgradeHandlers()
+
 	// A custom InitChainer sets if extra pre-init-genesis logic is required.
 	// This is necessary for manually registered modules that do not support app wiring.
 	// Manually set the module version map as shown below.
