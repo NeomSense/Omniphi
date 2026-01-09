@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
 
 	storetypes "cosmossdk.io/store/types"
 	upgradetypes "cosmossdk.io/x/upgrade/types"
@@ -20,7 +21,7 @@ const (
 // RegisterUpgradeHandlers registers upgrade handlers and configures store loaders.
 // This MUST be called BEFORE Load() to properly handle new stores.
 func (app *App) RegisterUpgradeHandlers() {
-	fmt.Println("=== RegisterUpgradeHandlers called ===")
+	fmt.Fprintln(os.Stderr, "=== RegisterUpgradeHandlers called ===")
 
 	// Register the timelock upgrade handler
 	app.UpgradeKeeper.SetUpgradeHandler(
@@ -34,28 +35,28 @@ func (app *App) RegisterUpgradeHandlers() {
 	)
 
 	// Read upgrade info from disk to check if we're at an upgrade height
-	fmt.Println("=== Reading upgrade info from disk ===")
+	fmt.Fprintln(os.Stderr, "=== Reading upgrade info from disk ===")
 	upgradeInfo, err := app.UpgradeKeeper.ReadUpgradeInfoFromDisk()
 	if err != nil {
-		fmt.Printf("=== ReadUpgradeInfoFromDisk error: %v ===\n", err)
+		fmt.Fprintf(os.Stderr, "=== ReadUpgradeInfoFromDisk error: %v ===\n", err)
 		// No upgrade info file means this is a fresh chain or upgrade already applied
 		return
 	}
 
-	fmt.Printf("=== Upgrade info: name=%s, height=%d ===\n", upgradeInfo.Name, upgradeInfo.Height)
+	fmt.Fprintf(os.Stderr, "=== Upgrade info: name=%s, height=%d ===\n", upgradeInfo.Name, upgradeInfo.Height)
 
 	// Handle timelock module upgrade - configure store loader
 	if upgradeInfo.Name == UpgradeNameTimelock && !app.UpgradeKeeper.IsSkipHeight(upgradeInfo.Height) {
-		fmt.Println("=== Configuring store loader for timelock upgrade ===")
+		fmt.Fprintln(os.Stderr, "=== Configuring store loader for timelock upgrade ===")
 		storeUpgrades := storetypes.StoreUpgrades{
 			Added: []string{timelockmoduletypes.StoreKey},
 		}
 
 		// Configure store loader for added stores
 		app.SetStoreLoader(upgradetypes.UpgradeStoreLoader(upgradeInfo.Height, &storeUpgrades))
-		fmt.Println("=== Store loader configured successfully ===")
+		fmt.Fprintln(os.Stderr, "=== Store loader configured successfully ===")
 	} else {
-		fmt.Printf("=== Skipping store loader: name match=%v, isSkipHeight=%v ===\n",
+		fmt.Fprintf(os.Stderr, "=== Skipping store loader: name match=%v, isSkipHeight=%v ===\n",
 			upgradeInfo.Name == UpgradeNameTimelock,
 			app.UpgradeKeeper.IsSkipHeight(upgradeInfo.Height))
 	}
