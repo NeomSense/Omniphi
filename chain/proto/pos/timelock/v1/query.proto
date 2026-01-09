@@ -1,0 +1,125 @@
+syntax = "proto3";
+package pos.timelock.v1;
+
+option go_package = "pos/x/timelock/types";
+
+import "google/api/annotations.proto";
+import "cosmos/base/query/v1beta1/pagination.proto";
+import "pos/timelock/v1/types.proto";
+
+// Query defines the gRPC querier service for the timelock module
+service Query {
+  // Params returns the module parameters
+  rpc Params(QueryParamsRequest) returns (QueryParamsResponse) {
+    option (google.api.http).get = "/pos/timelock/v1/params";
+  }
+
+  // Operation returns a specific operation by ID
+  rpc Operation(QueryOperationRequest) returns (QueryOperationResponse) {
+    option (google.api.http).get = "/pos/timelock/v1/operation/{operation_id}";
+  }
+
+  // Operations returns all operations with optional status filter
+  rpc Operations(QueryOperationsRequest) returns (QueryOperationsResponse) {
+    option (google.api.http).get = "/pos/timelock/v1/operations";
+  }
+
+  // QueuedOperations returns all operations in QUEUED status
+  rpc QueuedOperations(QueryQueuedOperationsRequest) returns (QueryQueuedOperationsResponse) {
+    option (google.api.http).get = "/pos/timelock/v1/queued";
+  }
+
+  // ExecutableOperations returns operations ready for execution
+  rpc ExecutableOperations(QueryExecutableOperationsRequest) returns (QueryExecutableOperationsResponse) {
+    option (google.api.http).get = "/pos/timelock/v1/executable";
+  }
+
+  // OperationByHash returns an operation by its hash
+  rpc OperationByHash(QueryOperationByHashRequest) returns (QueryOperationByHashResponse) {
+    option (google.api.http).get = "/pos/timelock/v1/operation_by_hash/{hash}";
+  }
+
+  // OperationsByProposal returns all operations for a governance proposal
+  rpc OperationsByProposal(QueryOperationsByProposalRequest) returns (QueryOperationsByProposalResponse) {
+    option (google.api.http).get = "/pos/timelock/v1/proposal/{proposal_id}/operations";
+  }
+}
+
+// QueryParamsRequest is the request for Query/Params
+message QueryParamsRequest {}
+
+// QueryParamsResponse is the response for Query/Params
+message QueryParamsResponse {
+  Params params = 1 [(gogoproto.nullable) = false];
+}
+
+// QueryOperationRequest is the request for Query/Operation
+message QueryOperationRequest {
+  uint64 operation_id = 1;
+}
+
+// QueryOperationResponse is the response for Query/Operation
+message QueryOperationResponse {
+  QueuedOperation operation = 1;
+}
+
+// QueryOperationsRequest is the request for Query/Operations
+message QueryOperationsRequest {
+  // status filters operations by status (optional)
+  OperationStatus status = 1;
+
+  // pagination defines the pagination parameters
+  cosmos.base.query.v1beta1.PageRequest pagination = 2;
+}
+
+// QueryOperationsResponse is the response for Query/Operations
+message QueryOperationsResponse {
+  repeated QueuedOperation operations = 1 [(gogoproto.nullable) = false];
+
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}
+
+// QueryQueuedOperationsRequest is the request for Query/QueuedOperations
+message QueryQueuedOperationsRequest {
+  cosmos.base.query.v1beta1.PageRequest pagination = 1;
+}
+
+// QueryQueuedOperationsResponse is the response for Query/QueuedOperations
+message QueryQueuedOperationsResponse {
+  repeated QueuedOperation operations = 1 [(gogoproto.nullable) = false];
+
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}
+
+// QueryExecutableOperationsRequest is the request for Query/ExecutableOperations
+message QueryExecutableOperationsRequest {
+  cosmos.base.query.v1beta1.PageRequest pagination = 1;
+}
+
+// QueryExecutableOperationsResponse is the response for Query/ExecutableOperations
+message QueryExecutableOperationsResponse {
+  repeated QueuedOperation operations = 1 [(gogoproto.nullable) = false];
+
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}
+
+// QueryOperationByHashRequest is the request for Query/OperationByHash
+message QueryOperationByHashRequest {
+  // hash is the hex-encoded operation hash
+  string hash = 1;
+}
+
+// QueryOperationByHashResponse is the response for Query/OperationByHash
+message QueryOperationByHashResponse {
+  QueuedOperation operation = 1;
+}
+
+// QueryOperationsByProposalRequest is the request for Query/OperationsByProposal
+message QueryOperationsByProposalRequest {
+  uint64 proposal_id = 1;
+}
+
+// QueryOperationsByProposalResponse is the response for Query/OperationsByProposal
+message QueryOperationsByProposalResponse {
+  repeated QueuedOperation operations = 1 [(gogoproto.nullable) = false];
+}

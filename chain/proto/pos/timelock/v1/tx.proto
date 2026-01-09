@@ -1,0 +1,123 @@
+syntax = "proto3";
+package pos.timelock.v1;
+
+option go_package = "pos/x/timelock/types";
+
+import "google/protobuf/any.proto";
+import "cosmos/msg/v1/msg.proto";
+import "cosmos_proto/cosmos.proto";
+import "amino/amino.proto";
+import "pos/timelock/v1/types.proto";
+
+// Msg defines the timelock module's gRPC message service
+service Msg {
+  option (cosmos.msg.v1.service) = true;
+
+  // ExecuteOperation executes a queued operation after the delay has passed
+  rpc ExecuteOperation(MsgExecuteOperation) returns (MsgExecuteOperationResponse);
+
+  // CancelOperation cancels a queued operation (guardian only)
+  rpc CancelOperation(MsgCancelOperation) returns (MsgCancelOperationResponse);
+
+  // EmergencyExecute executes an operation with reduced delay (guardian only)
+  rpc EmergencyExecute(MsgEmergencyExecute) returns (MsgEmergencyExecuteResponse);
+
+  // UpdateParams updates the module parameters (governance only)
+  rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
+
+  // UpdateGuardian updates the guardian address (governance only)
+  rpc UpdateGuardian(MsgUpdateGuardian) returns (MsgUpdateGuardianResponse);
+}
+
+// MsgExecuteOperation executes a queued operation
+message MsgExecuteOperation {
+  option (cosmos.msg.v1.signer) = "executor";
+  option (amino.name) = "pos/timelock/MsgExecuteOperation";
+
+  // executor is the address executing the operation
+  string executor = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+
+  // operation_id is the ID of the operation to execute
+  uint64 operation_id = 2;
+}
+
+// MsgExecuteOperationResponse is the response for MsgExecuteOperation
+message MsgExecuteOperationResponse {
+  // success indicates if all messages executed successfully
+  bool success = 1;
+
+  // results contains the results of each message execution
+  repeated bytes results = 2;
+}
+
+// MsgCancelOperation cancels a queued operation
+message MsgCancelOperation {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (amino.name) = "pos/timelock/MsgCancelOperation";
+
+  // authority must be the guardian or governance module
+  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+
+  // operation_id is the ID of the operation to cancel
+  uint64 operation_id = 2;
+
+  // reason is a required explanation for the cancellation
+  string reason = 3;
+}
+
+// MsgCancelOperationResponse is the response for MsgCancelOperation
+message MsgCancelOperationResponse {}
+
+// MsgEmergencyExecute executes an operation with reduced delay
+message MsgEmergencyExecute {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (amino.name) = "pos/timelock/MsgEmergencyExecute";
+
+  // authority must be the guardian
+  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+
+  // operation_id is the ID of the operation to execute
+  uint64 operation_id = 2;
+
+  // justification is a required explanation for the emergency execution
+  string justification = 3;
+}
+
+// MsgEmergencyExecuteResponse is the response for MsgEmergencyExecute
+message MsgEmergencyExecuteResponse {
+  // success indicates if all messages executed successfully
+  bool success = 1;
+
+  // results contains the results of each message execution
+  repeated bytes results = 2;
+}
+
+// MsgUpdateParams updates the module parameters
+message MsgUpdateParams {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (amino.name) = "pos/timelock/MsgUpdateParams";
+
+  // authority must be the governance module
+  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+
+  // params are the new parameters
+  Params params = 2 [(gogoproto.nullable) = false];
+}
+
+// MsgUpdateParamsResponse is the response for MsgUpdateParams
+message MsgUpdateParamsResponse {}
+
+// MsgUpdateGuardian updates the guardian address
+message MsgUpdateGuardian {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (amino.name) = "pos/timelock/MsgUpdateGuardian";
+
+  // authority must be the governance module
+  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+
+  // new_guardian is the new guardian address
+  string new_guardian = 2 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+}
+
+// MsgUpdateGuardianResponse is the response for MsgUpdateGuardian
+message MsgUpdateGuardianResponse {}

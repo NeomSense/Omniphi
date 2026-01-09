@@ -1,0 +1,129 @@
+syntax = "proto3";
+package pos.timelock.v1;
+
+option go_package = "pos/x/timelock/types";
+
+import "google/protobuf/timestamp.proto";
+
+// EventOperationQueued is emitted when an operation is queued
+message EventOperationQueued {
+  // operation_id is the unique identifier
+  uint64 operation_id = 1;
+
+  // proposal_id is the source governance proposal
+  uint64 proposal_id = 2;
+
+  // operation_hash is the cryptographic hash
+  string operation_hash = 3;
+
+  // executable_at is when the operation becomes executable
+  google.protobuf.Timestamp executable_at = 4 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+
+  // expires_at is when the operation expires
+  google.protobuf.Timestamp expires_at = 5 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+
+  // message_count is the number of messages in the operation
+  uint32 message_count = 6;
+}
+
+// EventOperationExecuted is emitted when an operation is executed
+message EventOperationExecuted {
+  // operation_id is the unique identifier
+  uint64 operation_id = 1;
+
+  // proposal_id is the source governance proposal
+  uint64 proposal_id = 2;
+
+  // executor is the address that executed the operation
+  string executor = 3;
+
+  // success indicates if execution was successful
+  bool success = 4;
+
+  // executed_at is when the operation was executed
+  google.protobuf.Timestamp executed_at = 5 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+}
+
+// EventOperationCancelled is emitted when an operation is cancelled
+message EventOperationCancelled {
+  // operation_id is the unique identifier
+  uint64 operation_id = 1;
+
+  // proposal_id is the source governance proposal
+  uint64 proposal_id = 2;
+
+  // canceller is the address that cancelled the operation
+  string canceller = 3;
+
+  // reason is the cancellation reason
+  string reason = 4;
+
+  // cancelled_at is when the operation was cancelled
+  google.protobuf.Timestamp cancelled_at = 5 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+}
+
+// EventOperationExpired is emitted when an operation expires
+message EventOperationExpired {
+  // operation_id is the unique identifier
+  uint64 operation_id = 1;
+
+  // proposal_id is the source governance proposal
+  uint64 proposal_id = 2;
+
+  // expired_at is when the operation expired
+  google.protobuf.Timestamp expired_at = 3 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+}
+
+// EventEmergencyExecution is emitted for emergency executions
+message EventEmergencyExecution {
+  // operation_id is the unique identifier
+  uint64 operation_id = 1;
+
+  // proposal_id is the source governance proposal
+  uint64 proposal_id = 2;
+
+  // guardian is the guardian address that triggered emergency execution
+  string guardian = 3;
+
+  // justification is the reason for emergency execution
+  string justification = 4;
+
+  // executed_at is when the operation was executed
+  google.protobuf.Timestamp executed_at = 5 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+}
+
+// EventGuardianUpdated is emitted when the guardian is changed
+message EventGuardianUpdated {
+  // old_guardian is the previous guardian address
+  string old_guardian = 1;
+
+  // new_guardian is the new guardian address
+  string new_guardian = 2;
+}
+
+// EventParamsUpdated is emitted when module parameters are updated
+message EventParamsUpdated {
+  // old_min_delay is the previous minimum delay
+  string old_min_delay = 1;
+
+  // new_min_delay is the new minimum delay
+  string new_min_delay = 2;
+}
