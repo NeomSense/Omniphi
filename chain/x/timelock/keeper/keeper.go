@@ -3,7 +3,9 @@ package keeper
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"time"
 
 	"cosmossdk.io/collections"
 	"cosmossdk.io/core/store"
@@ -144,7 +146,7 @@ func (k Keeper) GetNextOperationID(ctx context.Context) (uint64, error) {
 func (k Keeper) GetOperation(ctx context.Context, operationID uint64) (*types.QueuedOperation, error) {
 	op, err := k.Operations.Get(ctx, operationID)
 	if err != nil {
-		if collections.ErrNotFound.Is(err) {
+		if errors.Is(err, collections.ErrNotFound) {
 			return nil, types.ErrOperationNotFound
 		}
 		return nil, err
@@ -157,7 +159,7 @@ func (k Keeper) GetOperationByHash(ctx context.Context, hash []byte) (*types.Que
 	hashStr := hex.EncodeToString(hash)
 	opID, err := k.OperationsByHash.Get(ctx, hashStr)
 	if err != nil {
-		if collections.ErrNotFound.Is(err) {
+		if errors.Is(err, collections.ErrNotFound) {
 			return nil, types.ErrOperationNotFound
 		}
 		return nil, err
@@ -168,13 +170,13 @@ func (k Keeper) GetOperationByHash(ctx context.Context, hash []byte) (*types.Que
 // SetOperation stores an operation
 func (k Keeper) SetOperation(ctx context.Context, op *types.QueuedOperation) error {
 	// Store the operation
-	if err := k.Operations.Set(ctx, op.ID, *op); err != nil {
+	if err := k.Operations.Set(ctx, op.Id, *op); err != nil {
 		return err
 	}
 
 	// Store hash index
 	hashStr := hex.EncodeToString(op.OperationHash)
-	if err := k.OperationsByHash.Set(ctx, hashStr, op.ID); err != nil {
+	if err := k.OperationsByHash.Set(ctx, hashStr, op.Id); err != nil {
 		return err
 	}
 
@@ -212,8 +214,8 @@ func (k Keeper) QueueOperation(
 		messages,
 		executor,
 		sdkCtx.BlockTime(),
-		params.MinDelay,
-		params.GracePeriod,
+		params.MinDelaySeconds,
+		params.GracePeriodSeconds,
 		k.cdc,
 	)
 	if err != nil {
@@ -236,10 +238,10 @@ func (k Keeper) QueueOperation(
 	}
 
 	k.logger.Info("operation queued",
-		"operation_id", op.ID,
+		"operation_id", op.Id,
 		"proposal_id", proposalID,
-		"executable_at", op.ExecutableAt,
-		"expires_at", op.ExpiresAt,
+		"executable_at", op.ExecutableTime(),
+		"expires_at", op.ExpiresTime(),
 		"hash", hashStr,
 	)
 
@@ -247,10 +249,10 @@ func (k Keeper) QueueOperation(
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			"operation_queued",
-			sdk.NewAttribute("operation_id", fmt.Sprintf("%d", op.ID)),
+			sdk.NewAttribute("operation_id", fmt.Sprintf("%d", op.Id)),
 			sdk.NewAttribute("proposal_id", fmt.Sprintf("%d", proposalID)),
-			sdk.NewAttribute("executable_at", op.ExecutableAt.String()),
-			sdk.NewAttribute("expires_at", op.ExpiresAt.String()),
+			sdk.NewAttribute("executable_at", op.ExecutableTime().String()),
+			sdk.NewAttribute("expires_at", op.ExpiresTime().String()),
 			sdk.NewAttribute("operation_hash", hashStr),
 		),
 	)
@@ -300,7 +302,7 @@ func (k Keeper) ExecuteOperation(ctx context.Context, operationID uint64, execut
 	// Check if executable
 	if !op.IsExecutable(now) {
 		return fmt.Errorf("%w: executable at %v, current time %v",
-			types.ErrOperationNotExecutable, op.ExecutableAt, now)
+			types.ErrOperationNotExecutable, op.ExecutableTime(), now)
 	}
 
 	// Verify hash integrity
@@ -313,7 +315,7 @@ func (k Keeper) ExecuteOperation(ctx context.Context, operationID uint64, execut
 		op.MarkFailed(now, err)
 		if setErr := k.SetOperation(ctx, op); setErr != nil {
 			k.logger.Error("failed to update operation after execution failure",
-				"operation_id", op.ID, "error", setErr)
+				"operation_id", op.Id, "error", setErr)
 		}
 		return fmt.Errorf("%w: %v", types.ErrMessageExecutionFailed, err)
 	}
@@ -325,8 +327,8 @@ func (k Keeper) ExecuteOperation(ctx context.Context, operationID uint64, execut
 	}
 
 	k.logger.Info("operation executed",
-		"operation_id", op.ID,
-		"proposal_id", op.ProposalID,
+		"operation_id", op.Id,
+		"proposal_id", op.ProposalId,
 		"executor", executor,
 	)
 
@@ -334,8 +336,8 @@ func (k Keeper) ExecuteOperation(ctx context.Context, operationID uint64, execut
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			"operation_executed",
-			sdk.NewAttribute("operation_id", fmt.Sprintf("%d", op.ID)),
-			sdk.NewAttribute("proposal_id", fmt.Sprintf("%d", op.ProposalID)),
+			sdk.NewAttribute("operation_id", fmt.Sprintf("%d", op.Id)),
+			sdk.NewAttribute("proposal_id", fmt.Sprintf("%d", op.ProposalId)),
 			sdk.NewAttribute("executor", executor),
 		),
 	)
@@ -379,8 +381,8 @@ func (k Keeper) CancelOperation(ctx context.Context, operationID uint64, cancell
 	}
 
 	k.logger.Info("operation cancelled",
-		"operation_id", op.ID,
-		"proposal_id", op.ProposalID,
+		"operation_id", op.Id,
+		"proposal_id", op.ProposalId,
 		"canceller", canceller,
 		"reason", reason,
 	)
@@ -389,8 +391,8 @@ func (k Keeper) CancelOperation(ctx context.Context, operationID uint64, cancell
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			"operation_cancelled",
-			sdk.NewAttribute("operation_id", fmt.Sprintf("%d", op.ID)),
-			sdk.NewAttribute("proposal_id", fmt.Sprintf("%d", op.ProposalID)),
+			sdk.NewAttribute("operation_id", fmt.Sprintf("%d", op.Id)),
+			sdk.NewAttribute("proposal_id", fmt.Sprintf("%d", op.ProposalId)),
 			sdk.NewAttribute("canceller", canceller),
 			sdk.NewAttribute("reason", reason),
 		),
@@ -436,8 +438,8 @@ func (k Keeper) EmergencyExecute(ctx context.Context, operationID uint64, guardi
 	}
 
 	// Check if can emergency execute (emergency delay has passed)
-	if !op.CanEmergencyExecute(now, params.EmergencyDelay) {
-		emergencyTime := op.QueuedAt.Add(params.EmergencyDelay)
+	if !op.CanEmergencyExecute(now, params.EmergencyDelaySeconds) {
+		emergencyTime := time.Unix(op.QueuedAtUnix+int64(params.EmergencyDelaySeconds), 0)
 		return fmt.Errorf("%w: emergency executable at %v, current time %v",
 			types.ErrEmergencyNotEligible, emergencyTime, now)
 	}
@@ -452,7 +454,7 @@ func (k Keeper) EmergencyExecute(ctx context.Context, operationID uint64, guardi
 		op.MarkFailed(now, err)
 		if setErr := k.SetOperation(ctx, op); setErr != nil {
 			k.logger.Error("failed to update operation after emergency execution failure",
-				"operation_id", op.ID, "error", setErr)
+				"operation_id", op.Id, "error", setErr)
 		}
 		return fmt.Errorf("%w: %v", types.ErrMessageExecutionFailed, err)
 	}
@@ -464,8 +466,8 @@ func (k Keeper) EmergencyExecute(ctx context.Context, operationID uint64, guardi
 	}
 
 	k.logger.Warn("emergency operation executed",
-		"operation_id", op.ID,
-		"proposal_id", op.ProposalID,
+		"operation_id", op.Id,
+		"proposal_id", op.ProposalId,
 		"guardian", guardian,
 		"justification", justification,
 	)
@@ -474,8 +476,8 @@ func (k Keeper) EmergencyExecute(ctx context.Context, operationID uint64, guardi
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			"emergency_execution",
-			sdk.NewAttribute("operation_id", fmt.Sprintf("%d", op.ID)),
-			sdk.NewAttribute("proposal_id", fmt.Sprintf("%d", op.ProposalID)),
+			sdk.NewAttribute("operation_id", fmt.Sprintf("%d", op.Id)),
+			sdk.NewAttribute("proposal_id", fmt.Sprintf("%d", op.ProposalId)),
 			sdk.NewAttribute("guardian", guardian),
 			sdk.NewAttribute("justification", justification),
 		),
@@ -489,7 +491,7 @@ func (k Keeper) executeMessages(ctx context.Context, op *types.QueuedOperation) 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 
 	// Get messages from operation
-	msgs, err := op.GetMessages(k.cdc)
+	msgs, err := op.GetSDKMessages(k.cdc)
 	if err != nil {
 		return fmt.Errorf("failed to unpack messages: %w", err)
 	}
@@ -507,7 +509,7 @@ func (k Keeper) executeMessages(ctx context.Context, op *types.QueuedOperation) 
 		}
 
 		k.logger.Debug("message executed",
-			"operation_id", op.ID,
+			"operation_id", op.Id,
 			"message_index", i,
 			"message_type", sdk.MsgTypeURL(msg),
 		)
@@ -563,7 +565,7 @@ func (k Keeper) GetOperationsByProposal(ctx context.Context, proposalID uint64) 
 	var ops []*types.QueuedOperation
 
 	err := k.Operations.Walk(ctx, nil, func(id uint64, op types.QueuedOperation) (stop bool, err error) {
-		if op.ProposalID == proposalID {
+		if op.ProposalId == proposalID {
 			opCopy := op
 			ops = append(ops, &opCopy)
 		}
@@ -589,15 +591,15 @@ func (k Keeper) MarkExpiredOperations(ctx context.Context) error {
 			}
 
 			k.logger.Info("operation expired",
-				"operation_id", op.ID,
-				"proposal_id", op.ProposalID,
+				"operation_id", op.Id,
+				"proposal_id", op.ProposalId,
 			)
 
 			sdkCtx.EventManager().EmitEvent(
 				sdk.NewEvent(
 					"operation_expired",
-					sdk.NewAttribute("operation_id", fmt.Sprintf("%d", op.ID)),
-					sdk.NewAttribute("proposal_id", fmt.Sprintf("%d", op.ProposalID)),
+					sdk.NewAttribute("operation_id", fmt.Sprintf("%d", op.Id)),
+					sdk.NewAttribute("proposal_id", fmt.Sprintf("%d", op.ProposalId)),
 				),
 			)
 		}

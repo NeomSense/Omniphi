@@ -3,12 +3,15 @@ package app
 import (
 	_ "pos/x/feemarket/module"
 	_ "pos/x/poc/module"
+	_ "pos/x/timelock/module"
 	_ "pos/x/tokenomics/module"
 	feemarketmodulev1 "pos/proto/pos/feemarket/module/v1"
 	pocmodulev1 "pos/proto/pos/poc/module/v1"
+	timelockmodulev1 "pos/proto/pos/timelock/module/v1"
 	tokenomicsmodulev1 "pos/proto/pos/tokenomics/module/v1"
 	feemarketmoduletypes "pos/x/feemarket/types"
 	pocmoduletypes "pos/x/poc/types"
+	timelockmoduletypes "pos/x/timelock/types"
 	tokenomicsmoduletypes "pos/x/tokenomics/types"
 	"time"
 
@@ -140,6 +143,7 @@ var (
 					EndBlockers: []string{
 						feemarketmoduletypes.ModuleName,  // Process fees first (burn + distribute)
 						govtypes.ModuleName,
+						timelockmoduletypes.ModuleName,   // Process expired operations after gov
 						stakingtypes.ModuleName,
 						feegrant.ModuleName,
 						group.ModuleName,
@@ -168,6 +172,7 @@ var (
 						stakingtypes.ModuleName,
 						slashingtypes.ModuleName,
 						govtypes.ModuleName,
+						timelockmoduletypes.ModuleName,   // Initialize after gov for timelock integration
 						minttypes.ModuleName,
 						genutiltypes.ModuleName,
 						evidencetypes.ModuleName,
@@ -287,6 +292,10 @@ var (
 			{
 				Name:   tokenomicsmoduletypes.ModuleName,
 				Config: appconfig.WrapAny(&tokenomicsmodulev1.Module{}),
+			},
+			{
+				Name:   timelockmoduletypes.ModuleName,
+				Config: appconfig.WrapAny(&timelockmodulev1.Module{}),
 			},
 			// this line is used by starport scaffolding # stargate/app/moduleConfig
 		},

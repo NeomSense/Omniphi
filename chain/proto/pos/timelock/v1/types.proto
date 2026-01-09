@@ -3,12 +3,10 @@ package pos.timelock.v1;
 
 option go_package = "pos/x/timelock/types";
 
-import "google/protobuf/timestamp.proto";
-import "google/protobuf/duration.proto";
 import "google/protobuf/any.proto";
-import "cosmos/base/v1beta1/coin.proto";
 import "cosmos_proto/cosmos.proto";
 import "amino/amino.proto";
+import "gogoproto/gogo.proto";
 
 // OperationStatus represents the current state of a queued operation
 enum OperationStatus {
@@ -34,30 +32,19 @@ enum OperationStatus {
 // Params defines the parameters for the timelock module
 message Params {
   option (amino.name) = "pos/timelock/Params";
+  option (gogoproto.equal) = true;
 
-  // min_delay is the minimum time between queueing and execution (default: 24h)
-  google.protobuf.Duration min_delay = 1 [
-    (gogoproto.stdduration) = true,
-    (gogoproto.nullable) = false
-  ];
+  // min_delay_seconds is the minimum time between queueing and execution in seconds (default: 86400 = 24h)
+  uint64 min_delay_seconds = 1;
 
-  // max_delay is the maximum allowed delay (prevents indefinite queueing)
-  google.protobuf.Duration max_delay = 2 [
-    (gogoproto.stdduration) = true,
-    (gogoproto.nullable) = false
-  ];
+  // max_delay_seconds is the maximum allowed delay in seconds (default: 1209600 = 14d)
+  uint64 max_delay_seconds = 2;
 
-  // grace_period is the window after min_delay during which execution is valid
-  google.protobuf.Duration grace_period = 3 [
-    (gogoproto.stdduration) = true,
-    (gogoproto.nullable) = false
-  ];
+  // grace_period_seconds is the window after min_delay during which execution is valid (default: 604800 = 7d)
+  uint64 grace_period_seconds = 3;
 
-  // emergency_delay is the reduced delay for emergency operations (min: 1h)
-  google.protobuf.Duration emergency_delay = 4 [
-    (gogoproto.stdduration) = true,
-    (gogoproto.nullable) = false
-  ];
+  // emergency_delay_seconds is the reduced delay for emergency operations in seconds (min: 3600 = 1h)
+  uint64 emergency_delay_seconds = 4;
 
   // guardian is the address authorized to cancel operations and emergency execute
   string guardian = 5 [(cosmos_proto.scalar) = "cosmos.AddressString"];
@@ -77,23 +64,14 @@ message QueuedOperation {
   // operation_hash is the cryptographic hash of the operation for verification
   bytes operation_hash = 4;
 
-  // queued_at is when the operation was queued
-  google.protobuf.Timestamp queued_at = 5 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = false
-  ];
+  // queued_at_unix is when the operation was queued (Unix timestamp seconds)
+  int64 queued_at_unix = 5;
 
-  // executable_at is the earliest time the operation can be executed
-  google.protobuf.Timestamp executable_at = 6 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = false
-  ];
+  // executable_at_unix is the earliest time the operation can be executed (Unix timestamp seconds)
+  int64 executable_at_unix = 6;
 
-  // expires_at is the latest time the operation can be executed
-  google.protobuf.Timestamp expires_at = 7 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = false
-  ];
+  // expires_at_unix is the latest time the operation can be executed (Unix timestamp seconds)
+  int64 expires_at_unix = 7;
 
   // status is the current state of the operation
   OperationStatus status = 8;
@@ -101,17 +79,11 @@ message QueuedOperation {
   // executor is the address authorized to execute this operation
   string executor = 9 [(cosmos_proto.scalar) = "cosmos.AddressString"];
 
-  // executed_at is when the operation was executed (if applicable)
-  google.protobuf.Timestamp executed_at = 10 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = true
-  ];
+  // executed_at_unix is when the operation was executed (Unix timestamp seconds, 0 if not executed)
+  int64 executed_at_unix = 10;
 
-  // cancelled_at is when the operation was cancelled (if applicable)
-  google.protobuf.Timestamp cancelled_at = 11 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = true
-  ];
+  // cancelled_at_unix is when the operation was cancelled (Unix timestamp seconds, 0 if not cancelled)
+  int64 cancelled_at_unix = 11;
 
   // cancel_reason is the reason for cancellation (if applicable)
   string cancel_reason = 12;
@@ -123,7 +95,7 @@ message QueuedOperation {
 // GenesisState defines the timelock module's genesis state
 message GenesisState {
   // params are the module parameters
-  Params params = 1 [(gogoproto.nullable) = false];
+  Params params = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
 
   // operations are all queued operations
   repeated QueuedOperation operations = 2 [(gogoproto.nullable) = false];

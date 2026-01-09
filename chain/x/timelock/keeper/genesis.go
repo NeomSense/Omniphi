@@ -37,7 +37,7 @@ func (k Keeper) InitGenesis(ctx context.Context, data *types.GenesisState) error
 	for _, op := range data.Operations {
 		opCopy := op
 		if err := k.SetOperation(ctx, &opCopy); err != nil {
-			return fmt.Errorf("failed to set operation %d: %w", op.ID, err)
+			return fmt.Errorf("failed to set operation %d: %w", op.Id, err)
 		}
 	}
 

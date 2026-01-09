@@ -2,13 +2,6 @@ package types
 
 import "fmt"
 
-// GenesisState defines the timelock module's genesis state
-type GenesisState struct {
-	Params          Params             `json:"params"`
-	Operations      []QueuedOperation  `json:"operations"`
-	NextOperationId uint64             `json:"next_operation_id"`
-}
-
 // DefaultGenesisState returns the default genesis state
 func DefaultGenesisState() *GenesisState {
 	return &GenesisState{
@@ -31,19 +24,19 @@ func (gs *GenesisState) Validate() error {
 
 	for i, op := range gs.Operations {
 		// Check for duplicate IDs
-		if seenIDs[op.ID] {
-			return fmt.Errorf("duplicate operation ID %d at index %d", op.ID, i)
+		if seenIDs[op.Id] {
+			return fmt.Errorf("duplicate operation ID %d at index %d", op.Id, i)
 		}
-		seenIDs[op.ID] = true
+		seenIDs[op.Id] = true
 
 		// Track max ID
-		if op.ID > maxID {
-			maxID = op.ID
+		if op.Id > maxID {
+			maxID = op.Id
 		}
 
 		// Validate operation
 		if err := op.Validate(); err != nil {
-			return fmt.Errorf("invalid operation %d: %w", op.ID, err)
+			return fmt.Errorf("invalid operation %d: %w", op.Id, err)
 		}
 	}
 

@@ -6,17 +6,11 @@ import (
 	"fmt"
 
 	"cosmossdk.io/core/appmodule"
-	"cosmossdk.io/core/store"
-	"cosmossdk.io/depinject"
-	"cosmossdk.io/log"
-	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
 	cdctypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
-	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
-	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 
 	"pos/x/timelock/keeper"
@@ -112,12 +106,6 @@ func NewAppModule(
 	}
 }
 
-// IsOnePerModuleType implements the depinject.OnePerModuleType interface
-func (AppModule) IsOnePerModuleType() {}
-
-// IsAppModule implements the appmodule.AppModule interface
-func (AppModule) IsAppModule() {}
-
 // RegisterServices registers module services
 func (am AppModule) RegisterServices(cfg module.Configurator) {
 	types.RegisterMsgServer(cfg.MsgServer(), keeper.NewMsgServerImpl(*am.keeper))
@@ -153,68 +141,4 @@ func (am AppModule) EndBlock(ctx context.Context) error {
 		am.keeper.Logger().Error("failed to mark expired operations", "error", err)
 	}
 	return nil
-}
-
-// ----------------------------------------------------------------------------
-// Dependency Injection
-// ----------------------------------------------------------------------------
-
-// ModuleConfig is the config object for the timelock module
-type ModuleConfig struct {
-	// Guardian is the initial guardian address (can be updated via governance)
-	Guardian string `json:"guardian,omitempty"`
-}
-
-// Inputs for depinject
-type ModuleInputs struct {
-	depinject.In
-
-	Config      *ModuleConfig
-	StoreKey    store.KVStoreService
-	Cdc         codec.Codec
-	Logger      log.Logger
-	MsgRouter   baseapp.MessageRouter
-}
-
-// Outputs for depinject
-type ModuleOutputs struct {
-	depinject.Out
-
-	Keeper *keeper.Keeper
-	Module appmodule.AppModule
-	Hooks  govtypes.GovHooksWrapper
-}
-
-// ProvideModule provides the timelock module with depinject
-func ProvideModule(in ModuleInputs) ModuleOutputs {
-	// Use gov module as authority
-	authority := authtypes.NewModuleAddress(govtypes.ModuleName).String()
-
-	k := keeper.NewKeeper(
-		in.Cdc,
-		in.StoreKey,
-		in.Logger,
-		authority,
-		in.MsgRouter,
-	)
-
-	m := NewAppModule(in.Cdc, k, nil)
-
-	// Create gov hooks
-	hooks := keeper.NewGovHooks(k)
-
-	return ModuleOutputs{
-		Keeper: k,
-		Module: m,
-		Hooks:  govtypes.GovHooksWrapper{GovHooks: hooks},
-	}
-}
-
-// ----------------------------------------------------------------------------
-// Account Keeper Interface
-// ----------------------------------------------------------------------------
-
-// AccountKeeper defines the expected account keeper interface
-type AccountKeeper interface {
-	GetAccount(ctx context.Context, addr sdk.AccAddress) sdk.AccountI
 }

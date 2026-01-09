@@ -5,6 +5,7 @@ option go_package = "pos/x/timelock/types";
 
 import "google/api/annotations.proto";
 import "cosmos/base/query/v1beta1/pagination.proto";
+import "gogoproto/gogo.proto";
 import "pos/timelock/v1/types.proto";
 
 // Query defines the gRPC querier service for the timelock module

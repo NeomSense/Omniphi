@@ -114,9 +114,9 @@ func (h *TimelockProposalHandler) HandleProposal(ctx context.Context, proposal g
 
 	h.timelockKeeper.Logger().Info("proposal queued for timelock execution",
 		"proposal_id", proposal.Id,
-		"operation_id", op.ID,
-		"executable_at", op.ExecutableAt,
-		"expires_at", op.ExpiresAt,
+		"operation_id", op.Id,
+		"executable_at", op.ExecutableTime(),
+		"expires_at", op.ExpiresTime(),
 	)
 
 	// Emit event
@@ -124,8 +124,8 @@ func (h *TimelockProposalHandler) HandleProposal(ctx context.Context, proposal g
 		sdk.NewEvent(
 			"proposal_timelocked",
 			sdk.NewAttribute("proposal_id", fmt.Sprintf("%d", proposal.Id)),
-			sdk.NewAttribute("operation_id", fmt.Sprintf("%d", op.ID)),
-			sdk.NewAttribute("executable_at", op.ExecutableAt.String()),
+			sdk.NewAttribute("operation_id", fmt.Sprintf("%d", op.Id)),
+			sdk.NewAttribute("executable_at", op.ExecutableTime().String()),
 		),
 	)
 

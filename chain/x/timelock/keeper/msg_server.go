@@ -129,16 +129,16 @@ func (ms msgServer) UpdateParams(ctx context.Context, msg *types.MsgUpdateParams
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			"params_updated",
-			sdk.NewAttribute("old_min_delay", oldParams.MinDelay.String()),
-			sdk.NewAttribute("new_min_delay", msg.Params.MinDelay.String()),
+			sdk.NewAttribute("old_min_delay", fmt.Sprintf("%d", oldParams.MinDelaySeconds)),
+			sdk.NewAttribute("new_min_delay", fmt.Sprintf("%d", msg.Params.MinDelaySeconds)),
 			sdk.NewAttribute("old_guardian", oldParams.Guardian),
 			sdk.NewAttribute("new_guardian", msg.Params.Guardian),
 		),
 	)
 
 	ms.Keeper.Logger().Info("timelock params updated",
-		"old_min_delay", oldParams.MinDelay,
-		"new_min_delay", msg.Params.MinDelay,
+		"old_min_delay", oldParams.MinDelaySeconds,
+		"new_min_delay", msg.Params.MinDelaySeconds,
 	)
 
 	return &types.MsgUpdateParamsResponse{}, nil
@@ -197,15 +197,15 @@ func (ms msgServer) UpdateGuardian(ctx context.Context, msg *types.MsgUpdateGuar
 func (ms msgServer) validateParamChanges(oldParams, newParams types.Params) error {
 	// Security check: min_delay cannot be reduced by more than 50% in a single update
 	// This prevents sudden dramatic reductions that could be exploited
-	if newParams.MinDelay < oldParams.MinDelay/2 {
+	if newParams.MinDelaySeconds < oldParams.MinDelaySeconds/2 {
 		return fmt.Errorf("min_delay cannot be reduced by more than 50%% in a single update: "+
 			"old=%v, new=%v, minimum allowed=%v",
-			oldParams.MinDelay, newParams.MinDelay, oldParams.MinDelay/2)
+			oldParams.MinDelaySeconds, newParams.MinDelaySeconds, oldParams.MinDelaySeconds/2)
 	}
 
 	// Security check: emergency_delay cannot be reduced below 1 hour
-	if newParams.EmergencyDelay < types.AbsoluteMinDelay {
-		return fmt.Errorf("emergency_delay cannot be below %v", types.AbsoluteMinDelay)
+	if newParams.EmergencyDelaySeconds < types.AbsoluteMinDelaySeconds {
+		return fmt.Errorf("emergency_delay cannot be below %v seconds", types.AbsoluteMinDelaySeconds)
 	}
 
 	return nil

@@ -13,12 +13,6 @@ const (
 	TypeMsgUpdateGuardian   = "update_guardian"
 )
 
-// MsgExecuteOperation defines a message to execute a queued operation
-type MsgExecuteOperation struct {
-	Executor    string `json:"executor"`
-	OperationId uint64 `json:"operation_id"`
-}
-
 // Route implements sdk.Msg
 func (msg MsgExecuteOperation) Route() string { return RouterKey }
 
@@ -40,13 +34,6 @@ func (msg MsgExecuteOperation) ValidateBasic() error {
 func (msg MsgExecuteOperation) GetSigners() []sdk.AccAddress {
 	addr, _ := sdk.AccAddressFromBech32(msg.Executor)
 	return []sdk.AccAddress{addr}
-}
-
-// MsgCancelOperation defines a message to cancel a queued operation
-type MsgCancelOperation struct {
-	Authority   string `json:"authority"`
-	OperationId uint64 `json:"operation_id"`
-	Reason      string `json:"reason"`
 }
 
 // Route implements sdk.Msg
@@ -75,13 +62,6 @@ func (msg MsgCancelOperation) GetSigners() []sdk.AccAddress {
 	return []sdk.AccAddress{addr}
 }
 
-// MsgEmergencyExecute defines a message to execute with reduced delay
-type MsgEmergencyExecute struct {
-	Authority     string `json:"authority"`
-	OperationId   uint64 `json:"operation_id"`
-	Justification string `json:"justification"`
-}
-
 // Route implements sdk.Msg
 func (msg MsgEmergencyExecute) Route() string { return RouterKey }
 
@@ -108,12 +88,6 @@ func (msg MsgEmergencyExecute) GetSigners() []sdk.AccAddress {
 	return []sdk.AccAddress{addr}
 }
 
-// MsgUpdateParams defines a message to update module parameters
-type MsgUpdateParams struct {
-	Authority string `json:"authority"`
-	Params    Params `json:"params"`
-}
-
 // Route implements sdk.Msg
 func (msg MsgUpdateParams) Route() string { return RouterKey }
 
@@ -132,12 +106,6 @@ func (msg MsgUpdateParams) ValidateBasic() error {
 func (msg MsgUpdateParams) GetSigners() []sdk.AccAddress {
 	addr, _ := sdk.AccAddressFromBech32(msg.Authority)
 	return []sdk.AccAddress{addr}
-}
-
-// MsgUpdateGuardian defines a message to update the guardian address
-type MsgUpdateGuardian struct {
-	Authority   string `json:"authority"`
-	NewGuardian string `json:"new_guardian"`
 }
 
 // Route implements sdk.Msg

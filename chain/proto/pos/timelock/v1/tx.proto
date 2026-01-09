@@ -7,6 +7,7 @@ import "google/protobuf/any.proto";
 import "cosmos/msg/v1/msg.proto";
 import "cosmos_proto/cosmos.proto";
 import "amino/amino.proto";
+import "gogoproto/gogo.proto";
 import "pos/timelock/v1/types.proto";
 
 // Msg defines the timelock module's gRPC message service

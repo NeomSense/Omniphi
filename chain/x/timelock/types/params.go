@@ -7,28 +7,37 @@ import (
 
 // Security constants - absolute minimums that cannot be overridden
 const (
-	// AbsoluteMinDelay is the minimum delay that cannot be reduced (1 hour)
+	// AbsoluteMinDelaySeconds is the minimum delay that cannot be reduced (1 hour = 3600 seconds)
 	// This ensures even emergency operations have a review window
-	AbsoluteMinDelay = 1 * time.Hour
+	AbsoluteMinDelaySeconds uint64 = 3600
 
-	// AbsoluteMaxDelay is the maximum delay allowed (30 days)
+	// AbsoluteMaxDelaySeconds is the maximum delay allowed (30 days = 2592000 seconds)
 	// Prevents indefinite queueing that could lock governance
-	AbsoluteMaxDelay = 30 * 24 * time.Hour
+	AbsoluteMaxDelaySeconds uint64 = 30 * 24 * 3600
 
-	// AbsoluteMinGracePeriod is the minimum grace period (1 hour)
+	// AbsoluteMinGracePeriodSeconds is the minimum grace period (1 hour = 3600 seconds)
+	AbsoluteMinGracePeriodSeconds uint64 = 3600
+
+	// DefaultMinDelaySeconds is the default minimum delay (24 hours = 86400 seconds)
+	DefaultMinDelaySeconds uint64 = 24 * 3600
+
+	// DefaultMaxDelaySeconds is the default maximum delay (14 days = 1209600 seconds)
+	DefaultMaxDelaySeconds uint64 = 14 * 24 * 3600
+
+	// DefaultGracePeriodSeconds is the default grace period (7 days = 604800 seconds)
+	DefaultGracePeriodSeconds uint64 = 7 * 24 * 3600
+
+	// DefaultEmergencyDelaySeconds is the default emergency delay (1 hour = 3600 seconds)
+	DefaultEmergencyDelaySeconds uint64 = 3600
+
+	// Legacy time.Duration constants for backward compatibility in tests
+	AbsoluteMinDelay       = 1 * time.Hour
+	AbsoluteMaxDelay       = 30 * 24 * time.Hour
 	AbsoluteMinGracePeriod = 1 * time.Hour
-
-	// DefaultMinDelay is the default minimum delay (24 hours)
-	DefaultMinDelay = 24 * time.Hour
-
-	// DefaultMaxDelay is the default maximum delay (14 days)
-	DefaultMaxDelay = 14 * 24 * time.Hour
-
-	// DefaultGracePeriod is the default grace period (7 days)
-	DefaultGracePeriod = 7 * 24 * time.Hour
-
-	// DefaultEmergencyDelay is the default emergency delay (1 hour)
-	DefaultEmergencyDelay = 1 * time.Hour
+	DefaultMinDelay        = 24 * time.Hour
+	DefaultMaxDelay        = 14 * 24 * time.Hour
+	DefaultGracePeriod     = 7 * 24 * time.Hour
+	DefaultEmergencyDelay  = 1 * time.Hour
 
 	// MinCancelReasonLength is the minimum length for cancellation reason
 	MinCancelReasonLength = 10
@@ -43,35 +52,15 @@ const (
 	MaxJustificationLength = 1000
 )
 
-// OperationStatus represents the state of a queued operation
-type OperationStatus int32
-
+// Status constants that map to the proto-generated OperationStatus
 const (
-	OperationStatusUnspecified OperationStatus = 0
-	OperationStatusQueued      OperationStatus = 1
-	OperationStatusExecuted    OperationStatus = 2
-	OperationStatusCancelled   OperationStatus = 3
-	OperationStatusExpired     OperationStatus = 4
-	OperationStatusFailed      OperationStatus = 5
+	OperationStatusUnspecified = OperationStatus_OPERATION_STATUS_UNSPECIFIED
+	OperationStatusQueued      = OperationStatus_OPERATION_STATUS_QUEUED
+	OperationStatusExecuted    = OperationStatus_OPERATION_STATUS_EXECUTED
+	OperationStatusCancelled   = OperationStatus_OPERATION_STATUS_CANCELLED
+	OperationStatusExpired     = OperationStatus_OPERATION_STATUS_EXPIRED
+	OperationStatusFailed      = OperationStatus_OPERATION_STATUS_FAILED
 )
-
-// String returns the string representation of the status
-func (s OperationStatus) String() string {
-	switch s {
-	case OperationStatusQueued:
-		return "QUEUED"
-	case OperationStatusExecuted:
-		return "EXECUTED"
-	case OperationStatusCancelled:
-		return "CANCELLED"
-	case OperationStatusExpired:
-		return "EXPIRED"
-	case OperationStatusFailed:
-		return "FAILED"
-	default:
-		return "UNSPECIFIED"
-	}
-}
 
 // IsTerminal returns true if the status is a terminal state
 func (s OperationStatus) IsTerminal() bool {
@@ -81,23 +70,14 @@ func (s OperationStatus) IsTerminal() bool {
 		s == OperationStatusFailed
 }
 
-// Params defines the timelock module parameters
-type Params struct {
-	MinDelay       time.Duration
-	MaxDelay       time.Duration
-	GracePeriod    time.Duration
-	EmergencyDelay time.Duration
-	Guardian       string
-}
-
 // DefaultParams returns the default module parameters
 func DefaultParams() Params {
 	return Params{
-		MinDelay:       DefaultMinDelay,
-		MaxDelay:       DefaultMaxDelay,
-		GracePeriod:    DefaultGracePeriod,
-		EmergencyDelay: DefaultEmergencyDelay,
-		Guardian:       "", // Must be set during genesis or via governance
+		MinDelaySeconds:       DefaultMinDelaySeconds,
+		MaxDelaySeconds:       DefaultMaxDelaySeconds,
+		GracePeriodSeconds:    DefaultGracePeriodSeconds,
+		EmergencyDelaySeconds: DefaultEmergencyDelaySeconds,
+		Guardian:              "", // Must be set during genesis or via governance
 	}
 }
 
@@ -121,21 +101,21 @@ func (p Params) Validate() error {
 // validateDelays validates the delay parameters
 func (p Params) validateDelays() error {
 	// Check absolute minimum
-	if p.MinDelay < AbsoluteMinDelay {
-		return fmt.Errorf("%w: got %v, minimum is %v",
-			ErrMinDelayTooShort, p.MinDelay, AbsoluteMinDelay)
+	if p.MinDelaySeconds < AbsoluteMinDelaySeconds {
+		return fmt.Errorf("%w: got %v seconds, minimum is %v seconds",
+			ErrMinDelayTooShort, p.MinDelaySeconds, AbsoluteMinDelaySeconds)
 	}
 
 	// Check absolute maximum
-	if p.MaxDelay > AbsoluteMaxDelay {
-		return fmt.Errorf("%w: got %v, maximum is %v",
-			ErrMaxDelayTooLong, p.MaxDelay, AbsoluteMaxDelay)
+	if p.MaxDelaySeconds > AbsoluteMaxDelaySeconds {
+		return fmt.Errorf("%w: got %v seconds, maximum is %v seconds",
+			ErrMaxDelayTooLong, p.MaxDelaySeconds, AbsoluteMaxDelaySeconds)
 	}
 
 	// Check ordering
-	if p.MinDelay > p.MaxDelay {
-		return fmt.Errorf("%w: min_delay (%v) > max_delay (%v)",
-			ErrDelayOrderInvalid, p.MinDelay, p.MaxDelay)
+	if p.MinDelaySeconds > p.MaxDelaySeconds {
+		return fmt.Errorf("%w: min_delay (%v seconds) > max_delay (%v seconds)",
+			ErrDelayOrderInvalid, p.MinDelaySeconds, p.MaxDelaySeconds)
 	}
 
 	return nil
@@ -143,9 +123,9 @@ func (p Params) validateDelays() error {
 
 // validateGracePeriod validates the grace period
 func (p Params) validateGracePeriod() error {
-	if p.GracePeriod < AbsoluteMinGracePeriod {
-		return fmt.Errorf("%w: got %v, minimum is %v",
-			ErrGracePeriodInvalid, p.GracePeriod, AbsoluteMinGracePeriod)
+	if p.GracePeriodSeconds < AbsoluteMinGracePeriodSeconds {
+		return fmt.Errorf("%w: got %v seconds, minimum is %v seconds",
+			ErrGracePeriodInvalid, p.GracePeriodSeconds, AbsoluteMinGracePeriodSeconds)
 	}
 
 	return nil
@@ -154,15 +134,15 @@ func (p Params) validateGracePeriod() error {
 // validateEmergencyDelay validates the emergency delay
 func (p Params) validateEmergencyDelay() error {
 	// Emergency delay must be at least the absolute minimum
-	if p.EmergencyDelay < AbsoluteMinDelay {
-		return fmt.Errorf("%w: got %v, minimum is %v",
-			ErrEmergencyDelayInvalid, p.EmergencyDelay, AbsoluteMinDelay)
+	if p.EmergencyDelaySeconds < AbsoluteMinDelaySeconds {
+		return fmt.Errorf("%w: got %v seconds, minimum is %v seconds",
+			ErrEmergencyDelayInvalid, p.EmergencyDelaySeconds, AbsoluteMinDelaySeconds)
 	}
 
 	// Emergency delay must be less than regular min delay
-	if p.EmergencyDelay >= p.MinDelay {
-		return fmt.Errorf("%w: emergency_delay (%v) >= min_delay (%v)",
-			ErrEmergencyExceedsMin, p.EmergencyDelay, p.MinDelay)
+	if p.EmergencyDelaySeconds >= p.MinDelaySeconds {
+		return fmt.Errorf("%w: emergency_delay (%v seconds) >= min_delay (%v seconds)",
+			ErrEmergencyExceedsMin, p.EmergencyDelaySeconds, p.MinDelaySeconds)
 	}
 
 	return nil
@@ -192,4 +172,26 @@ func ValidateJustification(justification string) error {
 			ErrJustificationRequired, MaxJustificationLength)
 	}
 	return nil
+}
+
+// Helper methods for time conversion
+
+// MinDelayDuration returns the minimum delay as a time.Duration
+func (p Params) MinDelayDuration() time.Duration {
+	return time.Duration(p.MinDelaySeconds) * time.Second
+}
+
+// MaxDelayDuration returns the maximum delay as a time.Duration
+func (p Params) MaxDelayDuration() time.Duration {
+	return time.Duration(p.MaxDelaySeconds) * time.Second
+}
+
+// GracePeriodDuration returns the grace period as a time.Duration
+func (p Params) GracePeriodDuration() time.Duration {
+	return time.Duration(p.GracePeriodSeconds) * time.Second
+}
+
+// EmergencyDelayDuration returns the emergency delay as a time.Duration
+func (p Params) EmergencyDelayDuration() time.Duration {
+	return time.Duration(p.EmergencyDelaySeconds) * time.Second
 }
