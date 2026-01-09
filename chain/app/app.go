@@ -190,6 +190,10 @@ func New(
 	// build app
 	app.App = appBuilder.Build(db, traceStore, baseAppOptions...)
 
+	// Configure store upgrades BEFORE Load() is called
+	// This must happen after Build() but before Load()
+	app.setupStoreUpgrades()
+
 	// register legacy modules
 	if err := app.registerIBCModules(appOpts); err != nil {
 		panic(err)
