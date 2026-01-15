@@ -104,7 +104,16 @@ func (k Keeper) Logger() log.Logger {
 
 // GetParams returns the module parameters
 func (k Keeper) GetParams(ctx context.Context) (types.Params, error) {
-	return k.Params.Get(ctx)
+	params, err := k.Params.Get(ctx)
+	if err != nil {
+		// If params don't exist, return default params
+		// This can happen before genesis initialization
+		if errors.Is(err, collections.ErrNotFound) {
+			return types.DefaultParams(), nil
+		}
+		return types.Params{}, err
+	}
+	return params, nil
 }
 
 // SetParams sets the module parameters
