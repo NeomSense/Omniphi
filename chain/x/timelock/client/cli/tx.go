@@ -26,6 +26,7 @@ func GetTxCmd() *cobra.Command {
 		CmdExecuteOperation(),
 		CmdCancelOperation(),
 		CmdEmergencyExecute(),
+		CmdUpdateGuardian(),
 	)
 
 	return cmd
@@ -121,6 +122,40 @@ func CmdEmergencyExecute() *cobra.Command {
 				Authority:     clientCtx.GetFromAddress().String(),
 				OperationId:   operationID,
 				Justification: args[1],
+			}
+
+			if err := msg.ValidateBasic(); err != nil {
+				return err
+			}
+
+			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
+		},
+	}
+
+	flags.AddTxFlagsToCmd(cmd)
+	return cmd
+}
+
+// CmdUpdateGuardian creates a command to update the guardian address
+func CmdUpdateGuardian() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "update-guardian [new-guardian-address]",
+		Short: "Update the guardian address (governance only)",
+		Long: `Update the guardian address for emergency operations.
+This command can only be executed through a governance proposal.
+
+Example:
+  posd tx timelock update-guardian omni1... --from governance`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientTxContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			msg := &types.MsgUpdateGuardian{
+				Authority:   clientCtx.GetFromAddress().String(),
+				NewGuardian: args[0],
 			}
 
 			if err := msg.ValidateBasic(); err != nil {
