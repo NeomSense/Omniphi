@@ -196,9 +196,9 @@ func New(
 	// Wire up timelock with gov keeper for proposal interception
 	app.TimelockKeeper.SetGovKeeper(app.GovKeeper)
 
-	// Set timelock hooks on the gov keeper to intercept passed proposals
-	// This ensures proposals are queued for 24h delay instead of executing immediately
-	app.GovKeeper = app.GovKeeper.SetHooks(timelockkeeper.NewGovHooks(app.TimelockKeeper))
+	// Note: Gov hooks are automatically set by depinject via GovHooksWrapper
+	// See: x/timelock/module/depinject.go:69
+	// The hooks intercept passed proposals and queue them for 24h delay
 
 	// register legacy modules
 	if err := app.registerIBCModules(appOpts); err != nil {
