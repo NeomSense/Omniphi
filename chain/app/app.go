@@ -193,6 +193,9 @@ func New(
 	// build app
 	app.App = appBuilder.Build(db, traceStore, baseAppOptions...)
 
+	// Wire up timelock with gov keeper for proposal interception
+	app.TimelockKeeper.SetGovKeeper(app.GovKeeper)
+
 	// Set timelock hooks on the gov keeper to intercept passed proposals
 	// This ensures proposals are queued for 24h delay instead of executing immediately
 	app.GovKeeper = app.GovKeeper.SetHooks(timelockkeeper.NewGovHooks(app.TimelockKeeper))

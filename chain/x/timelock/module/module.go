@@ -148,6 +148,12 @@ func (AppModule) ConsensusVersion() uint64 { return 1 }
 
 // EndBlock is called at the end of every block
 func (am AppModule) EndBlock(ctx context.Context) error {
+	// Process pending governance proposals FIRST (before gov module executes them)
+	// This must run before the gov module's EndBlocker
+	if err := am.keeper.ProcessPendingProposals(ctx); err != nil {
+		am.keeper.Logger().Error("failed to process pending proposals", "error", err)
+	}
+
 	// Mark expired operations
 	if err := am.keeper.MarkExpiredOperations(ctx); err != nil {
 		am.keeper.Logger().Error("failed to mark expired operations", "error", err)

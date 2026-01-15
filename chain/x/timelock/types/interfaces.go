@@ -4,6 +4,7 @@ import (
 	context "context"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	govv1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 )
 
 // AccountKeeper defines the expected account keeper interface
@@ -20,6 +21,9 @@ type BankKeeper interface {
 
 // GovKeeper defines the expected governance keeper interface
 type GovKeeper interface {
-	// GetProposal returns a proposal by ID
-	GetProposal(ctx context.Context, proposalID uint64) (interface{}, error)
+	// SetProposal stores a proposal
+	SetProposal(ctx context.Context, proposal govv1.Proposal) error
+
+	// DeleteProposal removes a proposal from state
+	DeleteProposal(ctx context.Context, proposalID uint64) error
 }

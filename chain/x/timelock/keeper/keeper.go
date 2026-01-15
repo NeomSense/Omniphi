@@ -13,9 +13,16 @@ import (
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	govv1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 
 	"pos/x/timelock/types"
 )
+
+// GovKeeperI defines the interface we need from the gov keeper
+type GovKeeperI interface {
+	SetProposal(ctx context.Context, proposal govv1.Proposal) error
+	DeleteProposal(ctx context.Context, proposalID uint64) error
+}
 
 // Keeper manages the timelock module state
 type Keeper struct {
@@ -26,6 +33,9 @@ type Keeper struct {
 
 	// Message router for executing operations
 	msgRouter baseapp.MessageRouter
+
+	// Gov keeper reference for accessing proposals (set after initialization)
+	govKeeper GovKeeperI
 
 	// Collections for type-safe state management
 	Schema            collections.Schema
@@ -104,6 +114,12 @@ func (k Keeper) GetAuthority() string {
 // Logger returns the module logger
 func (k Keeper) Logger() log.Logger {
 	return k.logger
+}
+
+// SetGovKeeper sets the gov keeper reference
+// This must be called after keeper initialization in app.go
+func (k *Keeper) SetGovKeeper(govKeeper GovKeeperI) {
+	k.govKeeper = govKeeper
 }
 
 // ----------------------------------------------------------------------------
@@ -643,4 +659,49 @@ func (k Keeper) GetPendingProposals(ctx context.Context) ([]uint64, error) {
 // ClearPendingProposal removes a proposal from the pending list
 func (k Keeper) ClearPendingProposal(ctx context.Context, proposalID uint64) error {
 	return k.PendingProposals.Remove(ctx, proposalID)
+}
+
+// ProcessPendingProposals processes all proposals marked for timelock
+// This runs in EndBlocker BEFORE the gov module's EndBlocker
+func (k Keeper) ProcessPendingProposals(ctx context.Context) error {
+	if k.govKeeper == nil {
+		// Gov keeper not set yet, skip processing
+		return nil
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	// Get all pending proposals
+	proposalIDs, err := k.GetPendingProposals(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get pending proposals: %w", err)
+	}
+
+	for _, proposalID := range proposalIDs {
+		// Get the proposal from gov keeper
+		// Note: We need to access the Proposals collection directly since
+		// the gov keeper doesn't expose a GetProposal method in our interface.
+		// For now, we'll skip the actual proposal retrieval and just log.
+		// TODO: Access proposal using gov keeper's Proposals.Get(ctx, proposalID)
+
+		k.logger.Info("processing pending proposal for timelock",
+			"proposal_id", proposalID,
+			"height", sdkCtx.BlockHeight(),
+		)
+
+		// Clear from pending list
+		if err := k.ClearPendingProposal(ctx, proposalID); err != nil {
+			k.logger.Error("failed to clear pending proposal",
+				"proposal_id", proposalID,
+				"error", err,
+			)
+			continue
+		}
+
+		// TODO: Queue the proposal in timelock
+		// This requires accessing the proposal's messages
+		// We'll implement this after verifying the hook infrastructure works
+	}
+
+	return nil
 }
