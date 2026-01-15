@@ -48,15 +48,21 @@ func (h GovHooks) AfterProposalFailedMinDeposit(ctx context.Context, proposalID 
 }
 
 // AfterProposalVotingPeriodEnded is called when a proposal's voting period ends
-// This is where we intercept passed proposals and queue them for timelock execution
+// This is where we mark proposals for timelock processing
 func (h GovHooks) AfterProposalVotingPeriodEnded(ctx context.Context, proposalID uint64) error {
-	// NOTE: This hook is called AFTER the voting period ends but BEFORE
-	// the standard gov module executes the messages. To properly implement
-	// timelock, we need to modify the gov module's EndBlocker or use
-	// a wrapper approach. For now, this hook just logs the event.
-
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	h.keeper.Logger().Info("proposal voting period ended",
+
+	// Store the proposal ID for processing in our EndBlocker
+	// This allows us to queue it BEFORE the gov module executes it
+	if err := h.keeper.MarkProposalForTimelock(ctx, proposalID); err != nil {
+		h.keeper.Logger().Error("failed to mark proposal for timelock",
+			"proposal_id", proposalID,
+			"error", err,
+		)
+		return err
+	}
+
+	h.keeper.Logger().Info("proposal marked for timelock processing",
 		"proposal_id", proposalID,
 		"height", sdkCtx.BlockHeight(),
 	)

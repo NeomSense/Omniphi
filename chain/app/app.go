@@ -49,6 +49,7 @@ import (
 
 	feegrantkeeper "cosmossdk.io/x/feegrant/keeper"
 	feemarketkeeper "pos/x/feemarket/keeper"
+	timelockkeeper "pos/x/timelock/keeper"
 )
 
 const (
@@ -97,6 +98,7 @@ type App struct {
 	ParamsKeeper          paramskeeper.Keeper
 	FeegrantKeeper        feegrantkeeper.Keeper
 	FeemarketKeeper       feemarketkeeper.Keeper
+	TimelockKeeper        *timelockkeeper.Keeper
 
 	// ibc keepers
 	IBCKeeper           *ibckeeper.Keeper
@@ -179,6 +181,7 @@ func New(
 		&app.ParamsKeeper,
 		&app.FeegrantKeeper,
 		&app.FeemarketKeeper,
+		&app.TimelockKeeper,
 	); err != nil {
 		panic(err)
 	}
@@ -189,6 +192,10 @@ func New(
 
 	// build app
 	app.App = appBuilder.Build(db, traceStore, baseAppOptions...)
+
+	// Set timelock hooks on the gov keeper to intercept passed proposals
+	// This ensures proposals are queued for 24h delay instead of executing immediately
+	app.GovKeeper = app.GovKeeper.SetHooks(timelockkeeper.NewGovHooks(app.TimelockKeeper))
 
 	// register legacy modules
 	if err := app.registerIBCModules(appOpts); err != nil {

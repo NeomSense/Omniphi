@@ -33,6 +33,7 @@ type Keeper struct {
 	Operations        collections.Map[uint64, types.QueuedOperation]
 	OperationsByHash  collections.Map[string, uint64]
 	NextOperationID   collections.Sequence
+	PendingProposals  collections.Map[uint64, bool] // Proposals pending timelock processing
 }
 
 // NewKeeper creates a new timelock keeper
@@ -76,6 +77,13 @@ func NewKeeper(
 			sb,
 			collections.NewPrefix(types.NextOperationIDKey),
 			"next_operation_id",
+		),
+		PendingProposals: collections.NewMap(
+			sb,
+			collections.NewPrefix([]byte("pending_proposals")),
+			"pending_proposals",
+			collections.Uint64Key,
+			collections.BoolValue,
 		),
 	}
 
@@ -614,4 +622,25 @@ func (k Keeper) MarkExpiredOperations(ctx context.Context) error {
 		}
 		return false, nil
 	})
+}
+
+// MarkProposalForTimelock marks a proposal ID for timelock processing
+// This is called from the gov hooks when a proposal's voting period ends
+func (k Keeper) MarkProposalForTimelock(ctx context.Context, proposalID uint64) error {
+	return k.PendingProposals.Set(ctx, proposalID, true)
+}
+
+// GetPendingProposals retrieves all proposals pending timelock processing
+func (k Keeper) GetPendingProposals(ctx context.Context) ([]uint64, error) {
+	var proposalIDs []uint64
+	err := k.PendingProposals.Walk(ctx, nil, func(proposalID uint64, _ bool) (stop bool, err error) {
+		proposalIDs = append(proposalIDs, proposalID)
+		return false, nil
+	})
+	return proposalIDs, err
+}
+
+// ClearPendingProposal removes a proposal from the pending list
+func (k Keeper) ClearPendingProposal(ctx context.Context, proposalID uint64) error {
+	return k.PendingProposals.Remove(ctx, proposalID)
 }

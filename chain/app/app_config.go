@@ -142,8 +142,8 @@ var (
 					},
 					EndBlockers: []string{
 						feemarketmoduletypes.ModuleName,  // Process fees first (burn + distribute)
+						timelockmoduletypes.ModuleName,   // MUST run before gov to intercept proposals
 						govtypes.ModuleName,
-						timelockmoduletypes.ModuleName,   // Process expired operations after gov
 						stakingtypes.ModuleName,
 						feegrant.ModuleName,
 						group.ModuleName,
