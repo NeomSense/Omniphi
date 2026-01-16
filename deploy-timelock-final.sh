@@ -17,16 +17,24 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# Check if running on VPS
-if [ ! -d ~/omniphi ]; then
-    echo -e "${RED}Error: ~/omniphi directory not found${NC}"
-    echo "This script must be run on the VPS"
+# Find omniphi directory (case insensitive)
+if [ -d ~/omniphi ]; then
+    OMNIPHI_DIR=~/omniphi
+elif [ -d ~/Omniphi ]; then
+    OMNIPHI_DIR=~/Omniphi
+elif [ -d ~/OMNIPHI ]; then
+    OMNIPHI_DIR=~/OMNIPHI
+else
+    echo -e "${RED}Error: Omniphi directory not found in home directory${NC}"
+    echo "Searched: ~/omniphi, ~/Omniphi, ~/OMNIPHI"
     exit 1
 fi
 
+echo "Found Omniphi directory: $OMNIPHI_DIR"
+
 # Step 1: Pull latest code
 echo -e "${BLUE}Step 1: Pulling latest code from GitHub...${NC}"
-cd ~/omniphi/chain
+cd $OMNIPHI_DIR/chain
 git fetch origin
 CURRENT_COMMIT=$(git rev-parse HEAD)
 LATEST_COMMIT=$(git rev-parse origin/main)
