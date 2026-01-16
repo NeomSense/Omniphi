@@ -20,6 +20,7 @@ import (
 
 // GovKeeperI defines the interface we need from the gov keeper
 type GovKeeperI interface {
+	GetProposal(ctx context.Context, proposalID uint64) (govv1.Proposal, error)
 	SetProposal(ctx context.Context, proposal govv1.Proposal) error
 	DeleteProposal(ctx context.Context, proposalID uint64) error
 }
@@ -678,30 +679,94 @@ func (k Keeper) ProcessPendingProposals(ctx context.Context) error {
 	}
 
 	for _, proposalID := range proposalIDs {
-		// Get the proposal from gov keeper
-		// Note: We need to access the Proposals collection directly since
-		// the gov keeper doesn't expose a GetProposal method in our interface.
-		// For now, we'll skip the actual proposal retrieval and just log.
-		// TODO: Access proposal using gov keeper's Proposals.Get(ctx, proposalID)
+		// Process each proposal that passed governance
+		if err := k.processProposal(ctx, sdkCtx, proposalID); err != nil {
+			k.logger.Error("failed to process proposal for timelock",
+				"proposal_id", proposalID,
+				"error", err,
+			)
+			// Continue processing other proposals even if one fails
+			continue
+		}
 
-		k.logger.Info("processing pending proposal for timelock",
-			"proposal_id", proposalID,
-			"height", sdkCtx.BlockHeight(),
-		)
-
-		// Clear from pending list
+		// Clear from pending list after successful processing
 		if err := k.ClearPendingProposal(ctx, proposalID); err != nil {
 			k.logger.Error("failed to clear pending proposal",
 				"proposal_id", proposalID,
 				"error", err,
 			)
-			continue
 		}
-
-		// TODO: Queue the proposal in timelock
-		// This requires accessing the proposal's messages
-		// We'll implement this after verifying the hook infrastructure works
 	}
+
+	return nil
+}
+
+// processProposal handles the timelock queueing for a single proposal
+func (k Keeper) processProposal(ctx context.Context, sdkCtx sdk.Context, proposalID uint64) error {
+	// Retrieve the proposal from the gov keeper
+	proposal, err := k.govKeeper.GetProposal(ctx, proposalID)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve proposal %d: %w", proposalID, err)
+	}
+
+	// Only process proposals that have PASSED status
+	if proposal.Status != govv1.StatusPassed {
+		k.logger.Info("skipping proposal - not in PASSED status",
+			"proposal_id", proposalID,
+			"status", proposal.Status.String(),
+		)
+		return nil
+	}
+
+	k.logger.Info("queueing passed governance proposal in timelock",
+		"proposal_id", proposalID,
+		"num_messages", len(proposal.Messages),
+		"height", sdkCtx.BlockHeight(),
+	)
+
+	// Convert proto Any messages to sdk.Msg
+	messages := make([]sdk.Msg, len(proposal.Messages))
+	for i, anyMsg := range proposal.Messages {
+		var msg sdk.Msg
+		if err := k.cdc.UnpackAny(anyMsg, &msg); err != nil {
+			return fmt.Errorf("failed to unpack message %d from proposal %d: %w", i, proposalID, err)
+		}
+		messages[i] = msg
+	}
+
+	// Queue the operation in timelock with the governance module as executor
+	// The governance module authority will be the one executing after the delay
+	operation, err := k.QueueOperation(ctx, proposalID, messages, k.authority)
+	if err != nil {
+		return fmt.Errorf("failed to queue operation for proposal %d: %w", proposalID, err)
+	}
+
+	k.logger.Info("proposal successfully queued in timelock",
+		"proposal_id", proposalID,
+		"operation_id", operation.Id,
+		"executable_time", operation.ExecutableTime(),
+		"queued_at", time.Unix(operation.QueuedAtUnix, 0),
+	)
+
+	// CRITICAL: Prevent the gov module from executing this proposal
+	// We mark it as FAILED so the gov EndBlocker skips it
+	// The actual execution will happen via timelock after the delay period
+	proposal.Status = govv1.StatusFailed
+	if err := k.govKeeper.SetProposal(ctx, proposal); err != nil {
+		// This is critical - if we can't update the proposal status,
+		// the gov module might execute it immediately, bypassing timelock
+		k.logger.Error("CRITICAL: failed to update proposal status to prevent execution",
+			"proposal_id", proposalID,
+			"error", err,
+		)
+		return fmt.Errorf("failed to update proposal status for proposal %d: %w", proposalID, err)
+	}
+
+	k.logger.Info("proposal status updated to prevent immediate execution",
+		"proposal_id", proposalID,
+		"status", "FAILED",
+		"note", "actual execution will occur via timelock after delay",
+	)
 
 	return nil
 }

@@ -194,7 +194,8 @@ func New(
 	app.App = appBuilder.Build(db, traceStore, baseAppOptions...)
 
 	// Wire up timelock with gov keeper for proposal interception
-	app.TimelockKeeper.SetGovKeeper(app.GovKeeper)
+	// Use adapter to provide clean interface for accessing gov proposals
+	app.TimelockKeeper.SetGovKeeper(timelockkeeper.NewGovKeeperAdapter(app.GovKeeper))
 
 	// Note: Gov hooks are automatically set by depinject via GovHooksWrapper
 	// See: x/timelock/module/depinject.go:69
