@@ -191,7 +191,7 @@ func setupKeeperTest(t *testing.T) *emissionsTestSuite {
 
 	// Initialize PoC params
 	params := types.DefaultParams()
-	params.RewardDenom = "uomni"
+	params.RewardDenom = "omniphi"
 	params.BaseRewardUnit = math.NewInt(100)
 	params.MaxPerBlock = 100
 	err := pocKeeper.SetParams(ctx, params)
@@ -212,13 +212,13 @@ func TestDistributeEmissions(t *testing.T) {
 	ctx := suite.ctx
 
 	// Distribute 1000 OMNI emissions
-	emissions := sdk.NewCoins(sdk.NewCoin("uomni", math.NewInt(1000_000000)))
+	emissions := sdk.NewCoins(sdk.NewCoin("omniphi", math.NewInt(1000_000000)))
 	err := suite.keeper.DistributeEmissions(ctx, emissions)
 	require.NoError(t, err, "distribute emissions should succeed")
 
 	// Check module balance equals emission amount (started at zero)
 	moduleAddr := suite.accountKeeper.GetModuleAddress(types.ModuleName)
-	balanceAfter := suite.bankKeeper.GetBalance(ctx, moduleAddr, "uomni")
+	balanceAfter := suite.bankKeeper.GetBalance(ctx, moduleAddr, "omniphi")
 	require.Equal(t, emissions[0].Amount, balanceAfter.Amount,
 		"module balance should equal emission amount")
 }
@@ -249,7 +249,7 @@ func TestProcessPendingRewards_SingleContribution(t *testing.T) {
 
 	// Fund PoC module with 1000 OMNI
 	_ = suite.accountKeeper.GetModuleAddress(types.ModuleName)
-	fundAmount := sdk.NewCoins(sdk.NewCoin("uomni", math.NewInt(1000_000000)))
+	fundAmount := sdk.NewCoins(sdk.NewCoin("omniphi", math.NewInt(1000_000000)))
 	err := suite.bankKeeper.MintCoins(ctx, types.ModuleName, fundAmount)
 	require.NoError(t, err)
 
@@ -270,14 +270,14 @@ func TestProcessPendingRewards_SingleContribution(t *testing.T) {
 	require.NoError(t, err)
 
 	// Get contributor balance before
-	balanceBefore := suite.bankKeeper.GetBalance(ctx, contributor, "uomni")
+	balanceBefore := suite.bankKeeper.GetBalance(ctx, contributor, "omniphi")
 
 	// Process rewards
 	err = suite.keeper.ProcessPendingRewards(ctx)
 	require.NoError(t, err)
 
 	// Check contributor received reward
-	balanceAfter := suite.bankKeeper.GetBalance(ctx, contributor, "uomni")
+	balanceAfter := suite.bankKeeper.GetBalance(ctx, contributor, "omniphi")
 	require.True(t, balanceAfter.Amount.GT(balanceBefore.Amount),
 		"contributor should receive reward")
 
@@ -292,7 +292,7 @@ func TestProcessPendingRewards_MultipleContributions(t *testing.T) {
 	ctx := suite.ctx
 
 	// Fund PoC module with 10,000 OMNI
-	fundAmount := sdk.NewCoins(sdk.NewCoin("uomni", math.NewInt(10000_000000)))
+	fundAmount := sdk.NewCoins(sdk.NewCoin("omniphi", math.NewInt(10000_000000)))
 	err := suite.bankKeeper.MintCoins(ctx, types.ModuleName, fundAmount)
 	require.NoError(t, err)
 
@@ -335,9 +335,9 @@ func TestProcessPendingRewards_MultipleContributions(t *testing.T) {
 	require.NoError(t, err)
 
 	// Each contributor should receive ~3,333 OMNI (equal weights)
-	balance1 := suite.bankKeeper.GetBalance(ctx, contributor1, "uomni")
-	balance2 := suite.bankKeeper.GetBalance(ctx, contributor2, "uomni")
-	balance3 := suite.bankKeeper.GetBalance(ctx, contributor3, "uomni")
+	balance1 := suite.bankKeeper.GetBalance(ctx, contributor1, "omniphi")
+	balance2 := suite.bankKeeper.GetBalance(ctx, contributor2, "omniphi")
+	balance3 := suite.bankKeeper.GetBalance(ctx, contributor3, "omniphi")
 
 	// All should be positive
 	require.True(t, balance1.Amount.IsPositive())
@@ -367,7 +367,7 @@ func TestProcessPendingRewards_SkipsUnverified(t *testing.T) {
 	ctx := suite.ctx
 
 	// Fund PoC module
-	fundAmount := sdk.NewCoins(sdk.NewCoin("uomni", math.NewInt(1000_000000)))
+	fundAmount := sdk.NewCoins(sdk.NewCoin("omniphi", math.NewInt(1000_000000)))
 	err := suite.bankKeeper.MintCoins(ctx, types.ModuleName, fundAmount)
 	require.NoError(t, err)
 
@@ -387,7 +387,7 @@ func TestProcessPendingRewards_SkipsUnverified(t *testing.T) {
 	require.NoError(t, err)
 
 	// Contributor should NOT receive reward
-	balance := suite.bankKeeper.GetBalance(ctx, contributor, "uomni")
+	balance := suite.bankKeeper.GetBalance(ctx, contributor, "omniphi")
 	require.True(t, balance.Amount.IsZero(), "unverified contribution should not be rewarded")
 
 	// Contribution should NOT be marked as rewarded
@@ -401,7 +401,7 @@ func TestProcessPendingRewards_SkipsAlreadyRewarded(t *testing.T) {
 	ctx := suite.ctx
 
 	// Fund PoC module
-	fundAmount := sdk.NewCoins(sdk.NewCoin("uomni", math.NewInt(1000_000000)))
+	fundAmount := sdk.NewCoins(sdk.NewCoin("omniphi", math.NewInt(1000_000000)))
 	err := suite.bankKeeper.MintCoins(ctx, types.ModuleName, fundAmount)
 	require.NoError(t, err)
 
@@ -416,14 +416,14 @@ func TestProcessPendingRewards_SkipsAlreadyRewarded(t *testing.T) {
 	err = suite.keeper.SetContribution(ctx, contribution)
 	require.NoError(t, err)
 
-	balanceBefore := suite.bankKeeper.GetBalance(ctx, contributor, "uomni")
+	balanceBefore := suite.bankKeeper.GetBalance(ctx, contributor, "omniphi")
 
 	// Process rewards
 	err = suite.keeper.ProcessPendingRewards(ctx)
 	require.NoError(t, err)
 
 	// Contributor should NOT receive additional reward
-	balanceAfter := suite.bankKeeper.GetBalance(ctx, contributor, "uomni")
+	balanceAfter := suite.bankKeeper.GetBalance(ctx, contributor, "omniphi")
 	require.Equal(t, balanceBefore, balanceAfter, "already rewarded contribution should not be paid again")
 }
 
@@ -432,7 +432,7 @@ func TestGetPendingRewardsAmount(t *testing.T) {
 	ctx := suite.ctx
 
 	// Fund PoC module with 3000 OMNI
-	fundAmount := sdk.NewCoins(sdk.NewCoin("uomni", math.NewInt(3000_000000)))
+	fundAmount := sdk.NewCoins(sdk.NewCoin("omniphi", math.NewInt(3000_000000)))
 	err := suite.bankKeeper.MintCoins(ctx, types.ModuleName, fundAmount)
 	require.NoError(t, err)
 

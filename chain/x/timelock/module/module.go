@@ -151,7 +151,18 @@ func (am AppModule) EndBlock(ctx context.Context) error {
 	// Process pending governance proposals FIRST (before gov module executes them)
 	// This must run before the gov module's EndBlocker
 	if err := am.keeper.ProcessPendingProposals(ctx); err != nil {
-		am.keeper.Logger().Error("failed to process pending proposals", "error", err)
+		// CRITICAL: If we fail to process pending proposals, the gov module might
+		// execute them immediately, bypassing the timelock. We must return this error
+		// to halt the chain rather than allow a timelock bypass.
+		am.keeper.Logger().Error("CRITICAL: failed to process pending proposals", "error", err)
+		return fmt.Errorf("timelock: failed to process pending proposals: %w", err)
+	}
+
+	// Auto-execute operations that have passed their timelock delay
+	// This solves the execution deadlock where module accounts cannot sign transactions
+	if err := am.keeper.AutoExecuteReadyOperations(ctx); err != nil {
+		am.keeper.Logger().Error("failed to auto-execute ready operations", "error", err)
+		// Non-fatal: operations can be retried in next block
 	}
 
 	// Mark expired operations

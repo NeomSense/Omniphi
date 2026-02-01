@@ -36,11 +36,15 @@ func (k Keeper) InitGenesis(ctx context.Context, gs types.GenesisState) error {
 	}
 
 	// Import fee metrics
-	k.SetFeeMetrics(ctx, gs.FeeMetrics)
+	if err := k.SetFeeMetrics(ctx, gs.FeeMetrics); err != nil {
+		return err
+	}
 
 	// Import contributor fee stats
 	for _, stats := range gs.ContributorFeeStats {
-		k.SetContributorFeeStats(ctx, stats)
+		if err := k.SetContributorFeeStats(ctx, stats); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -69,7 +73,12 @@ func (k Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 	feeMetrics := k.GetFeeMetrics(ctx)
 
 	// Export contributor fee stats
-	contributorFeeStats := k.GetAllContributorFeeStats(ctx)
+	contributorFeeStats, err := k.GetAllContributorFeeStats(ctx)
+	if err != nil {
+		// Log error but don't fail genesis export - use empty slice
+		k.logger.Error("failed to export contributor fee stats", "error", err)
+		contributorFeeStats = []types.ContributorFeeStats{}
+	}
 
 	return &types.GenesisState{
 		Params:              params,

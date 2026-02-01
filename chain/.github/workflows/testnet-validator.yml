@@ -50,7 +50,7 @@ jobs:
       - name: Configure node
         run: |
           # Set minimum gas prices
-          sed -i 's/minimum-gas-prices = ""/minimum-gas-prices = "0.025uomni"/' ~/.pos/config/app.toml
+          sed -i 's/minimum-gas-prices = ""/minimum-gas-prices = "0.025omniphi"/' ~/.pos/config/app.toml
 
           # Enable API and unsafe CORS
           sed -i 's/enable = false/enable = true/' ~/.pos/config/app.toml

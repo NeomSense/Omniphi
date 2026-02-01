@@ -29,17 +29,17 @@ const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 // FeeMarketParams defines the parameters for the feemarket module.
 // All parameters are governance-adjustable via ParamChangeProposal.
 type FeeMarketParams struct {
-	// min_gas_price is the minimum gas price enforced by validators (in uomni/gas)
+	// min_gas_price is the minimum gas price enforced by validators (in omniphi/gas)
 	// Transactions below this price will be rejected
-	// Default: 0.05 uomni/gas
-	// Governance Range: 0.01 - 1.0 uomni/gas
+	// Default: 0.05 omniphi/gas
+	// Governance Range: 0.01 - 1.0 omniphi/gas
 	MinGasPrice cosmossdk_io_math.LegacyDec `protobuf:"bytes,1,opt,name=min_gas_price,json=minGasPrice,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"min_gas_price"`
 	// base_fee_enabled enables EIP-1559 style dynamic base fee adjustment
 	// When true, base fee adjusts based on block utilization
 	// Default: true
 	BaseFeeEnabled bool `protobuf:"varint,2,opt,name=base_fee_enabled,json=baseFeeEnabled,proto3" json:"base_fee_enabled,omitempty"`
-	// base_fee_initial is the initial base fee (in uomni/gas) at genesis
-	// Default: 0.05 uomni/gas
+	// base_fee_initial is the initial base fee (in omniphi/gas) at genesis
+	// Default: 0.05 omniphi/gas
 	BaseFeeInitial cosmossdk_io_math.LegacyDec `protobuf:"bytes,3,opt,name=base_fee_initial,json=baseFeeInitial,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"base_fee_initial"`
 	// elasticity_multiplier determines how much base fee changes per block
 	// If utilization > target: new_base_fee = old_base_fee * elasticity_multiplier
@@ -105,7 +105,7 @@ type FeeMarketParams struct {
 	MaxBurnRatio cosmossdk_io_math.LegacyDec `protobuf:"bytes,16,opt,name=max_burn_ratio,json=maxBurnRatio,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"max_burn_ratio"`
 	// min_gas_price_floor is the absolute minimum gas price
 	// Acts as a hard floor below which governance cannot reduce min_gas_price
-	// Default: 0.025 uomni/gas
+	// Default: 0.025 omniphi/gas
 	// Protocol Enforced: Cannot be less than 0.01
 	MinGasPriceFloor cosmossdk_io_math.LegacyDec `protobuf:"bytes,17,opt,name=min_gas_price_floor,json=minGasPriceFloor,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"min_gas_price_floor"`
 	// multiplier_messaging adjusts burn for messaging/IBC transfers

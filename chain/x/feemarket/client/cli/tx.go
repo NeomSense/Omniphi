@@ -84,7 +84,7 @@ Example - Create proposal JSON file (proposal.json):
       }
     }
   ],
-  "deposit": "10000000uomni",
+  "deposit": "10000000omniphi",
   "metadata": "ipfs://CID"
 }
 

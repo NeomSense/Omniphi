@@ -12,7 +12,7 @@ import (
 // TestComputeEffectiveBurn_NormalUtilization tests burn calculation at normal utilization
 func TestComputeEffectiveBurn_NormalUtilization(t *testing.T) {
 	// Normal utilization (20% burn base) + smart contract (1.5x multiplier) = 30% effective
-	// With 100 uomni fee: burn = 30, validator = 49, treasury = 21
+	// With 100 omniphi fee: burn = 30, validator = 49, treasury = 21
 
 	baseBurn := math.LegacyMustNewDecFromStr("0.20")    // Normal tier
 	multiplier := math.LegacyMustNewDecFromStr("1.50")  // Smart contracts

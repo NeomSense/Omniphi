@@ -130,7 +130,7 @@ def update_genesis(genesis_path: str) -> None:
     print("  - Max tx gas: 2,000,000 (2M) - no single tx dominance")
     print("  - Max block bytes: 10,485,760 (10MB)")
     print("  - Target utilization: 33%")
-    print("  - Min gas price: 0.025 uomni")
+    print("  - Min gas price: 0.025 omniphi")
     print("  - Target TPS: ~100 (range: 50-150)")
 
 

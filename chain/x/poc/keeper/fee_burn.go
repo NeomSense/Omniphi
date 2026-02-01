@@ -101,8 +101,7 @@ func (k Keeper) UpdateFeeMetrics(
 	metrics.TotalRewardRedirect = metrics.TotalRewardRedirect.Add(rewardRedirect...)
 	metrics.LastUpdatedHeight = sdkCtx.BlockHeight()
 
-	k.SetFeeMetrics(ctx, metrics)
-	return nil
+	return k.SetFeeMetrics(ctx, metrics)
 }
 
 // UpdateContributorFeeStats updates per-contributor fee statistics.
@@ -127,8 +126,7 @@ func (k Keeper) UpdateContributorFeeStats(
 	stats.SubmissionCount++
 	stats.LastSubmissionHeight = sdkCtx.BlockHeight()
 
-	k.SetContributorFeeStats(ctx, stats)
-	return nil
+	return k.SetContributorFeeStats(ctx, stats)
 }
 
 // GetFeeMetrics retrieves global fee metrics from state.
@@ -152,12 +150,14 @@ func (k Keeper) GetFeeMetrics(ctx context.Context) types.FeeMetrics {
 }
 
 // SetFeeMetrics stores global fee metrics to state.
-func (k Keeper) SetFeeMetrics(ctx context.Context, metrics types.FeeMetrics) {
+// SECURITY: Returns error instead of panicking to prevent node crashes
+func (k Keeper) SetFeeMetrics(ctx context.Context, metrics types.FeeMetrics) error {
 	store := k.storeService.OpenKVStore(ctx)
 	bz := k.cdc.MustMarshal(&metrics)
 	if err := store.Set(types.KeyFeeMetrics, bz); err != nil {
-		panic(fmt.Sprintf("failed to set fee metrics: %v", err))
+		return fmt.Errorf("failed to set fee metrics: %w", err)
 	}
+	return nil
 }
 
 // GetContributorFeeStats retrieves contributor-specific fee stats from state.
@@ -184,23 +184,26 @@ func (k Keeper) GetContributorFeeStats(ctx context.Context, addr sdk.AccAddress)
 }
 
 // SetContributorFeeStats stores contributor-specific fee stats to state.
-func (k Keeper) SetContributorFeeStats(ctx context.Context, stats types.ContributorFeeStats) {
+// SECURITY: Returns error instead of panicking to prevent node crashes
+func (k Keeper) SetContributorFeeStats(ctx context.Context, stats types.ContributorFeeStats) error {
 	addr, err := sdk.AccAddressFromBech32(stats.Address)
 	if err != nil {
-		panic(fmt.Sprintf("invalid contributor address in fee stats: %v", err))
+		return fmt.Errorf("invalid contributor address in fee stats: %w", err)
 	}
 
 	store := k.storeService.OpenKVStore(ctx)
 	key := types.GetContributorFeeStatsKey(addr)
 	bz := k.cdc.MustMarshal(&stats)
 	if err := store.Set(key, bz); err != nil {
-		panic(fmt.Sprintf("failed to set contributor fee stats: %v", err))
+		return fmt.Errorf("failed to set contributor fee stats: %w", err)
 	}
+	return nil
 }
 
 // GetAllContributorFeeStats retrieves all contributor fee stats (for genesis export).
 // This iterates through all stored contributor stats.
-func (k Keeper) GetAllContributorFeeStats(ctx context.Context) []types.ContributorFeeStats {
+// SECURITY: Returns error instead of panicking to prevent node crashes during genesis export
+func (k Keeper) GetAllContributorFeeStats(ctx context.Context) ([]types.ContributorFeeStats, error) {
 	var allStats []types.ContributorFeeStats
 	store := k.storeService.OpenKVStore(ctx)
 
@@ -209,15 +212,22 @@ func (k Keeper) GetAllContributorFeeStats(ctx context.Context) []types.Contribut
 
 	iterator, err := store.Iterator(types.KeyPrefixContributorFeeStats, end)
 	if err != nil {
-		panic(fmt.Sprintf("failed to create iterator for contributor fee stats: %v", err))
+		return nil, fmt.Errorf("failed to create iterator for contributor fee stats: %w", err)
 	}
 	defer iterator.Close()
 
 	for ; iterator.Valid(); iterator.Next() {
 		var stats types.ContributorFeeStats
-		k.cdc.MustUnmarshal(iterator.Value(), &stats)
+		if err := k.cdc.Unmarshal(iterator.Value(), &stats); err != nil {
+			// Log corrupted entry but continue processing
+			k.Logger().Error("corrupted contributor fee stats entry, skipping",
+				"key", string(iterator.Key()),
+				"error", err,
+			)
+			continue
+		}
 		allStats = append(allStats, stats)
 	}
 
-	return allStats
+	return allStats, nil
 }

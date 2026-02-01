@@ -154,7 +154,7 @@ var xxx_messageInfo_QueryBaseFeeRequest proto.InternalMessageInfo
 
 // QueryBaseFeeResponse is the response type for the Query/BaseFee RPC method.
 type QueryBaseFeeResponse struct {
-	// base_fee is the current EIP-1559 base fee in uomni/gas
+	// base_fee is the current EIP-1559 base fee in omniphi/gas
 	BaseFee cosmossdk_io_math.LegacyDec `protobuf:"bytes,1,opt,name=base_fee,json=baseFee,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"base_fee"`
 	// min_gas_price is the enforced minimum gas price
 	MinGasPrice cosmossdk_io_math.LegacyDec `protobuf:"bytes,2,opt,name=min_gas_price,json=minGasPrice,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"min_gas_price"`

@@ -233,7 +233,7 @@ func TestCreateContinuousVestingAccount(t *testing.T) {
 		Sequence:      0,
 	}
 
-	originalVesting := sdk.NewCoins(sdk.NewCoin("uomni", math.NewInt(200_000_000_000_000)))
+	originalVesting := sdk.NewCoins(sdk.NewCoin("omniphi", math.NewInt(200_000_000_000_000)))
 	startTime := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC).Unix()
 	endTime := time.Date(2030, 6, 1, 0, 0, 0, 0, time.UTC).Unix()
 

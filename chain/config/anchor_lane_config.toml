@@ -86,8 +86,11 @@ timeout_commit = "1500ms"
 # ===============================================================================
 
 # Double-sign protection: Check last N blocks for same validator key
-# Set to 0 to disable (recommended for testnets, enable in production)
-double_sign_check_height = 0
+# SECURITY: MUST be enabled in production to detect and prevent double-signing.
+# This checks the last N blocks for duplicate signatures from the same validator.
+# Value of 10 covers ~40 seconds (10 blocks * 4s) which provides robust detection
+# while keeping startup validation fast.
+double_sign_check_height = 10
 
 # Skip timeout commit: Start new height immediately after precommit
 # MUST be false for consistent block times
@@ -169,18 +172,62 @@ timeout_broadcast_tx_commit = "10s"
 laddr = "tcp://0.0.0.0:26656"
 
 # Seed nodes (comma-separated)
+# SECURITY: Seed nodes are CRITICAL for network bootstrap and eclipse attack prevention.
+# Format: "node_id@ip:port,node_id@ip:port"
+# You MUST configure at least 3 geographically distributed seed nodes before mainnet.
+#
+# Example (replace with your actual seed nodes):
+# seeds = "abc123...@seed1.omniphi.io:26656,def456...@seed2.omniphi.io:26656,ghi789...@seed3.omniphi.io:26656"
+#
+# PRODUCTION REQUIREMENTS:
+# - Minimum 3 seed nodes across different geographic regions
+# - Each seed node should be on different cloud providers/data centers
+# - Seed nodes should have high uptime guarantees (>99.9%)
+# - Node IDs are derived from the node's Ed25519 public key (40 hex chars)
 seeds = ""
 
 # Persistent peers (comma-separated)
+# SECURITY: Persistent peers provide guaranteed connectivity to trusted validators.
+# These connections are maintained even if the address book is full.
+# Format: "node_id@ip:port,node_id@ip:port"
+#
+# PRODUCTION REQUIREMENTS:
+# - Configure 5-10 persistent peers from known, trusted validators
+# - Diversify across geographic regions and infrastructure providers
+# - Update this list if any peer's node_id changes (key rotation)
+#
+# Example (replace with your actual peers):
+# persistent_peers = "abc123...@validator1.omniphi.io:26656,def456...@validator2.omniphi.io:26656"
 persistent_peers = ""
+
+# SECURITY: Unconditional peer IDs that are never banned
+# Use this for your own infrastructure nodes (sentry nodes, backup validators)
+# Format: comma-separated node IDs
+unconditional_peer_ids = ""
+
+# SECURITY: Private peer IDs that are never gossiped to other peers
+# Use this to hide your validator's true IP behind sentry nodes
+# Format: comma-separated node IDs
+private_peer_ids = ""
 
 # Address book settings
 addr_book_file = "config/addrbook.json"
 addr_book_strict = true
 
 # Peer limits
+# SECURITY: These limits help prevent resource exhaustion attacks
+# Inbound: connections initiated by other nodes TO us
+# Outbound: connections we initiate TO other nodes
+# Total connections = inbound + outbound = 90 max
 max_num_inbound_peers = 40
 max_num_outbound_peers = 10
+
+# SECURITY: Flush connections to disk periodically
+flush_throttle_timeout = "100ms"
+
+# SECURITY: Allow duplicate IP connections (set false for production to prevent sybil)
+# Only enable for testing when running multiple nodes on same machine
+allow_duplicate_ip = false
 
 # Connection timeouts
 handshake_timeout = "20s"

@@ -396,22 +396,20 @@ func (k Keeper) GetAllCredits(ctx context.Context) []types.Credits {
 
 // ========== Rate Limiting ==========
 
-// CheckRateLimit checks if the submission rate limit has been exceeded
+// CheckRateLimit checks if the submission rate limit has been exceeded.
+// Uses the transient store (auto-resets each block) to avoid persistent state bloat.
 func (k Keeper) CheckRateLimit(ctx context.Context) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	params := k.GetParams(ctx)
 
-	blockHeight := sdkCtx.BlockHeight()
-	store := k.storeService.OpenKVStore(ctx)
-	key := types.GetSubmissionCountKey(blockHeight)
+	// Use transient store — resets automatically every block, no pruning needed
+	store := sdkCtx.TransientStore(k.tStoreKey)
+	key := types.KeyPrefixSubmissionCount
 
-	bz, err := store.Get(key)
-	if err != nil {
-		return err
-	}
+	bz := store.Get(key)
 
 	var count uint32
-	if bz != nil {
+	if bz != nil && len(bz) == 4 {
 		count = binary.BigEndian.Uint32(bz)
 	}
 
@@ -423,27 +421,15 @@ func (k Keeper) CheckRateLimit(ctx context.Context) error {
 	count++
 	buf := make([]byte, 4)
 	binary.BigEndian.PutUint32(buf, count)
-	if err := store.Set(key, buf); err != nil {
-		return err
-	}
+	store.Set(key, buf)
 
 	return nil
 }
 
-// PruneRateLimits removes old rate limit counters (called in EndBlocker)
+// PruneRateLimits is a no-op since rate-limit counters now use the transient store
+// which resets automatically each block. Retained for API compatibility with EndBlocker.
 func (k Keeper) PruneRateLimits(ctx context.Context) error {
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	currentHeight := sdkCtx.BlockHeight()
-	const blocksToKeep = 100
-
-	if currentHeight <= blocksToKeep {
-		return nil
-	}
-
-	pruneHeight := currentHeight - blocksToKeep
-	store := k.storeService.OpenKVStore(ctx)
-	key := types.GetSubmissionCountKey(pruneHeight)
-	return store.Delete(key)
+	return nil
 }
 
 // ========== Validator Cache Management ==========

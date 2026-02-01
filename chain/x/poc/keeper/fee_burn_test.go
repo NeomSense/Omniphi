@@ -25,9 +25,9 @@ func TestFeeMetrics_StateManagement(t *testing.T) {
 	require.Equal(t, int64(0), metrics.LastUpdatedHeight)
 
 	// Update metrics
-	feesCollected := sdk.NewCoins(sdk.NewCoin("uomni", math.NewInt(1000)))
-	burned := sdk.NewCoins(sdk.NewCoin("uomni", math.NewInt(750)))
-	rewards := sdk.NewCoins(sdk.NewCoin("uomni", math.NewInt(250)))
+	feesCollected := sdk.NewCoins(sdk.NewCoin("omniphi", math.NewInt(1000)))
+	burned := sdk.NewCoins(sdk.NewCoin("omniphi", math.NewInt(750)))
+	rewards := sdk.NewCoins(sdk.NewCoin("omniphi", math.NewInt(250)))
 
 	err := f.keeper.UpdateFeeMetrics(f.ctx, feesCollected, burned, rewards)
 	require.NoError(t, err)
@@ -43,9 +43,9 @@ func TestFeeMetrics_StateManagement(t *testing.T) {
 	require.NoError(t, err)
 
 	finalMetrics := f.keeper.GetFeeMetrics(f.ctx)
-	require.Equal(t, sdk.NewCoins(sdk.NewCoin("uomni", math.NewInt(2000))), finalMetrics.TotalFeesCollected)
-	require.Equal(t, sdk.NewCoins(sdk.NewCoin("uomni", math.NewInt(1500))), finalMetrics.TotalBurned)
-	require.Equal(t, sdk.NewCoins(sdk.NewCoin("uomni", math.NewInt(500))), finalMetrics.TotalRewardRedirect)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin("omniphi", math.NewInt(2000))), finalMetrics.TotalFeesCollected)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin("omniphi", math.NewInt(1500))), finalMetrics.TotalBurned)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin("omniphi", math.NewInt(500))), finalMetrics.TotalRewardRedirect)
 }
 
 // TestContributorFeeStats_StateManagement tests contributor stats storage and retrieval
@@ -62,8 +62,8 @@ func TestContributorFeeStats_StateManagement(t *testing.T) {
 	require.Equal(t, uint64(0), stats.SubmissionCount)
 
 	// Update stats
-	feesPaid := sdk.NewCoins(sdk.NewCoin("uomni", math.NewInt(1000)))
-	burned := sdk.NewCoins(sdk.NewCoin("uomni", math.NewInt(750)))
+	feesPaid := sdk.NewCoins(sdk.NewCoin("omniphi", math.NewInt(1000)))
+	burned := sdk.NewCoins(sdk.NewCoin("omniphi", math.NewInt(750)))
 
 	err := f.keeper.UpdateContributorFeeStats(f.ctx, contributorAddr, feesPaid, burned)
 	require.NoError(t, err)
@@ -82,8 +82,8 @@ func TestContributorFeeStats_StateManagement(t *testing.T) {
 	require.NoError(t, err)
 
 	finalStats := f.keeper.GetContributorFeeStats(f.ctx, contributorAddr)
-	require.Equal(t, sdk.NewCoins(sdk.NewCoin("uomni", math.NewInt(2000))), finalStats.TotalFeesPaid)
-	require.Equal(t, sdk.NewCoins(sdk.NewCoin("uomni", math.NewInt(1500))), finalStats.TotalBurned)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin("omniphi", math.NewInt(2000))), finalStats.TotalFeesPaid)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin("omniphi", math.NewInt(1500))), finalStats.TotalBurned)
 	require.Equal(t, uint64(2), finalStats.SubmissionCount)
 }
 
@@ -94,8 +94,8 @@ func TestGetAllContributorFeeStats(t *testing.T) {
 	// Create stats for 3 contributors
 	for i := 0; i < 3; i++ {
 		addr := sdk.AccAddress([]byte("contributor_" + string(rune('a'+i)) + "____"))
-		feesPaid := sdk.NewCoins(sdk.NewCoin("uomni", math.NewInt(1000)))
-		burned := sdk.NewCoins(sdk.NewCoin("uomni", math.NewInt(750)))
+		feesPaid := sdk.NewCoins(sdk.NewCoin("omniphi", math.NewInt(1000)))
+		burned := sdk.NewCoins(sdk.NewCoin("omniphi", math.NewInt(750)))
 
 		err := f.keeper.UpdateContributorFeeStats(f.ctx, addr, feesPaid, burned)
 		require.NoError(t, err)
@@ -116,27 +116,27 @@ func TestParamValidation_FeeBounds(t *testing.T) {
 		{
 			name: "fee within bounds - valid",
 			modifyFunc: func(p *types.Params) {
-				p.SubmissionFee = sdk.NewCoin("uomni", math.NewInt(5000))
-				p.MinSubmissionFee = sdk.NewCoin("uomni", math.NewInt(100))
-				p.MaxSubmissionFee = sdk.NewCoin("uomni", math.NewInt(100000))
+				p.SubmissionFee = sdk.NewCoin("omniphi", math.NewInt(5000))
+				p.MinSubmissionFee = sdk.NewCoin("omniphi", math.NewInt(100))
+				p.MaxSubmissionFee = sdk.NewCoin("omniphi", math.NewInt(100000))
 			},
 			expectError: false,
 		},
 		{
 			name: "fee below minimum - invalid",
 			modifyFunc: func(p *types.Params) {
-				p.SubmissionFee = sdk.NewCoin("uomni", math.NewInt(50))
-				p.MinSubmissionFee = sdk.NewCoin("uomni", math.NewInt(100))
-				p.MaxSubmissionFee = sdk.NewCoin("uomni", math.NewInt(100000))
+				p.SubmissionFee = sdk.NewCoin("omniphi", math.NewInt(50))
+				p.MinSubmissionFee = sdk.NewCoin("omniphi", math.NewInt(100))
+				p.MaxSubmissionFee = sdk.NewCoin("omniphi", math.NewInt(100000))
 			},
 			expectError: true,
 		},
 		{
 			name: "fee above maximum - invalid",
 			modifyFunc: func(p *types.Params) {
-				p.SubmissionFee = sdk.NewCoin("uomni", math.NewInt(200000))
-				p.MinSubmissionFee = sdk.NewCoin("uomni", math.NewInt(100))
-				p.MaxSubmissionFee = sdk.NewCoin("uomni", math.NewInt(100000))
+				p.SubmissionFee = sdk.NewCoin("omniphi", math.NewInt(200000))
+				p.MinSubmissionFee = sdk.NewCoin("omniphi", math.NewInt(100))
+				p.MaxSubmissionFee = sdk.NewCoin("omniphi", math.NewInt(100000))
 			},
 			expectError: true,
 		},
@@ -198,9 +198,9 @@ func TestGenesisImportExport(t *testing.T) {
 
 	// Create some fee metrics
 	contributorAddr := sdk.AccAddress("contributor_______")
-	feesPaid := sdk.NewCoins(sdk.NewCoin("uomni", math.NewInt(1000)))
-	burned := sdk.NewCoins(sdk.NewCoin("uomni", math.NewInt(750)))
-	rewards := sdk.NewCoins(sdk.NewCoin("uomni", math.NewInt(250)))
+	feesPaid := sdk.NewCoins(sdk.NewCoin("omniphi", math.NewInt(1000)))
+	burned := sdk.NewCoins(sdk.NewCoin("omniphi", math.NewInt(750)))
+	rewards := sdk.NewCoins(sdk.NewCoin("omniphi", math.NewInt(250)))
 
 	require.NoError(t, f.keeper.UpdateFeeMetrics(f.ctx, feesPaid, burned, rewards))
 	require.NoError(t, f.keeper.UpdateContributorFeeStats(f.ctx, contributorAddr, feesPaid, burned))
@@ -222,7 +222,7 @@ func TestGenesisImportExport(t *testing.T) {
 	// Validate exported params have fee fields
 	require.False(t, exported.Params.SubmissionFee.IsNil(), "SubmissionFee should not be nil")
 	require.True(t, exported.Params.SubmissionFee.IsValid(), "SubmissionFee should be valid")
-	require.Equal(t, "uomni", exported.Params.SubmissionFee.Denom)
+	require.Equal(t, "omniphi", exported.Params.SubmissionFee.Denom)
 
 	// Create new keeper and import
 	f2 := SetupKeeperTest(t)
@@ -244,7 +244,7 @@ func TestDefaultParams(t *testing.T) {
 	params := types.DefaultParams()
 
 	// Verify fee defaults (updated from Adaptive Fee Market v2)
-	require.Equal(t, "uomni", params.SubmissionFee.Denom)
+	require.Equal(t, "omniphi", params.SubmissionFee.Denom)
 	require.Equal(t, math.NewInt(2000), params.SubmissionFee.Amount) // Updated from 1000 to 2000
 	require.Equal(t, math.LegacyNewDecWithPrec(50, 2), params.SubmissionBurnRatio) // Updated from 75% to 50%
 	require.Equal(t, math.NewInt(100), params.MinSubmissionFee.Amount)

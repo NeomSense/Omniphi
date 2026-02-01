@@ -57,12 +57,14 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Configure CORS
+# SECURITY: Use configured origins from settings, NOT "*" which allows any origin
+# This prevents cross-origin attacks where malicious websites can make authenticated requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Temporarily allow all origins for testing
+    allow_origins=settings.BACKEND_CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Requested-With"],
 )
 
 # Include API v1 routers
@@ -212,13 +214,31 @@ async def startup_event():
     """
     Application startup event.
 
-    Initialize connections, start background workers, etc.
+    Initialize connections, start background workers, validate production readiness.
     """
+    from app.core.nonce_store import nonce_store
+
     logger.info("=" * 60)
     logger.info(f"Starting {settings.PROJECT_NAME} v{settings.VERSION}")
     logger.info(f"Debug mode: {settings.DEBUG}")
+    logger.info(f"Production mode: {settings.PRODUCTION_MODE}")
     logger.info(f"API prefix: {settings.API_V1_STR}")
     logger.info(f"CORS Origins: {settings.BACKEND_CORS_ORIGINS}")
+
+    # Report nonce store health
+    nonce_health = nonce_store.health_check()
+    logger.info(f"Nonce store backend: {nonce_health['backend']}")
+    if nonce_health.get("warning"):
+        logger.warning(f"Nonce store warning: {nonce_health['warning']}")
+    if not nonce_health["healthy"]:
+        logger.error("Nonce store is NOT healthy — replay protection may be degraded")
+
+    # Report binary integrity configuration
+    if settings.OMNIPHI_BINARY_SHA256:
+        logger.info("Binary checksum enforcement: ENABLED")
+    else:
+        logger.warning("Binary checksum enforcement: DISABLED — set OMNIPHI_BINARY_SHA256 for production")
+
     logger.info("=" * 60)
 
 

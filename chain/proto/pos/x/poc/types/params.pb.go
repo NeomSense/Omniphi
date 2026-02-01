@@ -93,7 +93,7 @@ type Params struct {
 	// Default: 100000 (keeps ~100k contributions in state)
 	MaxContributionsToKeep uint64 `protobuf:"varint,7,opt,name=max_contributions_to_keep,json=maxContributionsToKeep,proto3" json:"max_contributions_to_keep,omitempty"`
 	// submission_fee is the fee required to submit a contribution
-	// Default: 1000uomni (0.001 OMNI)
+	// Default: 1000omniphi (0.001 OMNI)
 	SubmissionFee github_com_cosmos_cosmos_sdk_types.Coin `protobuf:"bytes,8,opt,name=submission_fee,json=submissionFee,proto3,customtype=github.com/cosmos/cosmos-sdk/types.Coin" json:"submission_fee"`
 	// submission_burn_ratio is the percentage of submission_fee that gets burned
 	// The remainder goes to the PoC reward pool
@@ -114,7 +114,7 @@ type Params struct {
 	MaxBurnRatio cosmossdk_io_math.LegacyDec `protobuf:"bytes,13,opt,name=max_burn_ratio,json=maxBurnRatio,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"max_burn_ratio"`
 	// LAYER 1: Base Fee Model
 	// base_submission_fee is the static base fee for all submissions (before multipliers)
-	// Default: 30000uomni (0.03 OMNI)
+	// Default: 30000omniphi (0.03 OMNI)
 	// Split: 50% burned, 50% to reward pool
 	BaseSubmissionFee github_com_cosmos_cosmos_sdk_types.Coin `protobuf:"bytes,19,opt,name=base_submission_fee,json=baseSubmissionFee,proto3,customtype=github.com/cosmos/cosmos-sdk/types.Coin" json:"base_submission_fee"`
 	// LAYER 2: Epoch-Adaptive Fee Model (Dynamic Congestion Fee)
@@ -129,7 +129,7 @@ type Params struct {
 	MaxCscoreDiscount cosmossdk_io_math.LegacyDec `protobuf:"bytes,21,opt,name=max_cscore_discount,json=maxCscoreDiscount,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"max_cscore_discount"`
 	// minimum_submission_fee is the absolute floor for fees after all discounts
 	// Ensures fees never drop below a minimum viable amount
-	// Default: 3000uomni (0.003 OMNI)
+	// Default: 3000omniphi (0.003 OMNI)
 	MinimumSubmissionFee github_com_cosmos_cosmos_sdk_types.Coin `protobuf:"bytes,22,opt,name=minimum_submission_fee,json=minimumSubmissionFee,proto3,customtype=github.com/cosmos/cosmos-sdk/types.Coin" json:"minimum_submission_fee"`
 }
 

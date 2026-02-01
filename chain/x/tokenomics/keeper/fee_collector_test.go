@@ -19,7 +19,7 @@ func TestProcessBlockFees_BasicSplit(t *testing.T) {
 
 	// Setup: Add fees to fee_collector
 	feeCollectorAddr := suite.AccountKeeper.GetModuleAddress(authtypes.FeeCollectorName)
-	totalFees := math.NewInt(1_000_000) // 1 OMNI in uomni
+	totalFees := math.NewInt(1_000_000) // 1 OMNI in omniphi
 
 	// Mint coins and send to fee collector
 	err := suite.BankKeeper.MintCoins(ctx, types.ModuleName, sdk.NewCoins(sdk.NewCoin(types.BondDenom, totalFees)))
@@ -173,7 +173,7 @@ func TestProcessBlockFees_RoundingDust(t *testing.T) {
 	k := suite.Keeper
 
 	// Use amount that doesn't divide evenly
-	totalFees := math.NewInt(1_000_003) // 3 uomni dust
+	totalFees := math.NewInt(1_000_003) // 3 omniphi dust
 	err := suite.BankKeeper.MintCoins(ctx, types.ModuleName, sdk.NewCoins(sdk.NewCoin(types.BondDenom, totalFees)))
 	require.NoError(t, err)
 	err = suite.BankKeeper.SendCoinsFromModuleToModule(ctx, types.ModuleName, authtypes.FeeCollectorName, sdk.NewCoins(sdk.NewCoin(types.BondDenom, totalFees)))
@@ -283,7 +283,7 @@ func TestProcessBlockFees_AverageCalculation(t *testing.T) {
 	sdkCtx = sdkCtx.WithBlockHeight(10)
 	ctx = sdkCtx
 
-	// Total burned = 900k uomni
+	// Total burned = 900k omniphi
 	totalFees := math.NewInt(1_000_000)
 	err := suite.BankKeeper.MintCoins(ctx, types.ModuleName, sdk.NewCoins(sdk.NewCoin(types.BondDenom, totalFees)))
 	require.NoError(t, err)
@@ -298,7 +298,7 @@ func TestProcessBlockFees_AverageCalculation(t *testing.T) {
 	err = k.ProcessBlockFees(ctx)
 	require.NoError(t, err)
 
-	// Average = 900,000 / 10 = 90,000 uomni per block
+	// Average = 900,000 / 10 = 90,000 omniphi per block
 	avgFees := k.GetAverageFeesBurnedPerBlock(ctx)
 	expected := math.LegacyNewDec(90_000)
 	require.Equal(t, expected, avgFees)

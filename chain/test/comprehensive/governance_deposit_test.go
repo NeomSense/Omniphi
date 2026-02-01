@@ -30,12 +30,12 @@ import (
 
 // Test constants (aligned with genesis templates)
 const (
-	// Mainnet values (in uomni)
+	// Mainnet values (in omniphi)
 	MainnetStandardDeposit  = 1_000_000_000   // 1,000 OMNI
 	MainnetExpeditedDeposit = 5_000_000_000   // 5,000 OMNI
 	MainnetInitialRatio     = 0.10            // 10%
 
-	// Testnet values (in uomni)
+	// Testnet values (in omniphi)
 	TestnetStandardDeposit  = 100_000_000     // 100 OMNI
 	TestnetExpeditedDeposit = 500_000_000     // 500 OMNI
 	TestnetInitialRatio     = 0.10            // 10%
@@ -60,7 +60,7 @@ func TestTC_GOV_001_StandardProposalDeposit(t *testing.T) {
 
 		// Verify deposit is exactly 1,000 OMNI
 		require.Equal(t, int64(1_000_000_000), requiredDeposit.Int64(),
-			"Mainnet standard deposit should be 1,000 OMNI (1,000,000,000 uomni)")
+			"Mainnet standard deposit should be 1,000 OMNI (1,000,000,000 omniphi)")
 
 		// Verify deposit is NOT the old anti-pattern value (10,000 OMNI)
 		oldAntiPatternDeposit := math.NewInt(10_000_000_000)
@@ -74,7 +74,7 @@ func TestTC_GOV_001_StandardProposalDeposit(t *testing.T) {
 
 		// Verify deposit is exactly 100 OMNI
 		require.Equal(t, int64(100_000_000), requiredDeposit.Int64(),
-			"Testnet standard deposit should be 100 OMNI (100,000,000 uomni)")
+			"Testnet standard deposit should be 100 OMNI (100,000,000 omniphi)")
 	})
 }
 

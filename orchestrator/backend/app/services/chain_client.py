@@ -1,11 +1,14 @@
 """Omniphi Chain Client - Cosmos SDK compatible."""
 
 import json
+import logging
 import httpx
 from typing import Optional, Dict, Any
 from datetime import datetime
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class OmniphiChainClient:
@@ -39,7 +42,7 @@ class OmniphiChainClient:
                     return data.get("validator")
                 return None
             except Exception as e:
-                print(f"Error fetching validator: {e}")
+                logger.error(f"Error fetching validator: {e}")
                 return None
 
     async def get_all_validators(self) -> list:
@@ -54,7 +57,7 @@ class OmniphiChainClient:
                     return data.get("validators", [])
                 return []
             except Exception as e:
-                print(f"Error fetching validators: {e}")
+                logger.error(f"Error fetching validators: {e}")
                 return []
 
     async def get_validator_by_consensus_pubkey(self, consensus_pubkey: str) -> Optional[Dict[str, Any]]:
@@ -82,7 +85,8 @@ class OmniphiChainClient:
                     data = response.json()
                     return int(data["result"]["sync_info"]["latest_block_height"])
                 return 0
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Failed to get block height: {e}")
                 return 0
 
     async def get_signing_info(self, consensus_address: str) -> Optional[Dict[str, Any]]:
@@ -95,7 +99,8 @@ class OmniphiChainClient:
                 if response.status_code == 200:
                     return response.json().get("val_signing_info")
                 return None
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Failed to get signing info for {consensus_address}: {e}")
                 return None
 
     # ==================== Transaction Building ====================
@@ -357,8 +362,9 @@ class OmniphiChainClient:
             new_five_bit = bech32.convertbits(five_bit_data, 8, 5)
             valoper_address = bech32.bech32_encode("omnivaloper", new_five_bit)
             return valoper_address if valoper_address else address.replace("omni", "omnivaloper", 1)
-        except:
-            # Fallback to simple string replacement
+        except Exception as e:
+            # Log the error for debugging, then fallback to simple string replacement
+            logger.warning(f"Bech32 conversion failed for address {address[:15]}...: {e}")
             return address.replace("omni", "omnivaloper", 1) if address.startswith("omni") else address
 
     async def check_validator_exists(self, operator_address: str) -> bool:

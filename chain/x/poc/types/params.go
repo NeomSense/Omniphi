@@ -24,20 +24,20 @@ const DefaultRewardDenom = "omniphi"
 
 // Fee Burn Parameter Defaults
 
-// DefaultSubmissionFee is the default fee for submitting a contribution (2000 uomni = 0.002 OMNI)
-// Updated from 1000 to 2000 uomni as per Adaptive Fee Market v2 specification
-var DefaultSubmissionFee = sdk.NewCoin("uomni", math.NewInt(2000))
+// DefaultSubmissionFee is the default fee for submitting a contribution (2000 omniphi = 0.002 OMNI)
+// Updated from 1000 to 2000 omniphi as per Adaptive Fee Market v2 specification
+var DefaultSubmissionFee = sdk.NewCoin("omniphi", math.NewInt(2000))
 
 // DefaultSubmissionBurnRatio is the default percentage of submission fee to burn (50%)
 // Updated from 75% to 50% as per Adaptive Fee Market v2 specification
 // This aligns with the new fee distribution model: 50% burn, 50% to pool
 var DefaultSubmissionBurnRatio = math.LegacyNewDecWithPrec(50, 2) // 0.50
 
-// DefaultMinSubmissionFee is the minimum allowed submission fee (100 uomni = 0.0001 OMNI)
-var DefaultMinSubmissionFee = sdk.NewCoin("uomni", math.NewInt(100))
+// DefaultMinSubmissionFee is the minimum allowed submission fee (100 omniphi = 0.0001 OMNI)
+var DefaultMinSubmissionFee = sdk.NewCoin("omniphi", math.NewInt(100))
 
-// DefaultMaxSubmissionFee is the maximum allowed submission fee (100000 uomni = 0.1 OMNI)
-var DefaultMaxSubmissionFee = sdk.NewCoin("uomni", math.NewInt(100000))
+// DefaultMaxSubmissionFee is the maximum allowed submission fee (100000 omniphi = 0.1 OMNI)
+var DefaultMaxSubmissionFee = sdk.NewCoin("omniphi", math.NewInt(100000))
 
 // DefaultMinBurnRatio is the minimum allowed burn ratio (50%)
 var DefaultMinBurnRatio = math.LegacyNewDecWithPrec(50, 2) // 0.50
@@ -56,8 +56,8 @@ const DefaultEnableIdentityGating = false
 // 3-Layer Fee System Defaults
 
 // DefaultBaseSubmissionFee is the base fee for all submissions before multipliers
-// Default: 30000 uomni (0.03 OMNI)
-var DefaultBaseSubmissionFee = sdk.NewCoin("uomni", math.NewInt(30000))
+// Default: 30000 omniphi (0.03 OMNI)
+var DefaultBaseSubmissionFee = sdk.NewCoin("omniphi", math.NewInt(30000))
 
 // DefaultTargetSubmissionsPerBlock is the target number of submissions per block
 // Used for dynamic congestion fee calculation
@@ -68,8 +68,17 @@ const DefaultTargetSubmissionsPerBlock uint32 = 5
 var DefaultMaxCscoreDiscount = math.LegacyNewDecWithPrec(90, 2) // 0.90
 
 // DefaultMinimumSubmissionFee is the absolute floor for fees after all discounts
-// Default: 3000 uomni (0.003 OMNI)
-var DefaultMinimumSubmissionFee = sdk.NewCoin("uomni", math.NewInt(3000))
+// Default: 3000 omniphi (0.003 OMNI)
+var DefaultMinimumSubmissionFee = sdk.NewCoin("omniphi", math.NewInt(3000))
+
+// DefaultTreasuryAddress is the default treasury address for governance-controlled funds
+// SECURITY: Empty by default - MUST be set via governance before enabling treasury features
+// Format: bech32 address (e.g., "omni1...")
+const DefaultTreasuryAddress = ""
+
+// DefaultTreasuryShareRatio is the percentage of pool rewards sent to treasury (0% by default)
+// This allows protocol-level revenue sharing when configured via governance
+var DefaultTreasuryShareRatio = math.LegacyZeroDec()
 
 // DefaultMinCscoreForCtype returns the default C-Score requirements for contribution types
 // Empty map by default = no restrictions (backwards compatible)
@@ -143,6 +152,9 @@ func DefaultParams() Params {
 		TargetSubmissionsPerBlock: DefaultTargetSubmissionsPerBlock,
 		MaxCscoreDiscount:         DefaultMaxCscoreDiscount,
 		MinimumSubmissionFee:      DefaultMinimumSubmissionFee,
+		// Treasury configuration (disabled by default - set via governance)
+		TreasuryAddress:    DefaultTreasuryAddress,
+		TreasuryShareRatio: DefaultTreasuryShareRatio,
 	}
 }
 
@@ -261,6 +273,11 @@ func (p Params) Validate() error {
 			p.BaseSubmissionFee.Denom, p.MinimumSubmissionFee.Denom)
 	}
 
+	// Validate treasury configuration
+	if err := validateTreasuryConfig(p.TreasuryAddress, p.TreasuryShareRatio); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -374,7 +391,51 @@ func validateExemptAddresses(addresses []string) error {
 	return nil
 }
 
-// ParseCoinFromString parses a coin from string format (e.g. "30000uomni")
+// validateTreasuryConfig validates treasury address and share ratio
+// SECURITY: Ensures treasury configuration is consistent and safe
+func validateTreasuryConfig(treasuryAddress string, shareRatio math.LegacyDec) error {
+	// Validate share ratio bounds
+	if shareRatio.IsNil() {
+		return fmt.Errorf("treasury_share_ratio cannot be nil")
+	}
+	if shareRatio.IsNegative() {
+		return fmt.Errorf("treasury_share_ratio cannot be negative: %s", shareRatio)
+	}
+	if shareRatio.GT(math.LegacyOneDec()) {
+		return fmt.Errorf("treasury_share_ratio cannot exceed 1.0 (100%%): %s", shareRatio)
+	}
+
+	// SECURITY: If share ratio is > 0, treasury address MUST be set
+	// This prevents funds being sent to a zero/invalid address
+	if shareRatio.IsPositive() && treasuryAddress == "" {
+		return fmt.Errorf("treasury_address must be set when treasury_share_ratio > 0")
+	}
+
+	// If treasury address is set, validate it
+	if treasuryAddress != "" {
+		// Validate bech32 format
+		if _, err := sdk.AccAddressFromBech32(treasuryAddress); err != nil {
+			return fmt.Errorf("invalid treasury_address '%s': %w", treasuryAddress, err)
+		}
+
+		// SECURITY: Warn if using common test/burn addresses
+		// These checks help prevent accidental misconfiguration
+		if treasuryAddress == "omni1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqnrql8a" {
+			return fmt.Errorf("treasury_address cannot be the zero address")
+		}
+	}
+
+	// SECURITY: Cap treasury share at 50% to prevent governance attacks
+	// that could drain all rewards to a compromised treasury
+	maxTreasuryShare := math.LegacyNewDecWithPrec(50, 2) // 0.50 (50%)
+	if shareRatio.GT(maxTreasuryShare) {
+		return fmt.Errorf("treasury_share_ratio cannot exceed 50%% for safety (got %s)", shareRatio)
+	}
+
+	return nil
+}
+
+// ParseCoinFromString parses a coin from string format (e.g., "30000omniphi")
 func ParseCoinFromString(s string) (sdk.Coin, error) {
 	coin, err := sdk.ParseCoinNormalized(s)
 	if err != nil {

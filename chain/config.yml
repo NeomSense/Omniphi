@@ -1,22 +1,20 @@
 version: 1
 validation: sovereign
-default_denom: stake
+default_denom: omniphi
 
 # Production accounts
 accounts:
 - name: alice
   coins:
-  - 20000token
-  - 200000000stake
+  - 200000000omniphi
 - name: bob
   coins:
-  - 10000token
-  - 100000000stake
+  - 100000000omniphi
 
 # Production validators
 validators:
 - name: alice
-  bonded: 100000000stake
+  bonded: 100000000omniphi
 
 # Genesis configuration with PRODUCTION parameters
 genesis:
@@ -45,5 +43,4 @@ client:
 faucet:
   name: bob
   coins:
-  - 5token
-  - 100000stake
+  - 100000omniphi

@@ -62,7 +62,7 @@ message Params {
   // FEE BURN MECHANISM: DAO-governed submission fee parameters
 
   // submission_fee is the fee required to submit a contribution
-  // Default: 1000uomni (0.001 OMNI)
+  // Default: 1000omniphi (0.001 OMNI)
   string submission_fee = 8 [
     (gogoproto.customtype) = "github.com/cosmos/cosmos-sdk/types.Coin",
     (gogoproto.nullable) = false
@@ -116,7 +116,7 @@ message Params {
 
   // LAYER 1: Base Fee Model
   // base_submission_fee is the static base fee for all submissions (before multipliers)
-  // Default: 30000uomni (0.03 OMNI)
+  // Default: 30000omniphi (0.03 OMNI)
   // Split: 50% burned, 50% to reward pool
   string base_submission_fee = 19 [
     (gogoproto.customtype) = "github.com/cosmos/cosmos-sdk/types.Coin",
@@ -141,7 +141,7 @@ message Params {
 
   // minimum_submission_fee is the absolute floor for fees after all discounts
   // Ensures fees never drop below a minimum viable amount
-  // Default: 3000uomni (0.003 OMNI)
+  // Default: 3000omniphi (0.003 OMNI)
   string minimum_submission_fee = 22 [
     (gogoproto.customtype) = "github.com/cosmos/cosmos-sdk/types.Coin",
     (gogoproto.nullable) = false

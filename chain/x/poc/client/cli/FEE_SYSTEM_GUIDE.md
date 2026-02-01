@@ -18,7 +18,7 @@ final_fee = max(
 
 ### Layer 1: Base Fee Model
 - **Parameter**: `base_submission_fee`
-- **Default**: 30,000 uomni (0.03 OMNI)
+- **Default**: 30,000 omniphi (0.03 OMNI)
 - **Description**: Static fee charged for every contribution submission
 - **Fee Split**: 50% burned (deflationary), 50% to PoC reward pool
 
@@ -48,7 +48,7 @@ final_fee = max(
 
 ### Minimum Fee Floor
 - **Parameter**: `minimum_submission_fee`
-- **Default**: 3,000 uomni (0.003 OMNI)
+- **Default**: 3,000 omniphi (0.003 OMNI)
 - **Description**: Absolute minimum fee after all discounts
 - **Purpose**: Ensures economic sustainability even for high-reputation users
 
@@ -58,48 +58,48 @@ final_fee = max(
 ```
 C-Score: 0
 Current Submissions: 5 (at target)
-Base Fee: 30,000 uomni
+Base Fee: 30,000 omniphi
 
 Calculation:
 - Epoch Multiplier: 5 / 5 = 1.0
 - C-Score Discount: 0 / 1000 = 0%
-- Final Fee: 30,000 × 1.0 × (1 - 0) = 30,000 uomni
+- Final Fee: 30,000 × 1.0 × (1 - 0) = 30,000 omniphi
 ```
 
 ### Example 2: High-Reputation Contributor, Normal Conditions
 ```
 C-Score: 1000
 Current Submissions: 5 (at target)
-Base Fee: 30,000 uomni
+Base Fee: 30,000 omniphi
 
 Calculation:
 - Epoch Multiplier: 5 / 5 = 1.0
 - C-Score Discount: min(0.90, 1000/1000) = 90%
-- Final Fee: 30,000 × 1.0 × (1 - 0.90) = 3,000 uomni (minimum fee floor)
+- Final Fee: 30,000 × 1.0 × (1 - 0.90) = 3,000 omniphi (minimum fee floor)
 ```
 
 ### Example 3: Medium Contributor, High Congestion
 ```
 C-Score: 500
 Current Submissions: 25 (5x target)
-Base Fee: 30,000 uomni
+Base Fee: 30,000 omniphi
 
 Calculation:
 - Epoch Multiplier: min(5.0, 25/5) = 5.0 (capped)
 - C-Score Discount: 500 / 1000 = 50%
-- Final Fee: 30,000 × 5.0 × (1 - 0.50) = 75,000 uomni
+- Final Fee: 30,000 × 5.0 × (1 - 0.50) = 75,000 omniphi
 ```
 
 ### Example 4: Low Traffic Period
 ```
 C-Score: 0
 Current Submissions: 0 (no submissions)
-Base Fee: 30,000 uomni
+Base Fee: 30,000 omniphi
 
 Calculation:
 - Epoch Multiplier: max(0.8, 0/5) = 0.8 (minimum)
 - C-Score Discount: 0 / 1000 = 0%
-- Final Fee: 30,000 × 0.8 × (1 - 0) = 24,000 uomni
+- Final Fee: 30,000 × 0.8 × (1 - 0) = 24,000 omniphi
 ```
 
 ## Fee Split
@@ -152,11 +152,11 @@ posd tx gov submit-proposal param-change proposal.json \
 # Example proposal.json:
 {
   "title": "Increase PoC Base Submission Fee",
-  "description": "Increase base fee from 30,000 to 50,000 uomni due to network growth",
+  "description": "Increase base fee from 30,000 to 50,000 omniphi due to network growth",
   "changes": [{
     "subspace": "poc",
     "key": "base_submission_fee",
-    "value": "50000uomni"
+    "value": "50000omniphi"
   }]
 }
 ```

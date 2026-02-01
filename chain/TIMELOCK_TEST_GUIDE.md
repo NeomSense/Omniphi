@@ -65,7 +65,7 @@ cat > guardian-proposal.json <<EOF
     }
   ],
   "metadata": "ipfs://CID",
-  "deposit": "10000000uomni",
+  "deposit": "10000000omniphi",
   "title": "Set Timelock Guardian",
   "summary": "Set the guardian address for timelock emergency operations"
 }
@@ -130,7 +130,7 @@ cat > param-proposal.json <<EOF
     }
   ],
   "metadata": "ipfs://CID",
-  "deposit": "10000000uomni",
+  "deposit": "10000000omniphi",
   "title": "Test Timelock",
   "summary": "Testing timelock integration with governance"
 }

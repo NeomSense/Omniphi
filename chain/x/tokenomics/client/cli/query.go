@@ -431,18 +431,18 @@ Fee Burn Statistics (90/10 Mechanism)
 ======================================
 
 CUMULATIVE TOTALS
-  Total Fees Burned:        %s uomni (90%%)
-  Total Fees to Treasury:   %s uomni (10%%)
+  Total Fees Burned:        %s omniphi (90%%)
+  Total Fees to Treasury:   %s omniphi (10%%)
 
 PERFORMANCE METRICS
-  Average Fees/Block:       %s uomni
+  Average Fees/Block:       %s omniphi
 
 CURRENT CONFIGURATION
   Fee Burn Enabled:         %t
   Burn Ratio:               %s (%.1f%%)
   Treasury Ratio:           %s (%.1f%%)
 
-Note: All values in micro-OMNI (1 OMNI = 1,000,000 uomni)
+Note: All values in micro-OMNI (1 OMNI = 1,000,000 omniphi)
 `,
 					res.TotalFeesBurned.String(),
 					res.TotalFeesToTreasury.String(),

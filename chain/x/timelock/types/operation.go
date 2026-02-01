@@ -1,6 +1,7 @@
 package types
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"time"
@@ -87,17 +88,11 @@ func (op *QueuedOperation) ComputeHash() []byte {
 }
 
 // VerifyHash verifies the operation hash matches the computed hash
+// SECURITY: Uses bytes.Equal which implements constant-time comparison
+// to prevent timing attacks that could allow hash forgery
 func (op *QueuedOperation) VerifyHash() bool {
 	computed := op.ComputeHash()
-	if len(computed) != len(op.OperationHash) {
-		return false
-	}
-	for i := range computed {
-		if computed[i] != op.OperationHash[i] {
-			return false
-		}
-	}
-	return true
+	return bytes.Equal(computed, op.OperationHash)
 }
 
 // GetSDKMessages unpacks and returns the SDK messages

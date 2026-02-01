@@ -17,10 +17,10 @@ message FeeMarketParams {
   // Gas Pricing (EIP-1559 Style)
   // ========================================
 
-  // min_gas_price is the minimum gas price enforced by validators (in uomni/gas)
+  // min_gas_price is the minimum gas price enforced by validators (in omniphi/gas)
   // Transactions below this price will be rejected
-  // Default: 0.05 uomni/gas
-  // Governance Range: 0.01 - 1.0 uomni/gas
+  // Default: 0.05 omniphi/gas
+  // Governance Range: 0.01 - 1.0 omniphi/gas
   string min_gas_price = 1 [
     (cosmos_proto.scalar) = "cosmos.Dec",
     (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
@@ -32,8 +32,8 @@ message FeeMarketParams {
   // Default: true
   bool base_fee_enabled = 2;
 
-  // base_fee_initial is the initial base fee (in uomni/gas) at genesis
-  // Default: 0.05 uomni/gas
+  // base_fee_initial is the initial base fee (in omniphi/gas) at genesis
+  // Default: 0.05 omniphi/gas
   string base_fee_initial = 3 [
     (cosmos_proto.scalar) = "cosmos.Dec",
     (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
@@ -177,7 +177,7 @@ message FeeMarketParams {
 
   // min_gas_price_floor is the absolute minimum gas price
   // Acts as a hard floor below which governance cannot reduce min_gas_price
-  // Default: 0.025 uomni/gas
+  // Default: 0.025 omniphi/gas
   // Protocol Enforced: Cannot be less than 0.01
   string min_gas_price_floor = 17 [
     (cosmos_proto.scalar) = "cosmos.Dec",

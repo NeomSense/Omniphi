@@ -24,8 +24,8 @@ func Test3LayerFee_BaseModel(t *testing.T) {
 	t.Logf("Params retrieved - MaxCscoreDiscount: %s", params.MaxCscoreDiscount)
 	t.Logf("Params retrieved - MinimumSubmissionFee: %+v", params.MinimumSubmissionFee)
 
-	// Base fee should be 30000 uomni by default
-	require.Equal(t, "uomni", params.BaseSubmissionFee.Denom, "Base submission fee denom should be uomni")
+	// Base fee should be 30000 omniphi by default
+	require.Equal(t, "omniphi", params.BaseSubmissionFee.Denom, "Base submission fee denom should be omniphi")
 	require.Equal(t, math.NewInt(30000), params.BaseSubmissionFee.Amount, "Base submission fee amount should be 30000")
 
 	t.Logf("Base submission fee: %s", params.BaseSubmissionFee)
@@ -198,10 +198,10 @@ func Test3LayerFee_CombinedCalculation(t *testing.T) {
 
 	// Setup params
 	params := f.keeper.GetParams(f.ctx)
-	params.BaseSubmissionFee = sdk.NewCoin("uomni", math.NewInt(30000))
+	params.BaseSubmissionFee = sdk.NewCoin("omniphi", math.NewInt(30000))
 	params.TargetSubmissionsPerBlock = 5
 	params.MaxCscoreDiscount = math.LegacyMustNewDecFromStr("0.9")
-	params.MinimumSubmissionFee = sdk.NewCoin("uomni", math.NewInt(3000))
+	params.MinimumSubmissionFee = sdk.NewCoin("omniphi", math.NewInt(3000))
 	err := f.keeper.SetParams(f.ctx, params)
 	require.NoError(t, err)
 
@@ -301,10 +301,10 @@ func Test3LayerFee_MinimumFeeFloor(t *testing.T) {
 
 	// Setup with very high discount and low congestion
 	params := f.keeper.GetParams(f.ctx)
-	params.BaseSubmissionFee = sdk.NewCoin("uomni", math.NewInt(30000))
+	params.BaseSubmissionFee = sdk.NewCoin("omniphi", math.NewInt(30000))
 	params.TargetSubmissionsPerBlock = 100 // High target = low multiplier
 	params.MaxCscoreDiscount = math.LegacyMustNewDecFromStr("0.99") // 99% discount
-	params.MinimumSubmissionFee = sdk.NewCoin("uomni", math.NewInt(3000))
+	params.MinimumSubmissionFee = sdk.NewCoin("omniphi", math.NewInt(3000))
 	err := f.keeper.SetParams(f.ctx, params)
 	require.NoError(t, err)
 
@@ -339,10 +339,10 @@ func Test3LayerFee_FeeCollection(t *testing.T) {
 
 	// Setup params
 	params := f.keeper.GetParams(f.ctx)
-	params.BaseSubmissionFee = sdk.NewCoin("uomni", math.NewInt(30000))
+	params.BaseSubmissionFee = sdk.NewCoin("omniphi", math.NewInt(30000))
 	params.TargetSubmissionsPerBlock = 5
 	params.MaxCscoreDiscount = math.LegacyMustNewDecFromStr("0.5")
-	params.MinimumSubmissionFee = sdk.NewCoin("uomni", math.NewInt(3000))
+	params.MinimumSubmissionFee = sdk.NewCoin("omniphi", math.NewInt(3000))
 	err := f.keeper.SetParams(f.ctx, params)
 	require.NoError(t, err)
 
@@ -438,8 +438,8 @@ func Test3LayerFee_ParameterValidation(t *testing.T) {
 		{
 			name: "invalid_minimum_fee_exceeds_base",
 			modifyParams: func(params *types.Params) {
-				params.MinimumSubmissionFee = sdk.NewCoin("uomni", math.NewInt(50000))
-				params.BaseSubmissionFee = sdk.NewCoin("uomni", math.NewInt(30000))
+				params.MinimumSubmissionFee = sdk.NewCoin("omniphi", math.NewInt(50000))
+				params.BaseSubmissionFee = sdk.NewCoin("omniphi", math.NewInt(30000))
 			},
 			expectError:   true,
 			errorContains: "cannot exceed base_submission_fee",
@@ -447,7 +447,7 @@ func Test3LayerFee_ParameterValidation(t *testing.T) {
 		{
 			name: "invalid_denom_mismatch",
 			modifyParams: func(params *types.Params) {
-				params.BaseSubmissionFee = sdk.NewCoin("uomni", math.NewInt(30000))
+				params.BaseSubmissionFee = sdk.NewCoin("omniphi", math.NewInt(30000))
 				params.MinimumSubmissionFee = sdk.NewCoin("stake", math.NewInt(3000))
 			},
 			expectError:   true,
@@ -497,7 +497,7 @@ func Test3LayerFee_EventEmission(t *testing.T) {
 
 	// Setup
 	params := f.keeper.GetParams(f.ctx)
-	params.BaseSubmissionFee = sdk.NewCoin("uomni", math.NewInt(30000))
+	params.BaseSubmissionFee = sdk.NewCoin("omniphi", math.NewInt(30000))
 	err := f.keeper.SetParams(f.ctx, params)
 	require.NoError(t, err)
 

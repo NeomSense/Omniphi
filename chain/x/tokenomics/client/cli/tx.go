@@ -36,7 +36,7 @@ func GetTxCmd() *cobra.Command {
 func GetCmdBurn() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "burn [amount] [source]",
-		Short: "Burn tokens (amount in uomni, source: pos_gas, poc_anchoring, etc.)",
+		Short: "Burn tokens (amount in omniphi, source: pos_gas, poc_anchoring, etc.)",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)

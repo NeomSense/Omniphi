@@ -17,7 +17,7 @@ var DefaultInflationShare = math.LegacyZeroDec()
 const DefaultMaxPerBlock uint32 = 10
 
 // DefaultRewardDenom is the default denomination for rewards
-const DefaultRewardDenom = "stake"
+const DefaultRewardDenom = "omniphi"
 
 // NewParams creates a new Params instance
 func NewParams(

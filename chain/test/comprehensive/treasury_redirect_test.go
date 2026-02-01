@@ -205,7 +205,7 @@ func TestTC_REDIRECT_004_AtomicExecution(t *testing.T) {
 
 	t.Run("DustHandling", func(t *testing.T) {
 		// Odd amount that doesn't divide evenly
-		totalRedirect := math.NewInt(100_000_000_001) // 100 OMNI + 1 uomni
+		totalRedirect := math.NewInt(100_000_000_001) // 100 OMNI + 1 omniphi
 
 		// Calculate allocations
 		ecosystemGrants := math.LegacyMustNewDecFromStr("0.40").MulInt(totalRedirect).TruncateInt()

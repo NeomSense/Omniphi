@@ -1,12 +1,15 @@
 """Docker container management for validator nodes."""
 
 import docker
+import logging
 import os
 import tempfile
 from typing import Optional, Dict, Any
 import json
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class DockerManager:
@@ -54,6 +57,26 @@ class DockerManager:
         # Create temp directory for validator config
         temp_dir = tempfile.mkdtemp(prefix=f"validator-{validator_name}-")
 
+        # SECURITY: Enforce checksum verification in production
+        binary_sha256 = getattr(settings, 'OMNIPHI_BINARY_SHA256', None) or ""
+        genesis_sha256 = getattr(settings, 'OMNIPHI_GENESIS_SHA256', None) or ""
+        keyring_backend = getattr(settings, 'KEYRING_BACKEND', 'file')
+
+        # Validate required checksums
+        if not binary_sha256:
+            raise ValueError(
+                "SECURITY ERROR: OMNIPHI_BINARY_SHA256 not set. "
+                "Binary checksum verification is REQUIRED. "
+                "Set OMNIPHI_BINARY_SHA256 in environment or .env file."
+            )
+
+        if not genesis_sha256:
+            raise ValueError(
+                "SECURITY ERROR: OMNIPHI_GENESIS_SHA256 not set. "
+                "Genesis checksum verification is REQUIRED. "
+                "Set OMNIPHI_GENESIS_SHA256 in environment or .env file."
+            )
+
         # Build container configuration
         container_config = {
             "image": settings.DOCKER_IMAGE,
@@ -64,7 +87,10 @@ class DockerManager:
                 "CHAIN_ID": chain_id,
                 "MONIKER": moniker,
                 "OMNIPHI_BINARY_URL": settings.OMNIPHI_BINARY_URL,
-                "OMNIPHI_GENESIS_URL": settings.OMNIPHI_GENESIS_URL
+                "OMNIPHI_BINARY_SHA256": binary_sha256,
+                "OMNIPHI_GENESIS_URL": settings.OMNIPHI_GENESIS_URL,
+                "OMNIPHI_GENESIS_SHA256": genesis_sha256,
+                "KEYRING_BACKEND": keyring_backend
             },
             "ports": {
                 "26656/tcp": None,  # P2P - random host port
@@ -79,23 +105,75 @@ class DockerManager:
                 "/bin/sh",
                 "-c",
                 f"""
-                # Download binary if not present
+                set -e  # Exit on any error
+
+                # Security helper function
+                verify_checksum() {{
+                    local file="$1"
+                    local expected="$2"
+                    local actual
+
+                    actual=$(sha256sum "$file" | awk '{{print $1}}')
+
+                    if [ "$actual" != "$expected" ]; then
+                        echo "SECURITY ERROR: Checksum mismatch for $file"
+                        echo "Expected: $expected"
+                        echo "Got:      $actual"
+                        echo "File may have been tampered with!"
+                        rm -f "$file"
+                        exit 1
+                    fi
+                    echo "Checksum verified for $file"
+                }}
+
+                # Download and verify binary
                 if [ ! -f /usr/local/bin/posd ]; then
-                    wget -O /usr/local/bin/posd $OMNIPHI_BINARY_URL
+                    echo "Downloading posd binary..."
+                    wget -O /tmp/posd "$OMNIPHI_BINARY_URL"
+
+                    # MANDATORY checksum verification
+                    verify_checksum /tmp/posd "$OMNIPHI_BINARY_SHA256"
+
+                    mv /tmp/posd /usr/local/bin/posd
                     chmod +x /usr/local/bin/posd
+
+                    # Verify binary is executable
+                    if ! /usr/local/bin/posd version; then
+                        echo "ERROR: Binary verification failed"
+                        exit 1
+                    fi
                 fi
 
                 # Initialize node
-                posd init $MONIKER --chain-id $CHAIN_ID --home /root/.omniphi
+                posd init "$MONIKER" --chain-id "$CHAIN_ID" --home /root/.omniphi
 
-                # Download genesis
-                wget -O /root/.omniphi/config/genesis.json $OMNIPHI_GENESIS_URL
+                # Download and verify genesis
+                echo "Downloading genesis file..."
+                wget -O /root/.omniphi/config/genesis.json "$OMNIPHI_GENESIS_URL"
+
+                # MANDATORY checksum verification
+                verify_checksum /root/.omniphi/config/genesis.json "$OMNIPHI_GENESIS_SHA256"
 
                 # Configure node
-                posd config set client chain-id $CHAIN_ID --home /root/.omniphi
-                posd config set client keyring-backend test --home /root/.omniphi
+                posd config set client chain-id "$CHAIN_ID" --home /root/.omniphi
+
+                # Configure keyring backend
+                # 'file' = encrypted keys (production)
+                # 'test' = unencrypted keys (development only)
+                posd config set client keyring-backend "$KEYRING_BACKEND" --home /root/.omniphi
+
+                if [ "$KEYRING_BACKEND" = "test" ]; then
+                    echo "=========================================="
+                    echo "WARNING: Using 'test' keyring backend"
+                    echo "Keys are stored UNENCRYPTED!"
+                    echo "NOT SUITABLE FOR PRODUCTION VALIDATORS"
+                    echo "=========================================="
+                else
+                    echo "Using '$KEYRING_BACKEND' keyring backend"
+                fi
 
                 # Start node
+                echo "Starting validator node..."
                 posd start --home /root/.omniphi
                 """
             ]
@@ -132,7 +210,7 @@ class DockerManager:
             }
 
         except Exception as e:
-            print(f"Error creating validator container: {e}")
+            logger.error(f"Error creating validator container: {e}")
             raise
 
     async def _get_consensus_pubkey(self, container_id: str) -> Optional[str]:
@@ -162,7 +240,7 @@ class DockerManager:
             return None
 
         except Exception as e:
-            print(f"Error getting consensus pubkey: {e}")
+            logger.error(f"Error getting consensus pubkey: {e}")
             return None
 
     async def stop_container(self, container_id: str) -> bool:
@@ -180,7 +258,7 @@ class DockerManager:
             container.stop(timeout=30)
             return True
         except Exception as e:
-            print(f"Error stopping container: {e}")
+            logger.error(f"Error stopping container: {e}")
             return False
 
     async def remove_container(self, container_id: str) -> bool:
@@ -198,7 +276,7 @@ class DockerManager:
             container.remove(force=True)
             return True
         except Exception as e:
-            print(f"Error removing container: {e}")
+            logger.error(f"Error removing container: {e}")
             return False
 
     async def restart_container(self, container_id: str) -> bool:
@@ -216,7 +294,7 @@ class DockerManager:
             container.restart(timeout=30)
             return True
         except Exception as e:
-            print(f"Error restarting container: {e}")
+            logger.error(f"Error restarting container: {e}")
             return False
 
     async def get_container_logs(self, container_id: str, lines: int = 100) -> str:
@@ -235,7 +313,7 @@ class DockerManager:
             logs = container.logs(tail=lines).decode("utf-8")
             return logs
         except Exception as e:
-            print(f"Error getting container logs: {e}")
+            logger.error(f"Error getting container logs: {e}")
             return f"Error: {str(e)}"
 
     async def get_container_status(self, container_id: str) -> Dict[str, Any]:
@@ -261,7 +339,7 @@ class DockerManager:
                 "ports": container.attrs["NetworkSettings"]["Ports"]
             }
         except Exception as e:
-            print(f"Error getting container status: {e}")
+            logger.error(f"Error getting container status: {e}")
             return {"error": str(e)}
 
 

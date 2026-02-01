@@ -10,6 +10,7 @@ import (
 	"cosmossdk.io/collections"
 	"cosmossdk.io/core/store"
 	"cosmossdk.io/log"
+	storetypes "cosmossdk.io/store/types"
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -521,8 +522,21 @@ func (k Keeper) EmergencyExecute(ctx context.Context, operationID uint64, guardi
 }
 
 // executeMessages executes all messages in an operation
+// MaxAutoExecutionGas is the maximum gas allowed for timelock auto-execution
+// per operation during EndBlock. This prevents governance proposals with
+// expensive operations from consuming excessive block gas.
+// 2M gas is sufficient for parameter changes, token transfers, and validator
+// operations while preventing abuse.
+const MaxAutoExecutionGas uint64 = 2_000_000
+
 func (k Keeper) executeMessages(ctx context.Context, op *types.QueuedOperation) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	// SECURITY: Create a gas-limited context for auto-execution.
+	// This prevents governance operations from consuming unlimited gas
+	// during EndBlock, which could slow block production or be used
+	// as a resource exhaustion vector.
+	gasLimitedCtx := sdkCtx.WithGasMeter(storetypes.NewGasMeter(MaxAutoExecutionGas))
 
 	// Get messages from operation
 	msgs, err := op.GetSDKMessages(k.cdc)
@@ -530,14 +544,22 @@ func (k Keeper) executeMessages(ctx context.Context, op *types.QueuedOperation) 
 		return fmt.Errorf("failed to unpack messages: %w", err)
 	}
 
-	// Execute each message
+	// SECURITY: Limit number of messages per operation to prevent
+	// batched operations from bypassing per-message gas limits
+	const maxMessagesPerOperation = 10
+	if len(msgs) > maxMessagesPerOperation {
+		return fmt.Errorf("operation contains %d messages, exceeding limit of %d",
+			len(msgs), maxMessagesPerOperation)
+	}
+
+	// Execute each message with gas metering
 	for i, msg := range msgs {
 		handler := k.msgRouter.Handler(msg)
 		if handler == nil {
 			return fmt.Errorf("no handler for message %d (%s)", i, sdk.MsgTypeURL(msg))
 		}
 
-		_, err := handler(sdkCtx, msg)
+		_, err := handler(gasLimitedCtx, msg)
 		if err != nil {
 			return fmt.Errorf("message %d (%s) execution failed: %w", i, sdk.MsgTypeURL(msg), err)
 		}
@@ -546,8 +568,16 @@ func (k Keeper) executeMessages(ctx context.Context, op *types.QueuedOperation) 
 			"operation_id", op.Id,
 			"message_index", i,
 			"message_type", sdk.MsgTypeURL(msg),
+			"gas_used", gasLimitedCtx.GasMeter().GasConsumed(),
 		)
 	}
+
+	k.logger.Info("operation messages executed",
+		"operation_id", op.Id,
+		"total_messages", len(msgs),
+		"total_gas_used", gasLimitedCtx.GasMeter().GasConsumed(),
+		"gas_limit", MaxAutoExecutionGas,
+	)
 
 	return nil
 }
@@ -664,6 +694,10 @@ func (k Keeper) ClearPendingProposal(ctx context.Context, proposalID uint64) err
 
 // ProcessPendingProposals processes all proposals marked for timelock
 // This runs in EndBlocker BEFORE the gov module's EndBlocker
+//
+// SECURITY: This function MUST successfully process or reject all pending proposals.
+// If a proposal cannot be queued in timelock, it must be marked as FAILED in the gov module
+// to prevent the gov module from executing it immediately, bypassing the timelock.
 func (k Keeper) ProcessPendingProposals(ctx context.Context) error {
 	if k.govKeeper == nil {
 		// Gov keeper not set yet, skip processing
@@ -678,6 +712,8 @@ func (k Keeper) ProcessPendingProposals(ctx context.Context) error {
 		return fmt.Errorf("failed to get pending proposals: %w", err)
 	}
 
+	var criticalErrors []error
+
 	for _, proposalID := range proposalIDs {
 		// Process each proposal that passed governance
 		if err := k.processProposal(ctx, sdkCtx, proposalID); err != nil {
@@ -685,7 +721,25 @@ func (k Keeper) ProcessPendingProposals(ctx context.Context) error {
 				"proposal_id", proposalID,
 				"error", err,
 			)
-			// Continue processing other proposals even if one fails
+
+			// CRITICAL: Even if queueing fails, we MUST prevent gov module from
+			// executing this proposal immediately. Try to mark it as failed.
+			if markErr := k.markProposalFailed(ctx, proposalID); markErr != nil {
+				// This is a critical error - proposal might bypass timelock
+				k.logger.Error("CRITICAL: failed to mark proposal as failed after queue error",
+					"proposal_id", proposalID,
+					"queue_error", err,
+					"mark_error", markErr,
+				)
+				criticalErrors = append(criticalErrors, fmt.Errorf(
+					"proposal %d: queue failed (%v), mark failed failed (%v)",
+					proposalID, err, markErr,
+				))
+				continue
+			}
+
+			// Clear from pending - we've handled it (by marking failed)
+			_ = k.ClearPendingProposal(ctx, proposalID)
 			continue
 		}
 
@@ -696,6 +750,33 @@ func (k Keeper) ProcessPendingProposals(ctx context.Context) error {
 				"error", err,
 			)
 		}
+	}
+
+	// If any critical errors occurred where we couldn't prevent gov module execution,
+	// we must halt the chain to prevent timelock bypass
+	if len(criticalErrors) > 0 {
+		return fmt.Errorf("critical timelock errors (potential bypass): %v", criticalErrors)
+	}
+
+	return nil
+}
+
+// markProposalFailed marks a proposal as failed to prevent gov module execution
+func (k Keeper) markProposalFailed(ctx context.Context, proposalID uint64) error {
+	proposal, err := k.govKeeper.GetProposal(ctx, proposalID)
+	if err != nil {
+		return fmt.Errorf("failed to get proposal: %w", err)
+	}
+
+	// Only modify if still in a state where gov module might execute it
+	if proposal.Status == govv1.StatusPassed {
+		proposal.Status = govv1.StatusFailed
+		if err := k.govKeeper.SetProposal(ctx, proposal); err != nil {
+			return fmt.Errorf("failed to set proposal status: %w", err)
+		}
+		k.logger.Info("marked proposal as failed to prevent gov execution bypass",
+			"proposal_id", proposalID,
+		)
 	}
 
 	return nil
@@ -769,4 +850,140 @@ func (k Keeper) processProposal(ctx context.Context, sdkCtx sdk.Context, proposa
 	)
 
 	return nil
+}
+
+// MaxOperationsPerBlock limits the number of timelock operations that can be
+// auto-executed in a single EndBlock. This prevents a burst of queued governance
+// proposals from consuming excessive block time. Remaining operations will be
+// executed in subsequent blocks.
+const MaxOperationsPerBlock = 5
+
+// AutoExecuteReadyOperations executes all operations that have passed their timelock delay.
+// This runs in EndBlocker and solves the execution deadlock where module accounts cannot sign.
+// Operations are executed automatically by the keeper itself, not requiring a signed message.
+//
+// SECURITY: Limited to MaxOperationsPerBlock per block to prevent governance-driven
+// resource exhaustion. Each operation is individually gas-capped by executeMessages.
+func (k Keeper) AutoExecuteReadyOperations(ctx context.Context) error {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	now := sdkCtx.BlockTime()
+
+	var executedCount, failedCount, skippedCount int
+
+	err := k.Operations.Walk(ctx, nil, func(id uint64, op types.QueuedOperation) (stop bool, err error) {
+		// Only process queued operations that are ready for execution
+		if op.Status != types.OperationStatusQueued {
+			return false, nil
+		}
+
+		// Check if expired first
+		if op.IsExpired(now) {
+			op.MarkExpired()
+			if err := k.SetOperation(ctx, &op); err != nil {
+				k.logger.Error("failed to mark operation as expired",
+					"operation_id", op.Id,
+					"error", err,
+				)
+			}
+			return false, nil
+		}
+
+		// Check if ready for execution (passed timelock delay)
+		if !op.IsExecutable(now) {
+			return false, nil
+		}
+
+		// SECURITY: Enforce per-block execution cap to prevent governance-driven
+		// resource exhaustion from many queued operations executing in one block.
+		// Remaining operations will execute in subsequent blocks.
+		if executedCount+failedCount >= MaxOperationsPerBlock {
+			skippedCount++
+			return false, nil
+		}
+
+		// Verify hash integrity before execution
+		if !op.VerifyHash() {
+			k.logger.Error("operation hash verification failed - skipping",
+				"operation_id", op.Id,
+				"proposal_id", op.ProposalId,
+			)
+			op.MarkFailed(now, types.ErrOperationHashMismatch)
+			if err := k.SetOperation(ctx, &op); err != nil {
+				k.logger.Error("failed to update operation after hash failure",
+					"operation_id", op.Id, "error", err)
+			}
+			return false, nil
+		}
+
+		k.logger.Info("auto-executing timelock operation",
+			"operation_id", op.Id,
+			"proposal_id", op.ProposalId,
+			"queued_at", time.Unix(op.QueuedAtUnix, 0),
+			"executable_at", op.ExecutableTime(),
+		)
+
+		// Execute the messages
+		if err := k.executeMessages(ctx, &op); err != nil {
+			k.logger.Error("auto-execution failed",
+				"operation_id", op.Id,
+				"proposal_id", op.ProposalId,
+				"error", err,
+			)
+			op.MarkFailed(now, err)
+			if setErr := k.SetOperation(ctx, &op); setErr != nil {
+				k.logger.Error("failed to update operation after execution failure",
+					"operation_id", op.Id, "error", setErr)
+			}
+			failedCount++
+
+			// Emit failure event
+			sdkCtx.EventManager().EmitEvent(
+				sdk.NewEvent(
+					"operation_auto_execute_failed",
+					sdk.NewAttribute("operation_id", fmt.Sprintf("%d", op.Id)),
+					sdk.NewAttribute("proposal_id", fmt.Sprintf("%d", op.ProposalId)),
+					sdk.NewAttribute("error", err.Error()),
+				),
+			)
+			return false, nil
+		}
+
+		// Mark as executed
+		op.MarkExecuted(now)
+		if err := k.SetOperation(ctx, &op); err != nil {
+			k.logger.Error("failed to update operation after execution",
+				"operation_id", op.Id, "error", err)
+			return false, err
+		}
+
+		executedCount++
+
+		k.logger.Info("operation auto-executed successfully",
+			"operation_id", op.Id,
+			"proposal_id", op.ProposalId,
+		)
+
+		// Emit success event
+		sdkCtx.EventManager().EmitEvent(
+			sdk.NewEvent(
+				"operation_auto_executed",
+				sdk.NewAttribute("operation_id", fmt.Sprintf("%d", op.Id)),
+				sdk.NewAttribute("proposal_id", fmt.Sprintf("%d", op.ProposalId)),
+				sdk.NewAttribute("executed_at", now.String()),
+			),
+		)
+
+		return false, nil
+	})
+
+	if executedCount > 0 || failedCount > 0 || skippedCount > 0 {
+		k.logger.Info("auto-execution complete",
+			"executed", executedCount,
+			"failed", failedCount,
+			"deferred_to_next_block", skippedCount,
+			"per_block_limit", MaxOperationsPerBlock,
+		)
+	}
+
+	return err
 }

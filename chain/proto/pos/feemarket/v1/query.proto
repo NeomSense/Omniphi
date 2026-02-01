@@ -51,7 +51,7 @@ message QueryBaseFeeRequest {}
 
 // QueryBaseFeeResponse is the response type for the Query/BaseFee RPC method.
 message QueryBaseFeeResponse {
-  // base_fee is the current EIP-1559 base fee in uomni/gas
+  // base_fee is the current EIP-1559 base fee in omniphi/gas
   string base_fee = 1 [
     (cosmos_proto.scalar) = "cosmos.Dec",
     (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",

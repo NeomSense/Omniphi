@@ -14,14 +14,14 @@ This document explains the governance deposit mechanism, voting process, and par
 
 ### Mainnet Configuration
 
-| Proposal Type | Required Deposit | In uomni |
+| Proposal Type | Required Deposit | In omniphi |
 |---------------|------------------|----------|
 | Standard | 1,000 OMNI | 1,000,000,000 |
 | Expedited | 5,000 OMNI | 5,000,000,000 |
 
 ### Testnet Configuration
 
-| Proposal Type | Required Deposit | In uomni |
+| Proposal Type | Required Deposit | In omniphi |
 |---------------|------------------|----------|
 | Standard | 100 OMNI | 100,000,000 |
 | Expedited | 500 OMNI | 500,000,000 |
@@ -131,7 +131,7 @@ If proposal passes or fails (non-veto):
 ```bash
 posd tx gov submit-proposal proposal.json \
   --from <wallet> \
-  --deposit 1000000000uomni \
+  --deposit 1000000000omniphi \
   --chain-id omniphi-mainnet-1
 ```
 
@@ -140,7 +140,7 @@ posd tx gov submit-proposal proposal.json \
 ```bash
 posd tx gov submit-proposal proposal.json \
   --from <wallet> \
-  --deposit 5000000000uomni \
+  --deposit 5000000000omniphi \
   --expedited \
   --chain-id omniphi-mainnet-1
 ```
@@ -158,7 +158,7 @@ posd tx gov submit-proposal proposal.json \
     }
   ],
   "initial_deposit": [
-    {"denom": "uomni", "amount": "1000000000"}
+    {"denom": "omniphi", "amount": "1000000000"}
   ],
   "proposer": "omni1...",
   "metadata": "ipfs://...",

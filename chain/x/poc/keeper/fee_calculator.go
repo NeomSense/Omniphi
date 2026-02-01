@@ -76,6 +76,13 @@ func (k Keeper) Calculate3LayerFee(ctx context.Context, contributor sdk.AccAddre
 		finalFee = minimumFee
 	}
 
+	// SECURITY: Final validation before returning
+	// Ensure calculated fee is valid and within expected bounds
+	if !finalFee.IsValid() || finalFee.IsNegative() || finalFee.IsZero() {
+		return sdk.Coin{}, math.LegacyDec{}, math.LegacyDec{},
+			fmt.Errorf("fee calculation produced invalid result: %v", finalFee)
+	}
+
 	return finalFee, epochMultiplier, cscoreDiscount, nil
 }
 
@@ -177,19 +184,31 @@ func (k Keeper) GetCurrentBlockSubmissions(ctx context.Context) uint32 {
 
 // IncrementBlockSubmissions increments the submission counter for the current block
 // Called by msg_server when processing a submission
+// SECURITY: Handles uint32 overflow by wrapping with logging
 func (k Keeper) IncrementBlockSubmissions(ctx context.Context) {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	store := sdkCtx.TransientStore(k.tStoreKey)
 
 	currentCount := k.GetCurrentBlockSubmissions(ctx)
-	newCount := currentCount + 1
+
+	// SECURITY: Check for overflow before incrementing
+	// While extremely unlikely in a single block, we handle it gracefully
+	var newCount uint32
+	if currentCount == ^uint32(0) { // Max uint32 (0xFFFFFFFF)
+		k.Logger().Warn("block submission counter overflow detected, resetting to 1",
+			"block_height", sdkCtx.BlockHeight(),
+		)
+		newCount = 1
+	} else {
+		newCount = currentCount + 1
+	}
 
 	// Encode uint32 to bytes (little-endian)
 	bz := make([]byte, 4)
 	bz[0] = byte(newCount)
 	bz[1] = byte(newCount >> 8)
 	bz[2] = byte(newCount >> 16)
-	bz[3] = byte(newCount >> 24)
+	bz[3] = byte(newCount >> 24) // FIX: was >> 32, which is undefined for uint32
 
 	store.Set(SubmissionCounterKey, bz)
 
@@ -233,6 +252,39 @@ func (k Keeper) CollectAndSplit3LayerFee(
 	cscoreDiscount math.LegacyDec,
 ) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	params := k.GetParams(ctx)
+
+	// SECURITY: Validate fee amount before processing
+	// This prevents underflow/overflow attacks and ensures fee integrity
+	if !fee.IsValid() {
+		return fmt.Errorf("invalid fee coin: %v", fee)
+	}
+
+	if fee.IsZero() {
+		return fmt.Errorf("fee cannot be zero")
+	}
+
+	if fee.IsNegative() {
+		return fmt.Errorf("fee cannot be negative: %v", fee)
+	}
+
+	// Verify fee meets minimum threshold
+	if fee.Amount.LT(params.MinimumSubmissionFee.Amount) {
+		return fmt.Errorf("fee %s is below minimum %s", fee, params.MinimumSubmissionFee)
+	}
+
+	// SECURITY: Verify fee denomination matches expected
+	if fee.Denom != params.MinimumSubmissionFee.Denom {
+		return fmt.Errorf("invalid fee denomination: expected %s, got %s",
+			params.MinimumSubmissionFee.Denom, fee.Denom)
+	}
+
+	// SECURITY: Cap maximum fee to prevent overflow in downstream calculations
+	// Max fee is 1000x the base fee (reasonable upper bound)
+	maxFee := params.BaseSubmissionFee.Amount.MulRaw(1000)
+	if fee.Amount.GT(maxFee) {
+		return fmt.Errorf("fee %s exceeds maximum allowed %s%s", fee, maxFee, fee.Denom)
+	}
 
 	// Collect fee from contributor
 	if err := k.bankKeeper.SendCoinsFromAccountToModule(

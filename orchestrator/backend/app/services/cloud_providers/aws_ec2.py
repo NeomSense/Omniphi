@@ -271,39 +271,64 @@ class AWSEC2Provider:
             )
             sg_id = response['GroupId']
 
-            # Add inbound rules
-            self.ec2_client.authorize_security_group_ingress(
-                GroupId=sg_id,
-                IpPermissions=[
-                    # SSH (TODO: Restrict to your IP in production)
-                    {
+            # Get allowed CIDR blocks from settings (secure by default)
+            from app.core.config import settings
+
+            # SECURITY: SSH access is restricted. If not configured, SSH is disabled.
+            admin_cidrs = getattr(settings, 'AWS_ADMIN_CIDR_BLOCKS', None)
+            monitoring_cidrs = getattr(settings, 'AWS_MONITORING_CIDR_BLOCKS', None)
+
+            ip_permissions = [
+                # P2P networking - MUST be open to internet for consensus
+                {
+                    'IpProtocol': 'tcp',
+                    'FromPort': 26656,
+                    'ToPort': 26656,
+                    'IpRanges': [{'CidrIp': '0.0.0.0/0', 'Description': 'P2P networking (required for consensus)'}]
+                }
+            ]
+
+            # SSH: Only add if admin CIDRs are configured and not 0.0.0.0/0
+            if admin_cidrs and '0.0.0.0/0' not in admin_cidrs:
+                for cidr in admin_cidrs:
+                    ip_permissions.append({
                         'IpProtocol': 'tcp',
                         'FromPort': 22,
                         'ToPort': 22,
-                        'IpRanges': [{'CidrIp': '0.0.0.0/0', 'Description': 'SSH access (restrict in production)'}]
-                    },
-                    # P2P networking (must be open to internet)
-                    {
-                        'IpProtocol': 'tcp',
-                        'FromPort': 26656,
-                        'ToPort': 26656,
-                        'IpRanges': [{'CidrIp': '0.0.0.0/0', 'Description': 'P2P networking'}]
-                    },
-                    # gRPC (for client connections)
-                    {
+                        'IpRanges': [{'CidrIp': cidr, 'Description': f'SSH access from admin IP {cidr}'}]
+                    })
+                logger.info(f"SSH access restricted to: {admin_cidrs}")
+            else:
+                logger.warning("SSH access DISABLED - set AWS_ADMIN_CIDR_BLOCKS to enable")
+
+            # gRPC: Internal only - should be accessed via VPN or internal network
+            # NOT open to 0.0.0.0/0 in production
+            if admin_cidrs and '0.0.0.0/0' not in admin_cidrs:
+                for cidr in admin_cidrs:
+                    ip_permissions.append({
                         'IpProtocol': 'tcp',
                         'FromPort': 9090,
                         'ToPort': 9090,
-                        'IpRanges': [{'CidrIp': '0.0.0.0/0', 'Description': 'gRPC endpoint'}]
-                    },
-                    # Prometheus metrics (TODO: Restrict to monitoring server)
-                    {
+                        'IpRanges': [{'CidrIp': cidr, 'Description': f'gRPC from {cidr}'}]
+                    })
+
+            # Prometheus metrics: Only from monitoring servers
+            if monitoring_cidrs and '0.0.0.0/0' not in monitoring_cidrs:
+                for cidr in monitoring_cidrs:
+                    ip_permissions.append({
                         'IpProtocol': 'tcp',
                         'FromPort': 26660,
                         'ToPort': 26660,
-                        'IpRanges': [{'CidrIp': '0.0.0.0/0', 'Description': 'Prometheus metrics (restrict in production)'}]
-                    }
-                ]
+                        'IpRanges': [{'CidrIp': cidr, 'Description': f'Prometheus metrics from {cidr}'}]
+                    })
+                logger.info(f"Prometheus metrics restricted to: {monitoring_cidrs}")
+            else:
+                logger.warning("Prometheus metrics endpoint DISABLED - set AWS_MONITORING_CIDR_BLOCKS to enable")
+
+            # Add inbound rules
+            self.ec2_client.authorize_security_group_ingress(
+                GroupId=sg_id,
+                IpPermissions=ip_permissions
             )
 
             logger.info(f"Created security group: {sg_id}")
@@ -319,11 +344,21 @@ class AWSEC2Provider:
 
         This script runs on first boot and:
         1. Installs dependencies
-        2. Downloads and installs posd binary
+        2. Downloads and verifies posd binary (with SHA256 checksum)
         3. Initializes validator node
         4. Configures systemd service
         5. Starts validator
+
+        SECURITY: Binary downloads are verified with SHA256 checksums.
         """
+        from app.core.config import settings
+
+        binary_url = settings.OMNIPHI_BINARY_URL
+        binary_sha256 = settings.OMNIPHI_BINARY_SHA256 or ""
+        genesis_url = settings.OMNIPHI_GENESIS_URL
+        genesis_sha256 = settings.OMNIPHI_GENESIS_SHA256 or ""
+        keyring_backend = settings.KEYRING_BACKEND
+
         script = f"""#!/bin/bash
 set -e
 
@@ -335,6 +370,32 @@ echo "=== Omniphi Validator Initialization ==="
 echo "Moniker: {moniker}"
 echo "Chain ID: {chain_id}"
 echo "Started: $(date)"
+
+# Security function to verify checksums
+verify_checksum() {{
+    local file="$1"
+    local expected_sha256="$2"
+    local actual_sha256
+
+    if [ -z "$expected_sha256" ]; then
+        echo "ERROR: No checksum provided for $file - refusing to proceed"
+        echo "Set OMNIPHI_BINARY_SHA256 and OMNIPHI_GENESIS_SHA256 in environment"
+        exit 1
+    fi
+
+    actual_sha256=$(sha256sum "$file" | awk '{{print $1}}')
+
+    if [ "$actual_sha256" != "$expected_sha256" ]; then
+        echo "ERROR: Checksum verification failed for $file"
+        echo "Expected: $expected_sha256"
+        echo "Got:      $actual_sha256"
+        echo "The file may have been tampered with!"
+        rm -f "$file"
+        exit 1
+    fi
+
+    echo "Checksum verified for $file"
+}}
 
 # Update system
 apt-get update
@@ -351,44 +412,103 @@ apt-get install -y \\
     gnupg \\
     lsb-release
 
-# Create validator user
+# Create validator user with restricted shell
 if ! id -u omniphi &>/dev/null; then
     useradd -m -s /bin/bash omniphi
 fi
 
-# Download posd binary (TODO: Replace with actual release URL)
-# For now, this is a placeholder - you should:
-# 1. Build posd binary
-# 2. Upload to S3 or GitHub releases
-# 3. Download from there
-
+# Download and verify posd binary
+echo "Downloading posd binary from {binary_url}..."
 cd /tmp
-# Example: wget https://github.com/omniphi/omniphi/releases/download/v1.0.0/posd
-# Example: chmod +x posd
-# Example: mv posd /usr/local/bin/
+wget -O posd "{binary_url}"
 
-# For MVP, we'll create a marker file indicating initialization
-# In production, replace this with actual posd initialization
-sudo -u omniphi bash <<'EOF'
-mkdir -p /home/omniphi/.omniphi/config
-mkdir -p /home/omniphi/.omniphi/data
+# SECURITY: Verify binary checksum
+verify_checksum "/tmp/posd" "{binary_sha256}"
 
-# Create a marker file with consensus pubkey placeholder
-# In production, this would be: posd tendermint show-validator
-echo '{{"@type":"/cosmos.crypto.ed25519.PubKey","key":"PLACEHOLDER_WILL_BE_EXTRACTED"}}' > /home/omniphi/.omniphi/consensus_pubkey.json
+chmod +x posd
+mv posd /usr/local/bin/
+
+# Verify binary is executable
+if ! /usr/local/bin/posd version; then
+    echo "ERROR: posd binary verification failed"
+    exit 1
+fi
+
+echo "Binary installed and verified successfully"
+
+# Initialize validator as omniphi user
+sudo -u omniphi bash <<'USERSCRIPT'
+set -e
+
+# Initialize node
+/usr/local/bin/posd init "{moniker}" --chain-id "{chain_id}" --home /home/omniphi/.omniphi
+
+# Download and verify genesis
+wget -O /tmp/genesis.json "{genesis_url}"
+USERSCRIPT
+
+# Verify genesis checksum (run as root since we downloaded to /tmp)
+verify_checksum "/tmp/genesis.json" "{genesis_sha256}"
+mv /tmp/genesis.json /home/omniphi/.omniphi/config/genesis.json
+chown omniphi:omniphi /home/omniphi/.omniphi/config/genesis.json
+
+sudo -u omniphi bash <<'USERSCRIPT'
+set -e
+
+# Configure node
+/usr/local/bin/posd config set client chain-id "{chain_id}" --home /home/omniphi/.omniphi
+
+# SECURITY: Use encrypted keyring backend (not 'test')
+# 'file' backend encrypts keys at rest with a passphrase
+/usr/local/bin/posd config set client keyring-backend "{keyring_backend}" --home /home/omniphi/.omniphi
+
+if [ "{keyring_backend}" = "test" ]; then
+    echo "WARNING: Using 'test' keyring backend - keys stored unencrypted!"
+    echo "This is NOT suitable for production validators!"
+fi
+
+# Extract consensus pubkey
+/usr/local/bin/posd tendermint show-validator --home /home/omniphi/.omniphi > /home/omniphi/.omniphi/consensus_pubkey.json
 
 # Mark initialization complete
 touch /home/omniphi/.omniphi/initialized
-EOF
+USERSCRIPT
 
-# TODO: In production, add these steps:
-# 1. posd init {moniker} --chain-id {chain_id}
-# 2. Download genesis file
-# 3. Configure seeds/peers
-# 4. Create systemd service (use our template)
-# 5. Start validator
+# Create systemd service for validator
+cat > /etc/systemd/system/omniphi-validator.service <<SYSTEMD
+[Unit]
+Description=Omniphi Validator Node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=omniphi
+Group=omniphi
+ExecStart=/usr/local/bin/posd start --home /home/omniphi/.omniphi
+Restart=always
+RestartSec=3
+LimitNOFILE=65535
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/omniphi/.omniphi
+
+[Install]
+WantedBy=multi-user.target
+SYSTEMD
+
+# Enable and start service
+systemctl daemon-reload
+systemctl enable omniphi-validator
+systemctl start omniphi-validator
 
 echo "=== Initialization Complete ==="
+echo "Validator started successfully"
 echo "Completed: $(date)"
 """
 
@@ -438,31 +558,80 @@ echo "Completed: $(date)"
 
     async def _extract_consensus_pubkey(self, instance_id: str) -> str:
         """
-        Extract consensus public key from validator instance.
+        Extract consensus public key from validator instance using AWS SSM.
 
-        In production, this would:
-        1. SSH into instance or use AWS Systems Manager
-        2. Run: posd tendermint show-validator
-        3. Extract and return the pubkey
-
-        For now, returns a placeholder that should be replaced by actual implementation.
+        Uses AWS Systems Manager to run commands on the instance without SSH.
+        Requires the instance to have the SSM agent installed and proper IAM role.
         """
-        # TODO: Implement actual pubkey extraction via SSM or SSH
-        # Example using SSM:
-        # import boto3
-        # ssm = boto3.client('ssm')
-        # response = ssm.send_command(
-        #     InstanceIds=[instance_id],
-        #     DocumentName='AWS-RunShellScript',
-        #     Parameters={'commands': ['sudo -u omniphi posd tendermint show-validator']}
-        # )
-        # # Wait for command and get output...
+        import asyncio
 
-        logger.warning("Using placeholder consensus pubkey - implement actual extraction in production")
+        try:
+            ssm = self.session.client('ssm')
 
-        import secrets
-        random_bytes = secrets.token_bytes(32)
-        return base64.b64encode(random_bytes).decode('utf-8')
+            # Send command to extract pubkey
+            logger.info(f"Extracting consensus pubkey from instance {instance_id}")
+
+            response = ssm.send_command(
+                InstanceIds=[instance_id],
+                DocumentName='AWS-RunShellScript',
+                Parameters={
+                    'commands': [
+                        'cat /home/omniphi/.omniphi/consensus_pubkey.json'
+                    ]
+                },
+                TimeoutSeconds=60
+            )
+
+            command_id = response['Command']['CommandId']
+
+            # Wait for command to complete
+            max_attempts = 30
+            for attempt in range(max_attempts):
+                await asyncio.sleep(2)
+
+                result = ssm.get_command_invocation(
+                    CommandId=command_id,
+                    InstanceId=instance_id
+                )
+
+                status = result['Status']
+
+                if status == 'Success':
+                    output = result['StandardOutputContent'].strip()
+                    if output:
+                        # Parse the JSON to extract the key
+                        import json
+                        try:
+                            pubkey_data = json.loads(output)
+                            pubkey = pubkey_data.get('key', '')
+                            if pubkey and pubkey != 'PLACEHOLDER_WILL_BE_EXTRACTED':
+                                logger.info(f"Successfully extracted consensus pubkey")
+                                return pubkey
+                        except json.JSONDecodeError:
+                            logger.warning(f"Could not parse pubkey JSON: {output}")
+
+                elif status in ['Failed', 'Cancelled', 'TimedOut']:
+                    logger.error(f"SSM command failed with status: {status}")
+                    break
+
+            # If SSM fails, raise error instead of returning placeholder
+            raise RuntimeError(
+                f"Failed to extract consensus pubkey from instance {instance_id}. "
+                "Ensure SSM agent is running and instance has proper IAM role."
+            )
+
+        except self.session.client('ssm').exceptions.InvalidInstanceId:
+            raise RuntimeError(
+                f"Instance {instance_id} is not registered with SSM. "
+                "Ensure SSM agent is installed and instance has proper IAM role."
+            )
+
+        except Exception as e:
+            logger.error(f"Error extracting consensus pubkey: {e}")
+            raise RuntimeError(
+                f"Failed to extract consensus pubkey: {e}. "
+                "Cannot proceed without valid pubkey."
+            )
 
     async def terminate_instance(self, instance_id: str):
         """Terminate an EC2 instance."""

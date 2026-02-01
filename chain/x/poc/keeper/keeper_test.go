@@ -127,7 +127,7 @@ func SetupKeeperTest(t *testing.T) *KeeperTestFixture {
 
 	// Initialize PoC params
 	params := types.DefaultParams()
-	params.RewardDenom = "stake"
+	params.RewardDenom = "omniphi"
 	params.BaseRewardUnit = math.NewInt(100)
 	params.MaxPerBlock = 100
 	err := pocKeeper.SetParams(ctx, params)

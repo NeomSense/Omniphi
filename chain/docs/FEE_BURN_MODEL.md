@@ -80,7 +80,7 @@ validatorAmt  = remaining × 0.70 (70%)
 
 ## Fee Distribution Summary
 
-For a 100 uomni transaction fee at normal utilization (20% base) with PoS activity (1.0x):
+For a 100 omniphi transaction fee at normal utilization (20% base) with PoS activity (1.0x):
 
 | Destination  | Amount | Calculation                     |
 |--------------|--------|----------------------------------|

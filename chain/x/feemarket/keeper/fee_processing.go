@@ -9,6 +9,7 @@ import (
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 
 	"pos/x/feemarket/types"
+	tokenomicstypes "pos/x/tokenomics/types"
 )
 
 // ProcessBlockFees processes all fees collected in the current block
@@ -26,8 +27,8 @@ func (k Keeper) ProcessBlockFees(ctx context.Context) error {
 		return fmt.Errorf("fee collector address not found")
 	}
 
-	// Get total fees collected (assuming uomni denomination)
-	totalFees := k.bankKeeper.GetBalance(ctx, feeCollectorAddr, "uomni")
+	// Get total fees collected in the chain's native denomination
+	totalFees := k.bankKeeper.GetBalance(ctx, feeCollectorAddr, tokenomicstypes.BondDenom)
 	if totalFees.Amount.IsZero() {
 		k.Logger(ctx).Debug("no fees collected in this block")
 		return nil
@@ -76,7 +77,7 @@ func (k Keeper) ProcessBlockFees(ctx context.Context) error {
 
 	// 1. Burn tokens
 	if burnAmount.IsPositive() {
-		burnCoins := sdk.NewCoins(sdk.NewCoin("uomni", burnAmount))
+		burnCoins := sdk.NewCoins(sdk.NewCoin(tokenomicstypes.BondDenom, burnAmount))
 		if err := k.bankKeeper.BurnCoins(ctx, authtypes.FeeCollectorName, burnCoins); err != nil {
 			k.Logger(ctx).Error("failed to burn fees", "error", err)
 			return types.ErrBurnFailed.Wrapf("amount: %s, error: %v", burnAmount.String(), err)
@@ -102,7 +103,7 @@ func (k Keeper) ProcessBlockFees(ctx context.Context) error {
 			return types.ErrTreasuryAddressNotSet
 		}
 
-		treasuryCoins := sdk.NewCoins(sdk.NewCoin("uomni", treasuryAmount))
+		treasuryCoins := sdk.NewCoins(sdk.NewCoin(tokenomicstypes.BondDenom, treasuryAmount))
 		if err := k.bankKeeper.SendCoinsFromModuleToAccount(ctx, authtypes.FeeCollectorName, treasuryAddr, treasuryCoins); err != nil {
 			k.Logger(ctx).Error("failed to transfer to treasury", "error", err)
 			return types.ErrTreasuryTransferFailed.Wrapf("amount: %s, error: %v", treasuryAmount.String(), err)
