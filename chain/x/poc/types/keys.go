@@ -225,6 +225,13 @@ var (
 	// KeyMinQualityForEmission stores the minimum quality score (0-100) required
 	// for a contribution to be eligible for emission rewards. Singleton.
 	KeyMinQualityForEmission = []byte{0x2F}
+
+	// KeyPrefixPendingRewardIndex is a set-index of contribution IDs that are
+	// verified and not yet rewarded. Written when quorum is reached, deleted
+	// when the reward is distributed. Enables O(pending) EndBlocker iteration
+	// instead of O(all contributions).
+	// Key: 0x30 | contribution_id (big endian uint64)
+	KeyPrefixPendingRewardIndex = []byte{0x30}
 )
 
 // GetContributionKey returns the store key for a contribution by ID
@@ -493,4 +500,9 @@ func GetProvenanceEpochIndexKey(epoch uint64, claimID uint64) []byte {
 // GetProvenanceEpochIndexPrefix returns the prefix for iterating all claims in an epoch.
 func GetProvenanceEpochIndexPrefix(epoch uint64) []byte {
 	return append(KeyPrefixProvenanceEpochIndex, sdk.Uint64ToBigEndian(epoch)...)
+}
+
+// GetPendingRewardIndexKey returns the store key for a pending-reward index entry.
+func GetPendingRewardIndexKey(contributionID uint64) []byte {
+	return append(KeyPrefixPendingRewardIndex, sdk.Uint64ToBigEndian(contributionID)...)
 }

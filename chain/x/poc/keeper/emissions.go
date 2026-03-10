@@ -2,13 +2,20 @@ package keeper
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 
 	"cosmossdk.io/math"
+	storetypes "cosmossdk.io/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"pos/x/poc/types"
 )
+
+// maxRewardsPerBlock caps how many pending rewards are processed per EndBlocker call.
+// Prevents a burst of pending contributions from stalling the chain. Remaining
+// entries are processed in subsequent blocks (FIFO by contribution ID).
+const maxRewardsPerBlock = 50
 
 // DistributeEmissions distributes PoC inflation emissions to the module for rewards
 // Called by tokenomics module during EndBlocker
@@ -48,8 +55,11 @@ func (k Keeper) DistributeEmissions(ctx context.Context, amount sdk.Coins) error
 	return nil
 }
 
-// ProcessPendingRewards processes all verified contributions and distributes rewards
-// Called during EndBlocker
+// ProcessPendingRewards distributes token rewards to verified contributions
+// that haven't been rewarded yet. Uses the pending-reward index (O(pending))
+// instead of scanning all contributions (O(all)), and caps processing at
+// maxRewardsPerBlock per EndBlocker call to prevent burst stalls.
+// Called during EndBlocker.
 func (k Keeper) ProcessPendingRewards(ctx context.Context) error {
 	params := k.GetParams(ctx)
 
@@ -58,23 +68,42 @@ func (k Keeper) ProcessPendingRewards(ctx context.Context) error {
 	availableBalance := k.bankKeeper.GetBalance(ctx, moduleAddr, params.RewardDenom)
 
 	if availableBalance.Amount.IsZero() {
-		// No funds to distribute
 		return nil
 	}
 
-	// Quality floor: skip contributions whose review quality score is below the minimum.
 	minQuality := k.GetMinQualityForEmission(ctx)
 
-	// Get all verified contributions that haven't been rewarded
-	contributions := k.GetAllContributions(ctx)
-	var pendingContributions []types.Contribution
+	// Collect up to maxRewardsPerBlock pending contributions via the index.
+	// The index contains only verified-not-yet-rewarded IDs (written by EnqueueReward,
+	// deleted here on success), so this is O(pending) not O(all).
+	store := k.storeService.OpenKVStore(ctx)
+	iterator, err := store.Iterator(
+		types.KeyPrefixPendingRewardIndex,
+		storetypes.PrefixEndBytes(types.KeyPrefixPendingRewardIndex),
+	)
+	if err != nil {
+		return nil // don't halt chain
+	}
+	defer iterator.Close()
 
-	for _, c := range contributions {
-		if !c.Verified || c.Rewarded {
+	var pendingContributions []types.Contribution
+	for ; iterator.Valid() && len(pendingContributions) < maxRewardsPerBlock; iterator.Next() {
+		// Decode contribution ID from the key suffix (8 bytes big-endian uint64)
+		keyBytes := iterator.Key()
+		if len(keyBytes) < len(types.KeyPrefixPendingRewardIndex)+8 {
 			continue
 		}
-		// Enforce quality floor to prevent low-quality submission farming.
-		// Contributions with no review session (direct verification) pass by default.
+		idBytes := keyBytes[len(types.KeyPrefixPendingRewardIndex):]
+		cID := binary.BigEndian.Uint64(idBytes)
+
+		c, found := k.GetContribution(ctx, cID)
+		if !found || !c.Verified || c.Rewarded {
+			// Stale index entry — clean it up and move on
+			_ = k.removePendingRewardIndex(ctx, cID)
+			continue
+		}
+
+		// Quality floor: skip low-quality submissions (leave in index for potential governance change)
 		if minQuality > 0 {
 			session, found := k.GetReviewSession(ctx, c.Id)
 			if found && session.FinalQuality < minQuality {
@@ -90,20 +119,16 @@ func (k Keeper) ProcessPendingRewards(ctx context.Context) error {
 	}
 
 	if len(pendingContributions) == 0 {
-		// No pending contributions to reward
 		return nil
 	}
 
-	// Calculate total credits for pending contributions, applying RewardMult multiplier
+	// Calculate total credits for this batch, applying RewardMult multiplier
 	totalCredits := math.ZeroInt()
 	for _, c := range pendingContributions {
 		weight := k.weightFor(ctx, c)
 		credits := params.BaseRewardUnit.Mul(weight)
-
-		// Apply RewardMult validator multiplier (power-weighted average of endorsing validators)
 		rmMult := k.getContributionRewardMultiplier(ctx, c)
 		credits = rmMult.MulInt(credits).TruncateInt()
-
 		totalCredits = totalCredits.Add(credits)
 	}
 
@@ -111,70 +136,71 @@ func (k Keeper) ProcessPendingRewards(ctx context.Context) error {
 		return nil
 	}
 
-	// Distribute rewards proportionally
+	// Distribute rewards proportionally across this batch
 	totalDistributed := math.ZeroInt()
 	for i, c := range pendingContributions {
 		weight := k.weightFor(ctx, c)
 		credits := params.BaseRewardUnit.Mul(weight)
-
-		// Apply RewardMult validator multiplier (same as totalCredits calculation above)
 		rmMult := k.getContributionRewardMultiplier(ctx, c)
 		credits = rmMult.MulInt(credits).TruncateInt()
 
-		// Calculate share of available balance
-		// share = (credits / totalCredits) * availableBalance
 		share := credits.Mul(availableBalance.Amount).Quo(totalCredits)
 
-		// For last contribution, distribute remaining balance to avoid dust
+		// Last entry in batch gets remainder to avoid dust accumulation
 		if i == len(pendingContributions)-1 {
-			share = availableBalance.Amount.Sub(totalDistributed)
+			remainder := availableBalance.Amount.Sub(totalDistributed)
+			if remainder.IsPositive() {
+				share = remainder
+			}
 		}
 
-		if share.IsPositive() {
-			contributor, err := sdk.AccAddressFromBech32(c.Contributor)
-			if err != nil {
-				k.logger.Error("invalid contributor address",
-					"contribution_id", c.Id,
-					"address", c.Contributor,
-					"error", err)
-				continue
-			}
-
-			// Send reward directly to contributor
-			coins := sdk.NewCoins(sdk.NewCoin(params.RewardDenom, share))
-			if err := k.bankKeeper.SendCoinsFromModuleToAccount(ctx, types.ModuleName, contributor, coins); err != nil {
-				k.logger.Error("failed to send reward",
-					"contribution_id", c.Id,
-					"contributor", c.Contributor,
-					"amount", share.String(),
-					"error", err)
-				continue
-			}
-
-			// Mark contribution as rewarded
-			c.Rewarded = true
-			if err := k.SetContribution(ctx, c); err != nil {
-				k.logger.Error("failed to update contribution reward status",
-					"contribution_id", c.Id,
-					"error", err)
-				return fmt.Errorf("failed to update contribution %d reward status: %w", c.Id, err)
-			}
-
-			// Emit reward event
-			sdkCtx := sdk.UnwrapSDKContext(ctx)
-			sdkCtx.EventManager().EmitEvent(
-				sdk.NewEvent(
-					"poc_reward_distributed",
-					sdk.NewAttribute("contribution_id", fmt.Sprintf("%d", c.Id)),
-					sdk.NewAttribute("contributor", c.Contributor),
-					sdk.NewAttribute("amount", share.String()),
-					sdk.NewAttribute("credits", credits.String()),
-					sdk.NewAttribute("rewardmult_applied", rmMult.String()),
-				),
-			)
-
-			totalDistributed = totalDistributed.Add(share)
+		if !share.IsPositive() {
+			continue
 		}
+
+		contributor, err := sdk.AccAddressFromBech32(c.Contributor)
+		if err != nil {
+			k.logger.Error("invalid contributor address",
+				"contribution_id", c.Id,
+				"address", c.Contributor,
+				"error", err)
+			_ = k.removePendingRewardIndex(ctx, c.Id)
+			continue
+		}
+
+		coins := sdk.NewCoins(sdk.NewCoin(params.RewardDenom, share))
+		if err := k.bankKeeper.SendCoinsFromModuleToAccount(ctx, types.ModuleName, contributor, coins); err != nil {
+			k.logger.Error("failed to send reward",
+				"contribution_id", c.Id,
+				"contributor", c.Contributor,
+				"amount", share.String(),
+				"error", err)
+			continue // leave in index — will retry next block
+		}
+
+		// Mark rewarded and remove from pending index atomically
+		c.Rewarded = true
+		if err := k.SetContribution(ctx, c); err != nil {
+			k.logger.Error("failed to mark contribution rewarded",
+				"contribution_id", c.Id,
+				"error", err)
+			return fmt.Errorf("failed to update contribution %d reward status: %w", c.Id, err)
+		}
+		_ = k.removePendingRewardIndex(ctx, c.Id)
+
+		sdkCtx := sdk.UnwrapSDKContext(ctx)
+		sdkCtx.EventManager().EmitEvent(
+			sdk.NewEvent(
+				"poc_reward_distributed",
+				sdk.NewAttribute("contribution_id", fmt.Sprintf("%d", c.Id)),
+				sdk.NewAttribute("contributor", c.Contributor),
+				sdk.NewAttribute("amount", share.String()),
+				sdk.NewAttribute("credits", credits.String()),
+				sdk.NewAttribute("rewardmult_applied", rmMult.String()),
+			),
+		)
+
+		totalDistributed = totalDistributed.Add(share)
 	}
 
 	k.logger.Info("PoC rewards processed",
@@ -184,23 +210,43 @@ func (k Keeper) ProcessPendingRewards(ctx context.Context) error {
 	return nil
 }
 
-// GetPendingRewardsAmount calculates total pending rewards for an address
+// GetPendingRewardsAmount calculates total pending rewards for an address.
+// Uses the pending-reward index for O(pending) iteration.
 func (k Keeper) GetPendingRewardsAmount(ctx context.Context, addr sdk.AccAddress) math.Int {
 	params := k.GetParams(ctx)
-	contributions := k.GetAllContributions(ctx)
 
 	totalCredits := math.ZeroInt()
 	userCredits := math.ZeroInt()
 
-	for _, c := range contributions {
-		if c.Verified && !c.Rewarded {
-			weight := k.weightFor(ctx, c)
-			credits := params.BaseRewardUnit.Mul(weight)
-			totalCredits = totalCredits.Add(credits)
+	store := k.storeService.OpenKVStore(ctx)
+	iterator, err := store.Iterator(
+		types.KeyPrefixPendingRewardIndex,
+		storetypes.PrefixEndBytes(types.KeyPrefixPendingRewardIndex),
+	)
+	if err != nil {
+		return math.ZeroInt()
+	}
+	defer iterator.Close()
 
-			if c.Contributor == addr.String() {
-				userCredits = userCredits.Add(credits)
-			}
+	for ; iterator.Valid(); iterator.Next() {
+		keyBytes := iterator.Key()
+		if len(keyBytes) < len(types.KeyPrefixPendingRewardIndex)+8 {
+			continue
+		}
+		idBytes := keyBytes[len(types.KeyPrefixPendingRewardIndex):]
+		cID := binary.BigEndian.Uint64(idBytes)
+
+		c, found := k.GetContribution(ctx, cID)
+		if !found || !c.Verified || c.Rewarded {
+			continue
+		}
+
+		weight := k.weightFor(ctx, c)
+		credits := params.BaseRewardUnit.Mul(weight)
+		totalCredits = totalCredits.Add(credits)
+
+		if c.Contributor == addr.String() {
+			userCredits = userCredits.Add(credits)
 		}
 	}
 

@@ -213,7 +213,9 @@ func (k Keeper) GetNextContributionID(ctx context.Context) (uint64, error) {
 	return id, nil
 }
 
-// SetContribution stores a contribution
+// SetContribution stores a contribution and maintains the pending-reward index.
+// When Verified=true && Rewarded=false the contribution is added to the index so
+// ProcessPendingRewards can find it in O(pending). When Rewarded=true it is removed.
 func (k Keeper) SetContribution(ctx context.Context, contribution types.Contribution) error {
 	store := k.storeService.OpenKVStore(ctx)
 	bz := k.cdc.MustMarshal(&contribution)
@@ -223,10 +225,21 @@ func (k Keeper) SetContribution(ctx context.Context, contribution types.Contribu
 		return err
 	}
 
-	// Also index by contributor
+	// Index by contributor
 	indexKey := types.GetContributorIndexKey(contribution.Contributor, contribution.Id)
 	if err := store.Set(indexKey, []byte{}); err != nil {
 		return err
+	}
+
+	// Maintain pending-reward index: present iff Verified && !Rewarded
+	pendingKey := types.GetPendingRewardIndexKey(contribution.Id)
+	if contribution.Verified && !contribution.Rewarded {
+		if err := store.Set(pendingKey, []byte{}); err != nil {
+			return err
+		}
+	} else {
+		// Best-effort delete — no-op if key didn't exist
+		_ = store.Delete(pendingKey)
 	}
 
 	return nil

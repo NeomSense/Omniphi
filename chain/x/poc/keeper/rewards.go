@@ -10,7 +10,9 @@ import (
 	"pos/x/poc/types"
 )
 
-// EnqueueReward calculates and assigns credits for a verified contribution
+// EnqueueReward calculates and assigns credits for a verified contribution,
+// and registers the contribution ID in the pending-reward index so EndBlocker
+// can distribute token rewards efficiently (O(pending) not O(all)).
 // SECURITY FIX: CVE-2025-POC-003 - Added overflow protection for credit calculations
 func (k Keeper) EnqueueReward(ctx context.Context, c types.Contribution) error {
 	params := k.GetParams(ctx)
@@ -39,7 +41,22 @@ func (k Keeper) EnqueueReward(ctx context.Context, c types.Contribution) error {
 	}
 
 	// SECURITY FIX: Use safe credit addition with overflow check
+	// Note: the pending-reward index is maintained automatically by SetContribution
+	// which is called by the quorum checker immediately after EnqueueReward.
 	return k.AddCreditsWithOverflowCheck(ctx, contributor, credits)
+}
+
+// addPendingRewardIndex writes a tombstone entry to the pending-reward index.
+func (k Keeper) addPendingRewardIndex(ctx context.Context, contributionID uint64) error {
+	store := k.storeService.OpenKVStore(ctx)
+	return store.Set(types.GetPendingRewardIndexKey(contributionID), []byte{})
+}
+
+// removePendingRewardIndex deletes the entry from the pending-reward index once
+// the reward has been distributed.
+func (k Keeper) removePendingRewardIndex(ctx context.Context, contributionID uint64) error {
+	store := k.storeService.OpenKVStore(ctx)
+	return store.Delete(types.GetPendingRewardIndexKey(contributionID))
 }
 
 // weightFor calculates the weight multiplier for a contribution

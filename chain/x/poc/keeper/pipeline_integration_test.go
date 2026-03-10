@@ -236,9 +236,9 @@ func TestPipeline_AcceptedThenAppealed(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify vesting is CLAWED BACK
-	schedule, found = fixture.keeper.GetVestingSchedule(ctx, addrContributor, 1)
-	require.True(t, found)
-	require.Equal(t, types.VestingStatusClawedBack, schedule.Status, "vesting should be clawed back after overturn")
+	// Clawed-back schedule is deleted from the store (terminal state cleanup).
+	_, found = fixture.keeper.GetVestingSchedule(ctx, addrContributor, 1)
+	require.False(t, found, "clawed-back vesting schedule should be deleted from store after overturn")
 
 	// Verify ClaimStatus = RESOLVED
 	c, _ = fixture.keeper.GetContribution(ctx, 1)
@@ -410,8 +410,9 @@ func TestPipeline_PauseResumeVesting(t *testing.T) {
 	unvested, err := fixture.keeper.ClawbackVesting(ctx, contributor, 42)
 	require.NoError(t, err)
 	require.Equal(t, math.NewInt(500), unvested)
-	s, _ = fixture.keeper.GetVestingSchedule(ctx, contributor, 42)
-	require.Equal(t, types.VestingStatusClawedBack, s.Status)
+	// Clawed-back schedule is deleted from the store.
+	_, clawedFound := fixture.keeper.GetVestingSchedule(ctx, contributor, 42)
+	require.False(t, clawedFound, "clawed-back schedule should be deleted from store")
 }
 
 // TestPipeline_PauseVesting_NoOp tests that PauseVesting is a no-op on non-active schedules
@@ -622,10 +623,9 @@ func TestSecurity_AppealOverturn_FullClawback(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Verify vesting is clawed back
-	schedule, found := fixture.keeper.GetVestingSchedule(ctx, addrContributor, 1)
-	require.True(t, found)
-	require.Equal(t, types.VestingStatusClawedBack, schedule.Status)
+	// Clawed-back schedule is deleted from the store (terminal state cleanup prevents iterator bloat).
+	_, found := fixture.keeper.GetVestingSchedule(ctx, addrContributor, 1)
+	require.False(t, found, "clawed-back vesting schedule should be deleted from store")
 
 	// Verify a clawback record exists (ExecuteClawback was called)
 	_, clawbackFound := fixture.keeper.GetClawbackRecord(ctx, 1)

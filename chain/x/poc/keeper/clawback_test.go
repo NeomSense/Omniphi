@@ -51,10 +51,9 @@ func TestClawback_VestingClawback(t *testing.T) {
 	require.Equal(t, "plagiarism detected", record.Reason)
 	require.True(t, record.VestingClawedBack.Equal(math.NewInt(8000)))
 
-	// Vesting status should be ClawedBack
-	vs, found := f.keeper.GetVestingSchedule(ctx, contributor, 1)
-	require.True(t, found)
-	require.Equal(t, types.VestingStatusClawedBack, vs.Status)
+	// Clawed-back vesting schedule is deleted from the store (terminal state cleanup).
+	_, found = f.keeper.GetVestingSchedule(ctx, contributor, 1)
+	require.False(t, found, "clawed-back vesting schedule should be deleted from store")
 }
 
 func TestClawback_BalanceClawback(t *testing.T) {

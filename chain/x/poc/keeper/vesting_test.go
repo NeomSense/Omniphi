@@ -116,10 +116,12 @@ func TestVesting_FullCompletion(t *testing.T) {
 	err = f.keeper.ProcessVestingReleases(ctx10)
 	require.NoError(t, err)
 
-	got, found := f.keeper.GetVestingSchedule(ctx10, contributor, 1)
-	require.True(t, found)
-	require.True(t, got.ReleasedAmount.Equal(math.NewInt(5000)))
-	require.Equal(t, types.VestingStatusCompleted, got.Status)
+	// Fully vested schedule is deleted from store (terminal state cleanup).
+	// Verify it's gone and the aggregate balance reflects full release.
+	_, found := f.keeper.GetVestingSchedule(ctx10, contributor, 1)
+	require.False(t, found, "completed schedule should be deleted from store")
+	balance := f.keeper.GetVestingBalance(ctx10, contributor)
+	require.True(t, balance.IsZero(), "aggregate vesting balance should be zero after full vest")
 }
 
 func TestVesting_ClawbackCancelsUnvested(t *testing.T) {
@@ -155,18 +157,17 @@ func TestVesting_ClawbackCancelsUnvested(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, unvested.Equal(math.NewInt(7000)), "expected 7000 unvested, got %s", unvested)
 
-	// Status should be ClawedBack
-	got, found := f.keeper.GetVestingSchedule(ctx, contributor, 1)
-	require.True(t, found)
-	require.Equal(t, types.VestingStatusClawedBack, got.Status)
+	// Clawed-back schedule is deleted from store (terminal state cleanup).
+	_, found := f.keeper.GetVestingSchedule(ctx, contributor, 1)
+	require.False(t, found, "clawed-back schedule should be deleted from store")
 
-	// Subsequent process should skip clawed-back schedule
+	// Subsequent process should not re-release anything (schedule is gone)
 	ctx20 := ctxAtHeight(ctx, 2000)
 	err = f.keeper.ProcessVestingReleases(ctx20)
 	require.NoError(t, err)
 
-	got, _ = f.keeper.GetVestingSchedule(ctx20, contributor, 1)
-	require.True(t, got.ReleasedAmount.Equal(math.NewInt(3000)), "released amount should not change after clawback")
+	_, found2 := f.keeper.GetVestingSchedule(ctx20, contributor, 1)
+	require.False(t, found2, "schedule should remain deleted after additional ProcessVestingReleases")
 }
 
 func TestVesting_NotFoundReturnsError(t *testing.T) {

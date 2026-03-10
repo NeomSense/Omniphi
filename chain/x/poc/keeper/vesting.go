@@ -75,6 +75,15 @@ func (k Keeper) SetVestingSchedule(ctx context.Context, schedule types.VestingSc
 	return store.Set(key, bz)
 }
 
+// DeleteVestingSchedule removes a terminal vesting schedule from the store.
+// Call this when a schedule reaches Completed or ClawedBack status to prevent
+// unbounded iterator growth in ProcessVestingReleases.
+func (k Keeper) DeleteVestingSchedule(ctx context.Context, contributor string, claimID uint64) error {
+	store := k.storeService.OpenKVStore(ctx)
+	key := types.GetVestingScheduleKey(contributor, claimID)
+	return store.Delete(key)
+}
+
 // GetVestingBalance returns the aggregate unvested balance for a contributor.
 func (k Keeper) GetVestingBalance(ctx context.Context, contributor string) math.Int {
 	store := k.storeService.OpenKVStore(ctx)
@@ -164,14 +173,15 @@ func (k Keeper) ProcessVestingReleases(ctx context.Context) error {
 
 		// Check if fully vested
 		if schedule.ReleasedAmount.GTE(schedule.TotalAmount) {
-			schedule.Status = types.VestingStatusCompleted
-
+			// Terminal state: delete the record to keep the iterator bounded.
+			// The completed event is emitted before deletion for audit purposes.
 			sdkCtx.EventManager().EmitEvent(sdk.NewEvent(
 				"poc_vesting_completed",
 				sdk.NewAttribute("contributor", schedule.Contributor),
 				sdk.NewAttribute("claim_id", fmt.Sprintf("%d", schedule.ClaimID)),
 				sdk.NewAttribute("total_vested", schedule.TotalAmount.String()),
 			))
+			_ = k.DeleteVestingSchedule(ctx, schedule.Contributor, schedule.ClaimID)
 		} else {
 			sdkCtx.EventManager().EmitEvent(sdk.NewEvent(
 				"poc_vesting_released",
@@ -180,11 +190,10 @@ func (k Keeper) ProcessVestingReleases(ctx context.Context) error {
 				sdk.NewAttribute("amount", newRelease.String()),
 				sdk.NewAttribute("remaining", schedule.TotalAmount.Sub(schedule.ReleasedAmount).String()),
 			))
-		}
-
-		// Update schedule
-		if err := k.SetVestingSchedule(ctx, schedule); err != nil {
-			continue
+			// Still active — update in place
+			if err := k.SetVestingSchedule(ctx, schedule); err != nil {
+				continue
+			}
 		}
 
 		// Update aggregate balance
@@ -240,8 +249,9 @@ func (k Keeper) ClawbackVesting(ctx context.Context, contributor string, claimID
 		unvested = math.ZeroInt()
 	}
 
-	schedule.Status = types.VestingStatusClawedBack
-	if err := k.SetVestingSchedule(ctx, schedule); err != nil {
+	// Terminal state: delete the record to keep ProcessVestingReleases iterator bounded.
+	// Delete instead of setting ClawedBack to avoid accumulating terminal records.
+	if err := k.DeleteVestingSchedule(ctx, contributor, claimID); err != nil {
 		return math.ZeroInt(), err
 	}
 
