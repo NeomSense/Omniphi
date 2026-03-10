@@ -18,14 +18,19 @@ var KeyExtendedGenesis = []byte{0x50}
 // ContributorFeeStats). On export this struct is JSON-marshalled and stored at KeyExtendedGenesis
 // so that InitGenesis can restore full module state across network upgrades.
 type ExtendedGenesisState struct {
-	VestingSchedules     []types.VestingSchedule     `json:"vesting_schedules"`
-	ARVSSchedules        []types.ARVSVestingSchedule `json:"arvs_schedules"`
-	ReviewSessions       []types.ReviewSession       `json:"review_sessions"`
-	ReviewerProfiles     []types.ReviewerProfile     `json:"reviewer_profiles"`
-	ProvenanceEntries    []types.ProvenanceEntry     `json:"provenance_entries"`
-	ContributorStats     []types.ContributorStats    `json:"contributor_stats"`
-	CtypeWeights         map[string]uint32           `json:"ctype_weights"`
-	MinQualityForEmission uint32                     `json:"min_quality_for_emission"`
+	VestingSchedules      []types.VestingSchedule              `json:"vesting_schedules"`
+	ARVSSchedules         []types.ARVSVestingSchedule          `json:"arvs_schedules"`
+	ReviewSessions        []types.ReviewSession                `json:"review_sessions"`
+	ReviewerProfiles      []types.ReviewerProfile              `json:"reviewer_profiles"`
+	ProvenanceEntries     []types.ProvenanceEntry              `json:"provenance_entries"`
+	ContributorStats      []types.ContributorStats             `json:"contributor_stats"`
+	CtypeWeights          map[string]uint32                    `json:"ctype_weights"`
+	MinQualityForEmission uint32                               `json:"min_quality_for_emission"`
+	// Layer 5: Utility & Impact Scoring state
+	ImpactRecords  []types.ContributionImpactRecord  `json:"impact_records,omitempty"`
+	ImpactProfiles []types.ContributorImpactProfile  `json:"impact_profiles,omitempty"`
+	UsageEdges     []types.ContributionUsageEdge     `json:"usage_edges,omitempty"`
+	ImpactParams   *types.ImpactParams               `json:"impact_params,omitempty"`
 }
 
 // InitGenesis initializes the module's state from a provided genesis state
@@ -96,6 +101,24 @@ func (k Keeper) InitGenesis(ctx context.Context, gs types.GenesisState) error {
 			if ext.MinQualityForEmission > 0 {
 				_ = k.SetMinQualityForEmission(ctx, ext.MinQualityForEmission)
 			}
+			// Layer 5: restore impact scoring state
+			for _, ir := range ext.ImpactRecords {
+				_ = k.SetImpactRecord(ctx, ir)
+			}
+			for _, ip := range ext.ImpactProfiles {
+				_ = k.SetImpactProfile(ctx, ip)
+			}
+			for _, ue := range ext.UsageEdges {
+				// Restore edges directly without re-triggering anti-gaming checks or queue.
+				store2 := k.storeService.OpenKVStore(ctx)
+				if bz2, e2 := json.Marshal(ue); e2 == nil {
+					_ = store2.Set(types.GetUsageEdgeKey(ue.ParentClaimID, ue.ChildClaimID), bz2)
+					_ = store2.Set(types.GetUsageEdgeByParentKey(ue.ParentClaimID, ue.ChildClaimID), []byte{0x01})
+				}
+			}
+			if ext.ImpactParams != nil {
+				_ = k.SetImpactParams(ctx, *ext.ImpactParams)
+			}
 		}
 	}
 
@@ -133,6 +156,7 @@ func (k Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 	}
 
 	// Build and persist extended genesis sidecar (state not representable in proto GenesisState)
+	impactParams := k.GetImpactParams(ctx)
 	ext := ExtendedGenesisState{
 		VestingSchedules:      k.GetAllVestingSchedules(ctx),
 		ARVSSchedules:         k.GetAllARVSVestingSchedules(ctx),
@@ -142,6 +166,11 @@ func (k Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 		ContributorStats:      k.GetAllContributorStats(ctx),
 		CtypeWeights:          k.GetCtypeWeights(ctx),
 		MinQualityForEmission: k.GetMinQualityForEmission(ctx),
+		// Layer 5
+		ImpactRecords:  k.GetAllImpactRecords(ctx),
+		ImpactProfiles: k.GetAllImpactProfiles(ctx),
+		UsageEdges:     k.GetAllUsageEdges(ctx),
+		ImpactParams:   &impactParams,
 	}
 	if extBz, extErr := json.Marshal(ext); extErr == nil {
 		extStore := k.storeService.OpenKVStore(ctx)

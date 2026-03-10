@@ -89,6 +89,14 @@ func (k Keeper) CalculateReward(ctx context.Context, input types.RewardContext) 
 		}
 	}
 
+	// 2d. Apply Layer 5 Impact Multiplier (if enabled and contributor has impact history)
+	if input.Contributor != "" {
+		impactMult := k.GetEffectiveImpactMultiplier(ctx, input.Contributor)
+		if !impactMult.Equal(math.LegacyOneDec()) {
+			grossRewardDec = grossRewardDec.Mul(impactMult)
+		}
+	}
+
 	grossReward := grossRewardDec.TruncateInt()
 
 	if grossReward.IsZero() {

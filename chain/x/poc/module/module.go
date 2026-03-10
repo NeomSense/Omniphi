@@ -167,7 +167,12 @@ func (am AppModule) EndBlock(ctx context.Context) error {
 		am.keeper.Logger().Error("failed to process ARVS vesting releases", "error", err)
 	}
 
-	// 4. Clear validator cache to prevent stale data
+	// 4. Process Layer 5 impact score updates (batch, bounded by EpochBatchSize)
+	if err := am.keeper.ProcessImpactUpdates(ctx); err != nil {
+		am.keeper.Logger().Error("failed to process impact updates", "error", err)
+	}
+
+	// 5. Clear validator cache to prevent stale data
 	am.keeper.ClearValidatorCache()
 
 	// Note: PruneRateLimits is intentionally omitted — rate-limit counters live in the

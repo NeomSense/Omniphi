@@ -40,6 +40,17 @@ func (k Keeper) SetProvenanceEntry(ctx context.Context, entry types.ProvenanceEn
 		if err := store.Set(key, sentinel); err != nil {
 			return err
 		}
+
+		// Layer 5: record provenance-type usage edge for impact scoring.
+		sdkCtx := sdk.UnwrapSDKContext(ctx)
+		_ = k.RecordUsageEdge(ctx, types.ContributionUsageEdge{
+			ParentClaimID:    entry.ParentClaimID,
+			ChildClaimID:     entry.ClaimID,
+			ReferenceType:    "provenance",
+			ChildContributor: entry.Submitter,
+			Timestamp:        sdkCtx.BlockTime().Unix(),
+			Epoch:            entry.Epoch,
+		})
 	}
 
 	// Hash index: canonical_hash → claim

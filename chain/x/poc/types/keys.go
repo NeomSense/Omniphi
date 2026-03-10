@@ -243,6 +243,35 @@ var (
 	// ProcessVestingReleases and ProcessARVSVestingReleases may release per epoch.
 	// Prevents O(n) EndBlocker stalls when large numbers of schedules mature.
 	KeyMaxVestingReleasesPerEpoch = []byte{0x32}
+
+	// ============================================================================
+	// Layer 5: Utility & Impact Scoring Keys
+	// ============================================================================
+
+	// KeyImpactParams stores the JSON-encoded ImpactParams governance sidecar.
+	KeyImpactParams = []byte{0x33}
+
+	// KeyPrefixImpactRecord stores ContributionImpactRecord per accepted claim.
+	// Key: 0x34 | claim_id (big endian uint64)
+	KeyPrefixImpactRecord = []byte{0x34}
+
+	// KeyPrefixImpactProfile stores ContributorImpactProfile per contributor address.
+	// Key: 0x35 | contributor_addr
+	KeyPrefixImpactProfile = []byte{0x35}
+
+	// KeyPrefixUsageEdge stores ContributionUsageEdge per (parent, child) pair.
+	// Key: 0x36 | parent_claim_id (big endian uint64) | child_claim_id (big endian uint64)
+	KeyPrefixUsageEdge = []byte{0x36}
+
+	// KeyPrefixUsageEdgeByParent indexes usage edges by parent claim for fast fan-out queries.
+	// Key: 0x37 | parent_claim_id (big endian uint64) | child_claim_id (big endian uint64)
+	// Value: empty (presence-only index; actual edge data at KeyPrefixUsageEdge)
+	KeyPrefixUsageEdgeByParent = []byte{0x37}
+
+	// KeyPrefixImpactUpdateQueue is a set-index of claim IDs pending impact recalculation.
+	// Written when a new usage edge is recorded; consumed by EndBlocker batch pass.
+	// Key: 0x38 | claim_id (big endian uint64)
+	KeyPrefixImpactUpdateQueue = []byte{0x38}
 )
 
 // GetContributionKey returns the store key for a contribution by ID
@@ -516,4 +545,40 @@ func GetProvenanceEpochIndexPrefix(epoch uint64) []byte {
 // GetPendingRewardIndexKey returns the store key for a pending-reward index entry.
 func GetPendingRewardIndexKey(contributionID uint64) []byte {
 	return append(KeyPrefixPendingRewardIndex, sdk.Uint64ToBigEndian(contributionID)...)
+}
+
+// ============================================================================
+// Layer 5: Utility & Impact Scoring Key Functions
+// ============================================================================
+
+// GetImpactRecordKey returns the store key for a ContributionImpactRecord by claim ID.
+func GetImpactRecordKey(claimID uint64) []byte {
+	return append(KeyPrefixImpactRecord, sdk.Uint64ToBigEndian(claimID)...)
+}
+
+// GetImpactProfileKey returns the store key for a ContributorImpactProfile by address.
+func GetImpactProfileKey(addr string) []byte {
+	return append(KeyPrefixImpactProfile, []byte(addr)...)
+}
+
+// GetUsageEdgeKey returns the store key for a ContributionUsageEdge by (parent, child).
+func GetUsageEdgeKey(parentClaimID, childClaimID uint64) []byte {
+	key := append(KeyPrefixUsageEdge, sdk.Uint64ToBigEndian(parentClaimID)...)
+	return append(key, sdk.Uint64ToBigEndian(childClaimID)...)
+}
+
+// GetUsageEdgeByParentKey returns the parent-index key for a usage edge.
+func GetUsageEdgeByParentKey(parentClaimID, childClaimID uint64) []byte {
+	key := append(KeyPrefixUsageEdgeByParent, sdk.Uint64ToBigEndian(parentClaimID)...)
+	return append(key, sdk.Uint64ToBigEndian(childClaimID)...)
+}
+
+// GetUsageEdgeByParentPrefix returns the prefix for iterating all edges from a parent.
+func GetUsageEdgeByParentPrefix(parentClaimID uint64) []byte {
+	return append(KeyPrefixUsageEdgeByParent, sdk.Uint64ToBigEndian(parentClaimID)...)
+}
+
+// GetImpactUpdateQueueKey returns the store key for a pending impact update by claim ID.
+func GetImpactUpdateQueueKey(claimID uint64) []byte {
+	return append(KeyPrefixImpactUpdateQueue, sdk.Uint64ToBigEndian(claimID)...)
 }
