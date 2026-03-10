@@ -29,6 +29,16 @@ const (
 	DefaultSlashLookbackEpochs      int64 = 30
 	DefaultDoubleSignLookbackEpochs int64 = 60 // longer decay for double-sign
 	DefaultFraudLookbackEpochs      int64 = 30
+
+	// DefaultEpochLength is the number of blocks per RewardMult epoch.
+	// Governance-configurable so epoch duration can be adjusted without a code upgrade.
+	// At 6s avg block time, 100 blocks ≈ 10 minutes per epoch.
+	// For production mainnet target ~6h epochs: set to 3600 (at 6s blocks).
+	DefaultEpochLength int64 = 100
+
+	// MinEpochLength / MaxEpochLength bound governance changes.
+	MinEpochLength int64 = 50   // never shorter than ~5 min (prevents gaming)
+	MaxEpochLength int64 = 10000 // never longer than ~16h at 6s blocks
 )
 
 // Params defines the module parameters for x/rewardmult
@@ -63,6 +73,11 @@ type Params struct {
 
 	// Quality bonus from PoC originality/quality metrics (Layer 4 integration)
 	MaxQualityBonus math.LegacyDec `json:"max_quality_bonus"` // +0.02 max
+
+	// EpochLength is the number of blocks between RewardMult epoch processing.
+	// Governance-adjustable. Default 100 blocks (≈10 min at 6s blocks).
+	// For mainnet, target 3600 blocks (≈6h). Must be in [MinEpochLength, MaxEpochLength].
+	EpochLength int64 `json:"epoch_length"`
 }
 
 // DefaultParams returns the default module parameters
@@ -83,6 +98,7 @@ func DefaultParams() Params {
 		FraudPenalty:              DefaultFraudPenalty,
 		FraudLookbackEpochs:   DefaultFraudLookbackEpochs,
 		MaxQualityBonus:       DefaultMaxQualityBonus,
+		EpochLength:           DefaultEpochLength,
 	}
 }
 
@@ -151,6 +167,14 @@ func (p Params) Validate() error {
 	}
 	if p.FraudPenalty.IsNil() || p.FraudPenalty.IsNegative() {
 		return fmt.Errorf("%w: fraud_penalty must be non-negative", ErrInvalidPenaltyValue)
+	}
+
+	// Epoch length
+	if p.EpochLength < MinEpochLength {
+		return fmt.Errorf("epoch_length must be >= %d (got %d)", MinEpochLength, p.EpochLength)
+	}
+	if p.EpochLength > MaxEpochLength {
+		return fmt.Errorf("epoch_length must be <= %d (got %d)", MaxEpochLength, p.EpochLength)
 	}
 
 	// Quality bonus

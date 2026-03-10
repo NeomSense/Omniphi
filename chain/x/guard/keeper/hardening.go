@@ -546,14 +546,79 @@ func (k Keeper) GetEmergencyHardeningMode(ctx context.Context) bool {
 }
 
 // SetEmergencyHardeningMode sets the emergency hardening flag.
+// When enabling, records the activation block height for auto-expiry.
 // Governance-only — enforced at the msg_server level.
 func (k Keeper) SetEmergencyHardeningMode(ctx context.Context, enabled bool) error {
 	store := k.storeService.OpenKVStore(ctx)
 	val := byte(0x00)
 	if enabled {
 		val = 0x01
+		// Record activation height for auto-expiry
+		sdkCtx := sdk.UnwrapSDKContext(ctx)
+		heightBz := sdk.Uint64ToBigEndian(uint64(sdkCtx.BlockHeight()))
+		if err := store.Set(types.EmergencyHardeningActivatedAtKey, heightBz); err != nil {
+			return fmt.Errorf("failed to record emergency hardening activation height: %w", err)
+		}
+	} else {
+		// Clear activation height on disable
+		_ = store.Delete(types.EmergencyHardeningActivatedAtKey)
 	}
 	return store.Set(types.EmergencyHardeningKey, []byte{val})
+}
+
+// emergencyHardeningMaxBlocksDefault is the default auto-expiry duration.
+// ~72h at 6s/block. Governance can set a custom value via MsgSetEmergencyHardeningMaxBlocks
+// (stored at key 0x1C in the KV store).
+const emergencyHardeningMaxBlocksDefault int64 = 50400
+
+// getEmergencyHardeningMaxBlocks returns the configured max duration in blocks,
+// falling back to the default if not set.
+func (k Keeper) getEmergencyHardeningMaxBlocks(ctx context.Context) int64 {
+	store := k.storeService.OpenKVStore(ctx)
+	bz, err := store.Get([]byte{0x1C})
+	if err != nil || len(bz) < 8 {
+		return emergencyHardeningMaxBlocksDefault
+	}
+	v := int64(sdk.BigEndianToUint64(bz))
+	if v < 100 {
+		return emergencyHardeningMaxBlocksDefault
+	}
+	return v
+}
+
+// CheckAndExpireEmergencyHardening auto-expires emergency hardening mode if the
+// maximum duration has elapsed since activation. Called from EndBlocker. Never panics.
+func (k Keeper) CheckAndExpireEmergencyHardening(ctx context.Context) {
+	if !k.GetEmergencyHardeningMode(ctx) {
+		return
+	}
+
+	maxBlocks := k.getEmergencyHardeningMaxBlocks(ctx)
+
+	store := k.storeService.OpenKVStore(ctx)
+	bz, err := store.Get(types.EmergencyHardeningActivatedAtKey)
+	if err != nil || len(bz) < 8 {
+		return // no activation record; leave flag as-is
+	}
+
+	activatedAt := int64(sdk.BigEndianToUint64(bz))
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	if sdkCtx.BlockHeight()-activatedAt >= maxBlocks {
+		if err := k.SetEmergencyHardeningMode(ctx, false); err != nil {
+			k.Logger().Error("failed to auto-expire emergency hardening", "error", err)
+			return
+		}
+		sdkCtx.EventManager().EmitEvent(sdk.NewEvent(
+			"guard_emergency_hardening_expired",
+			sdk.NewAttribute("activated_at", fmt.Sprintf("%d", activatedAt)),
+			sdk.NewAttribute("expired_at", fmt.Sprintf("%d", sdkCtx.BlockHeight())),
+			sdk.NewAttribute("duration_blocks", fmt.Sprintf("%d", sdkCtx.BlockHeight()-activatedAt)),
+		))
+		k.Logger().Info("emergency hardening auto-expired",
+			"activated_at", activatedAt,
+			"expired_at", sdkCtx.BlockHeight(),
+		)
+	}
 }
 
 // applyEmergencyHardening transforms tier/threshold/delay when hardening is active.

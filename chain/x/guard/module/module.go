@@ -163,6 +163,10 @@ func (am AppModule) BeginBlock(ctx context.Context) error {
 // EndBlock executes all ABCI EndBlock logic respective to the guard module
 // This is where we poll for new passed proposals and process the execution queue
 func (am AppModule) EndBlock(ctx context.Context) error {
+	// Auto-expire emergency hardening mode if max duration elapsed.
+	// Must run first so subsequent queue processing uses correct tier escalation state.
+	am.keeper.CheckAndExpireEmergencyHardening(ctx)
+
 	// Poll for newly passed proposals
 	if err := am.keeper.PollGovernanceProposals(ctx); err != nil {
 		am.keeper.Logger().Error("failed to poll governance proposals", "error", err)

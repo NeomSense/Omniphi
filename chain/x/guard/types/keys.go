@@ -126,6 +126,11 @@ var (
 	// queued executions. Maintained by SetQueuedExecution to avoid full-table scans.
 	// Key: 0x1A | proposalID (big endian uint64) -> []byte{1}
 	ActiveExecutionIndexPrefix = []byte{0x1A}
+
+	// EmergencyHardeningActivatedAtKey stores the block height at which emergency
+	// hardening was last activated. Used for auto-expiry enforcement.
+	// Single-key: int64 big-endian (0 = not set).
+	EmergencyHardeningActivatedAtKey = []byte{0x1B}
 )
 
 // GetRiskReportKey returns the key for a risk report

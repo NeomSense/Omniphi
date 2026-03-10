@@ -2,6 +2,8 @@ package keeper
 
 import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	"pos/x/rewardmult/types"
 )
 
 // EndBlocker runs at the end of each block.
@@ -13,7 +15,14 @@ func (k Keeper) EndBlocker(ctx sdk.Context) error {
 	// This provides a simple epoch mechanism without requiring x/epochs integration.
 	// In production, this should be replaced with AfterEpochEnd hook.
 	blockHeight := ctx.BlockHeight()
-	epochLength := int64(100) // blocks per epoch
+
+	// EpochLength from params — governance-adjustable, prevents epoch gaming.
+	params := k.GetParams(ctx)
+	epochLength := params.EpochLength
+	if epochLength <= 0 {
+		epochLength = types.DefaultEpochLength // safe fallback
+	}
+
 	if blockHeight%epochLength != 0 {
 		return nil // not an epoch boundary
 	}
