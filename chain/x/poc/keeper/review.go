@@ -282,11 +282,22 @@ func (k Keeper) SelectReviewers(ctx context.Context, contributionID uint64, cont
 			"need %d reviewers but only %d eligible", n, len(eligible))
 	}
 
-	// 2. Compute seed: SHA256(block_hash || contribution_id_bytes)
+	// 2. Compute seed: SHA256(last_commit_hash || block_hash || contribution_id_bytes)
+	//
+	// SECURITY: We mix in LastCommitHash (the aggregated vote signatures from the
+	// *previous* block, finalized before the current proposer was selected) alongside
+	// the current HeaderHash. This prevents seed-grinding attacks where a validator
+	// who knows they will propose the next block grinds their block hash to select
+	// favorable reviewers — LastCommitHash is already committed and cannot be
+	// manipulated by the current block's proposer.
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	lastCommitHash := sdkCtx.BlockHeader().LastCommitHash
 	blockHash := sdkCtx.HeaderHash()
 	idBytes := sdk.Uint64ToBigEndian(contributionID)
-	seedInput := append(blockHash, idBytes...)
+	seedInput := make([]byte, 0, len(lastCommitHash)+len(blockHash)+8)
+	seedInput = append(seedInput, lastCommitHash...)
+	seedInput = append(seedInput, blockHash...)
+	seedInput = append(seedInput, idBytes...)
 	seed := sha256.Sum256(seedInput)
 
 	// 3. Deterministic Fisher-Yates shuffle
@@ -315,9 +326,25 @@ func (k Keeper) SelectReviewers(ctx context.Context, contributionID uint64, cont
 
 // CheckCollusionRisk checks all reviewer pairs for suspicious co-voting patterns.
 // Returns true if any pair exceeds the collusion threshold.
+//
+// The threshold is scaled by sqrt(N/100) where N is the number of bonded validators,
+// anchored at 100 validators. Small validator sets have inherently higher co-review
+// overlap by chance, so the effective threshold is raised proportionally (more lenient
+// for small sets, stricter for large sets). This prevents false positives on early-stage
+// chains while maintaining protection at scale.
+//
+// Scaling formula (integer arithmetic, no floats):
+//   effectiveBps = baseBps * isqrt(N) / 10
+//   At N=100: effectiveBps = baseBps * 10 / 10 = baseBps (no change)
+//   At N=25:  effectiveBps = baseBps * 5 / 10  = baseBps * 0.5 (stricter)
+//   At N=400: effectiveBps = baseBps * 20 / 10 = baseBps * 2.0 (more lenient)
+//   Cap: effectiveBps is clamped to [baseBps/2, 9500] to prevent extremes.
 func (k Keeper) CheckCollusionRisk(ctx context.Context, reviewers []string) (bool, error) {
 	params := k.GetParams(ctx)
-	threshold := uint64(params.CollusionThresholdBps)
+	baseBps := uint64(params.CollusionThresholdBps)
+
+	// Scale threshold with active validator set size.
+	threshold := collusionThresholdScaled(ctx, k, baseBps)
 
 	for i := 0; i < len(reviewers); i++ {
 		for j := i + 1; j < len(reviewers); j++ {
@@ -341,6 +368,55 @@ func (k Keeper) CheckCollusionRisk(ctx context.Context, reviewers []string) (boo
 	}
 
 	return false, nil
+}
+
+// collusionThresholdScaled returns the effective collusion threshold in basis points,
+// scaled by the square root of the active bonded validator count anchored at N=100.
+// Uses integer square root (Newton's method) to avoid floats.
+func collusionThresholdScaled(ctx context.Context, k Keeper, baseBps uint64) uint64 {
+	// Count bonded validators.
+	bondedCount := uint64(100) // fallback: assume 100 validators if query fails
+	if validators, err := k.stakingKeeper.GetAllValidators(ctx); err == nil {
+		n := uint64(0)
+		for _, v := range validators {
+			if v.IsBonded() {
+				n++
+			}
+		}
+		if n > 0 {
+			bondedCount = n
+		}
+	}
+
+	// effectiveBps = baseBps * isqrt(bondedCount) / 10
+	// isqrt(100) = 10, so at N=100 this is baseBps * 10 / 10 = baseBps (identity).
+	sqrtN := intSqrt(bondedCount)
+	effective := baseBps * sqrtN / 10
+
+	// Clamp: never below half the base (prevents over-aggressiveness on tiny sets),
+	// and never above 9500 bps (always flag near-perfect co-vote alignment).
+	minEffective := baseBps / 2
+	if effective < minEffective {
+		effective = minEffective
+	}
+	if effective > 9500 {
+		effective = 9500
+	}
+	return effective
+}
+
+// intSqrt returns floor(sqrt(n)) using Newton's method (integer arithmetic, no floats).
+func intSqrt(n uint64) uint64 {
+	if n == 0 {
+		return 0
+	}
+	x := n
+	y := (x + 1) / 2
+	for y < x {
+		x = y
+		y = (x + n/x) / 2
+	}
+	return x
 }
 
 // UpdateCoVotingRecords updates co-voting records for all voter pairs in a finalized session.

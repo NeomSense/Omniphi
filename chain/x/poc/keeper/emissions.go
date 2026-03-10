@@ -62,14 +62,31 @@ func (k Keeper) ProcessPendingRewards(ctx context.Context) error {
 		return nil
 	}
 
+	// Quality floor: skip contributions whose review quality score is below the minimum.
+	minQuality := k.GetMinQualityForEmission(ctx)
+
 	// Get all verified contributions that haven't been rewarded
 	contributions := k.GetAllContributions(ctx)
 	var pendingContributions []types.Contribution
 
 	for _, c := range contributions {
-		if c.Verified && !c.Rewarded {
-			pendingContributions = append(pendingContributions, c)
+		if !c.Verified || c.Rewarded {
+			continue
 		}
+		// Enforce quality floor to prevent low-quality submission farming.
+		// Contributions with no review session (direct verification) pass by default.
+		if minQuality > 0 {
+			session, found := k.GetReviewSession(ctx, c.Id)
+			if found && session.FinalQuality < minQuality {
+				k.logger.Info("contribution below quality floor, skipping emission",
+					"contribution_id", c.Id,
+					"final_quality", session.FinalQuality,
+					"min_quality", minQuality,
+				)
+				continue
+			}
+		}
+		pendingContributions = append(pendingContributions, c)
 	}
 
 	if len(pendingContributions) == 0 {

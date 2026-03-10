@@ -221,6 +221,10 @@ var (
 	// KeyPrefixARVSVesting stores ARVSVestingSchedule per contributor per claim.
 	// Key: 0x2E | contributor_addr | claim_id (big endian uint64)
 	KeyPrefixARVSVesting = []byte{0x2E}
+
+	// KeyMinQualityForEmission stores the minimum quality score (0-100) required
+	// for a contribution to be eligible for emission rewards. Singleton.
+	KeyMinQualityForEmission = []byte{0x2F}
 )
 
 // GetContributionKey returns the store key for a contribution by ID

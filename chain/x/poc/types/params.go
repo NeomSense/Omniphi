@@ -196,6 +196,13 @@ const DefaultProvenanceSchemaVersion uint32 = 1
 // DefaultReviewVotePeriod is the number of blocks reviewers have to vote
 const DefaultReviewVotePeriod int64 = 1200 // ~1-2 hours
 
+// DefaultMinQualityForEmission is the minimum FinalQuality score (0-100 scale)
+// a contribution must have to be eligible for emission pool distribution.
+// Contributions scoring below this receive no emission share (but the accept
+// event is still recorded). Default 40 = 4/10 quality. Governance-adjustable.
+// Setting to 0 disables the filter (all verified contributions are eligible).
+const DefaultMinQualityForEmission uint32 = 40
+
 // Adaptive Reward Vesting System (ARVS) Defaults
 
 // DefaultEnableARVS — ARVS disabled by default; enable via governance after configuring profiles

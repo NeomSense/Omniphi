@@ -3,6 +3,7 @@ package keeper
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	cosmossdk_io_math "cosmossdk.io/math"
 	"pos/x/poc/types"
@@ -186,15 +187,15 @@ func (k Keeper) GetParams(ctx context.Context) types.Params {
 	arvsBz, err := store.Get([]byte("params_arvs"))
 	if err == nil && arvsBz != nil {
 		var arvsParams struct {
-			EnableARVS                 bool                    `json:"enable_arvs"`
-			ARVSWeights                types.ARVSWeights       `json:"arvs_weights"`
-			ARVSVestingProfiles        []types.VestingProfile  `json:"arvs_vesting_profiles"`
-			ARVSCategoryRiskMapJSON    string                  `json:"arvs_category_risk_map_json"`
+			EnableARVS                 bool                     `json:"enable_arvs"`
+			ARVSWeights                types.ARVSWeights        `json:"arvs_weights"`
+			ARVSVestingProfiles        []types.VestingProfile   `json:"arvs_vesting_profiles"`
+			ARVSCategoryRiskMapJSON    string                   `json:"arvs_category_risk_map_json"`
 			ARVSBountyDistribution     types.BountyDistribution `json:"arvs_bounty_distribution"`
-			ARVSEnableBounty           bool                    `json:"arvs_enable_bounty"`
-			ARVSTreasuryAddress        string                  `json:"arvs_treasury_address"`
-			ARVSRiskScoreLowThreshold  uint32                  `json:"arvs_risk_score_low_threshold"`
-			ARVSRiskScoreHighThreshold uint32                  `json:"arvs_risk_score_high_threshold"`
+			ARVSEnableBounty           bool                     `json:"arvs_enable_bounty"`
+			ARVSTreasuryAddress        string                   `json:"arvs_treasury_address"`
+			ARVSRiskScoreLowThreshold  uint32                   `json:"arvs_risk_score_low_threshold"`
+			ARVSRiskScoreHighThreshold uint32                   `json:"arvs_risk_score_high_threshold"`
 		}
 		if err := json.Unmarshal(arvsBz, &arvsParams); err == nil {
 			params.EnableARVS = arvsParams.EnableARVS
@@ -470,4 +471,36 @@ func (k Keeper) SetParams(ctx context.Context, params types.Params) error {
 		return err
 	}
 	return store.Set([]byte("params_arvs"), arvsBz)
+}
+
+// GetMinQualityForEmission returns the minimum quality score (0-100) a contribution
+// must have to be eligible for emission rewards. Defaults to DefaultMinQualityForEmission
+// if not set. Stored at a dedicated key to avoid proto field descriptor issues.
+func (k Keeper) GetMinQualityForEmission(ctx context.Context) uint32 {
+	store := k.storeService.OpenKVStore(ctx)
+	bz, err := store.Get(types.KeyMinQualityForEmission)
+	if err != nil || len(bz) == 0 {
+		return types.DefaultMinQualityForEmission
+	}
+	if len(bz) < 4 {
+		return types.DefaultMinQualityForEmission
+	}
+	// Stored as big-endian uint32
+	return uint32(bz[0])<<24 | uint32(bz[1])<<16 | uint32(bz[2])<<8 | uint32(bz[3])
+}
+
+// SetMinQualityForEmission stores the minimum quality score (0-100) for emission eligibility.
+// Stored at a dedicated key to avoid proto field descriptor issues.
+func (k Keeper) SetMinQualityForEmission(ctx context.Context, minQuality uint32) error {
+	if minQuality > 100 {
+		return fmt.Errorf("min_quality_for_emission must be in [0, 100], got %d", minQuality)
+	}
+	store := k.storeService.OpenKVStore(ctx)
+	bz := []byte{
+		byte(minQuality >> 24),
+		byte(minQuality >> 16),
+		byte(minQuality >> 8),
+		byte(minQuality),
+	}
+	return store.Set(types.KeyMinQualityForEmission, bz)
 }
