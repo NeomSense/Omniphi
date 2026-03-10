@@ -1,0 +1,20 @@
+{
+  "messages": [
+    {
+      "@type": "/cosmos.staking.v1beta1.MsgUpdateParams",
+      "authority": "AUTHORITY_PLACEHOLDER",
+      "params": {
+        "unbonding_time": "1209600s",
+        "max_validators": 125,
+        "max_entries": 7,
+        "historical_entries": 10000,
+        "bond_denom": "omniphi",
+        "min_commission_rate": "0.000000000000000000"
+      }
+    }
+  ],
+  "metadata": "E2E guard test: staking param change",
+  "deposit": "10000000000omniphi",
+  "title": "E2E Test: Staking Parameter Update",
+  "summary": "This is an E2E test proposal to update staking parameters. Used for gate transition testing."
+}

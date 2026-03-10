@@ -102,7 +102,8 @@ func TestGetAllContributorFeeStats(t *testing.T) {
 	}
 
 	// Get all stats
-	allStats := f.keeper.GetAllContributorFeeStats(f.ctx)
+	allStats, err := f.keeper.GetAllContributorFeeStats(f.ctx)
+	require.NoError(t, err)
 	require.Len(t, allStats, 3)
 }
 

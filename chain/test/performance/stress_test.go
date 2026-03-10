@@ -226,7 +226,7 @@ func TestStress_RapidParamUpdates(t *testing.T) {
 		params := ptc.TokenomicsKeeper.GetParams(ptc.Ctx)
 
 		// Cycle through different values
-		params.InflationRate = math.LegacyNewDecWithPrec(int64(1+(i%5)), 2) // 1-5%
+		params.InflationRate = math.LegacyNewDecWithPrec(int64(1+(i%3)), 2) // 1-3% (bounded by 3% protocol hard cap)
 		params.BurnRatePosGas = math.LegacyNewDecWithPrec(int64(10+(i%40)), 2) // 10-49%
 
 		err := ptc.TokenomicsKeeper.SetParams(ptc.Ctx, params)

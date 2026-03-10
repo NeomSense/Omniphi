@@ -1,0 +1,19 @@
+{
+  "messages": [
+    {
+      "@type": "/cosmos.distribution.v1beta1.MsgCommunityPoolSpend",
+      "authority": "AUTHORITY_PLACEHOLDER",
+      "recipient": "RECIPIENT_PLACEHOLDER",
+      "amount": [
+        {
+          "denom": "omniphi",
+          "amount": "500000000000000"
+        }
+      ]
+    }
+  ],
+  "metadata": "E2E guard test: large community pool spend",
+  "deposit": "10000000000omniphi",
+  "title": "E2E Test: Large Community Pool Spend",
+  "summary": "This is an E2E test proposal spending a large amount from the community pool to verify treasury risk evaluation."
+}

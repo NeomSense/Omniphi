@@ -1,0 +1,70 @@
+syntax = "proto3";
+package pos.guard.v1;
+
+import "google/api/annotations.proto";
+import "pos/guard/v1/params.proto";
+import "pos/guard/v1/guard.proto";
+
+option go_package = "pos/x/guard/types";
+
+// Query defines the gRPC querier service.
+service Query {
+  // Parameters queries the parameters of the module.
+  rpc Params(QueryParamsRequest) returns (QueryParamsResponse) {
+    option (google.api.http).get = "/omniphi/guard/v1/params";
+  }
+
+  // RiskReport queries the risk report for a proposal
+  rpc RiskReport(QueryRiskReportRequest) returns (QueryRiskReportResponse) {
+    option (google.api.http).get = "/omniphi/guard/v1/risk_report/{proposal_id}";
+  }
+
+  // QueuedExecution queries the queued execution state for a proposal
+  rpc QueuedExecution(QueryQueuedExecutionRequest) returns (QueryQueuedExecutionResponse) {
+    option (google.api.http).get = "/omniphi/guard/v1/queued/{proposal_id}";
+  }
+
+  // AdvisoryLink queries the advisory link for a proposal
+  rpc AdvisoryLink(QueryAdvisoryLinkRequest) returns (QueryAdvisoryLinkResponse) {
+    option (google.api.http).get = "/omniphi/guard/v1/advisory/{proposal_id}";
+  }
+}
+
+// QueryParamsRequest is request type for the Query/Params RPC method.
+message QueryParamsRequest {}
+
+// QueryParamsResponse is response type for the Query/Params RPC method.
+message QueryParamsResponse {
+  // params holds all the parameters of this module.
+  Params params = 1;
+}
+
+// QueryRiskReportRequest is the request type for Query/RiskReport
+message QueryRiskReportRequest {
+  uint64 proposal_id = 1;
+}
+
+// QueryRiskReportResponse is the response type for Query/RiskReport
+message QueryRiskReportResponse {
+  RiskReport report = 1;
+}
+
+// QueryQueuedExecutionRequest is the request type for Query/QueuedExecution
+message QueryQueuedExecutionRequest {
+  uint64 proposal_id = 1;
+}
+
+// QueryQueuedExecutionResponse is the response type for Query/QueuedExecution
+message QueryQueuedExecutionResponse {
+  QueuedExecution execution = 1;
+}
+
+// QueryAdvisoryLinkRequest is the request type for Query/AdvisoryLink
+message QueryAdvisoryLinkRequest {
+  uint64 proposal_id = 1;
+}
+
+// QueryAdvisoryLinkResponse is the response type for Query/AdvisoryLink
+message QueryAdvisoryLinkResponse {
+  AdvisoryLink link = 1;
+}

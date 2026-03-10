@@ -123,6 +123,123 @@ type Params struct {
 	MaxCscoreDiscount cosmossdk_io_math.LegacyDec `protobuf:"bytes,21,opt,name=max_cscore_discount,json=maxCscoreDiscount,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"max_cscore_discount"`
 	// minimum_submission_fee is the absolute floor for fees after all discounts
 	MinimumSubmissionFee types.Coin `protobuf:"bytes,22,opt,name=minimum_submission_fee,json=minimumSubmissionFee,proto3" json:"minimum_submission_fee"`
+	// CANONICAL HASH LAYER FIELDS
+	// duplicate_bond is the refundable bond required per submission for anti-spam
+	DuplicateBond types.Coin `protobuf:"bytes,23,opt,name=duplicate_bond,json=duplicateBond,proto3" json:"duplicate_bond"`
+	// enable_canonical_hash_check enables the canonical hash deduplication layer
+	EnableCanonicalHashCheck bool `protobuf:"varint,24,opt,name=enable_canonical_hash_check,json=enableCanonicalHashCheck,proto3" json:"enable_canonical_hash_check,omitempty"`
+	// max_duplicates_per_epoch is the max duplicate submissions before rate limiting kicks in
+	MaxDuplicatesPerEpoch uint32 `protobuf:"varint,25,opt,name=max_duplicates_per_epoch,json=maxDuplicatesPerEpoch,proto3" json:"max_duplicates_per_epoch,omitempty"`
+	// duplicate_bond_escalation_bps is the bond escalation per duplicate in basis points
+	DuplicateBondEscalationBps uint32 `protobuf:"varint,26,opt,name=duplicate_bond_escalation_bps,json=duplicateBondEscalationBps,proto3" json:"duplicate_bond_escalation_bps,omitempty"`
+	// SIMILARITY ENGINE FIELDS
+	// similarity_oracle_allowlist is the list of bech32 oracle addresses authorized to submit similarity commitments
+	SimilarityOracleAllowlist []string `protobuf:"bytes,27,rep,name=similarity_oracle_allowlist,json=similarityOracleAllowlist,proto3" json:"similarity_oracle_allowlist,omitempty"`
+	// derivative_threshold is the similarity score (scaled 0-10000) above which a contribution is flagged derivative
+	DerivativeThreshold uint32 `protobuf:"varint,28,opt,name=derivative_threshold,json=derivativeThreshold,proto3" json:"derivative_threshold,omitempty"`
+	// similarity_epoch_blocks is the number of blocks per similarity epoch (anti-replay)
+	SimilarityEpochBlocks int64 `protobuf:"varint,29,opt,name=similarity_epoch_blocks,json=similarityEpochBlocks,proto3" json:"similarity_epoch_blocks,omitempty"`
+	// enable_similarity_check enables the similarity engine
+	EnableSimilarityCheck bool `protobuf:"varint,30,opt,name=enable_similarity_check,json=enableSimilarityCheck,proto3" json:"enable_similarity_check,omitempty"`
+	// ============================================================================
+	// HUMAN REVIEW LAYER FIELDS (sidecar-only, not proto-serialized)
+	// ============================================================================
+	// verifiers_per_claim is the number of reviewers assigned to each claim
+	VerifiersPerClaim uint32 `json:"verifiers_per_claim,omitempty"`
+	// review_vote_period is the number of blocks reviewers have to vote
+	ReviewVotePeriod int64 `json:"review_vote_period,omitempty"`
+	// enable_human_review controls whether the human review layer is active
+	EnableHumanReview bool `json:"enable_human_review,omitempty"`
+	// review_quorum_pct is the percentage of assigned reviewers that must vote (0-100)
+	ReviewQuorumPct uint32 `json:"review_quorum_pct,omitempty"`
+	// min_reviewer_bond is the bond required per review assignment (coin string)
+	MinReviewerBond string `json:"min_reviewer_bond,omitempty"`
+	// min_reviewer_reputation is the minimum PoC credits for reviewer eligibility
+	MinReviewerReputation uint64 `json:"min_reviewer_reputation,omitempty"`
+	// appeal_bond is the bond required to file an appeal (coin string)
+	AppealBond string `json:"appeal_bond,omitempty"`
+	// appeal_vote_period is the number of blocks for appeal resolution
+	AppealVotePeriod int64 `json:"appeal_vote_period,omitempty"`
+	// collusion_threshold_bps is the co-voting overlap threshold in basis points
+	CollusionThresholdBps uint32 `json:"collusion_threshold_bps,omitempty"`
+	// ============================================================================
+	// ECONOMIC ADJUSTMENT FIELDS (sidecar-only, not proto-serialized)
+	// ============================================================================
+	// royalty_share is the percentage of rewards sent to the parent claim
+	RoyaltyShare cosmossdk_io_math.LegacyDec `json:"royalty_share"`
+	// immediate_reward_ratio is the percentage of rewards paid immediately
+	ImmediateRewardRatio cosmossdk_io_math.LegacyDec `json:"immediate_reward_ratio"`
+	// vesting_epochs is the number of epochs over which the remainder vests
+	VestingEpochs int64 `json:"vesting_epochs,omitempty"`
+	// treasury_address is the address for governance-controlled funds
+	TreasuryAddress string `json:"treasury_address,omitempty"`
+	// treasury_share_ratio is the percentage of pool rewards sent to treasury
+	TreasuryShareRatio cosmossdk_io_math.LegacyDec `json:"treasury_share_ratio"`
+	// ============================================================================
+	// LAYER 4: CONFIGURABLE ORIGINALITY + REPEAT OFFENDER (sidecar-only)
+	// ============================================================================
+	// enable_configurable_bands enables governance-configurable originality bands
+	EnableConfigurableBands bool `json:"enable_configurable_bands,omitempty"`
+	// originality_bands are the configurable similarity-to-multiplier mappings
+	OriginalityBands []OriginalityBand `json:"originality_bands,omitempty"`
+	// grandparent_royalty_share is the royalty share for grandparent claims
+	GrandparentRoyaltyShare cosmossdk_io_math.LegacyDec `json:"grandparent_royalty_share"`
+	// max_royalty_depth is the maximum lineage depth for royalty routing
+	MaxRoyaltyDepth uint32 `json:"max_royalty_depth,omitempty"`
+	// max_total_royalty_share caps the total royalty deduction
+	MaxTotalRoyaltyShare cosmossdk_io_math.LegacyDec `json:"max_total_royalty_share"`
+	// repeat_offender_threshold is the offense count before penalties apply
+	RepeatOffenderThreshold uint64 `json:"repeat_offender_threshold,omitempty"`
+	// repeat_offender_bond_escalation_bps is bond increase per offense in bps
+	RepeatOffenderBondEscalationBps uint32 `json:"repeat_offender_bond_escalation_bps,omitempty"`
+	// repeat_offender_reward_cap is the max reward fraction for offenders
+	RepeatOffenderRewardCap cosmossdk_io_math.LegacyDec `json:"repeat_offender_reward_cap"`
+	// repeat_offender_vesting_multiplier extends vesting for offenders
+	RepeatOffenderVestingMultiplier cosmossdk_io_math.LegacyDec `json:"repeat_offender_vesting_multiplier"`
+	// enable_auto_clawback enables automatic clawback on validated fraud proofs
+	EnableAutoClawback bool `json:"enable_auto_clawback,omitempty"`
+	// max_provenance_depth is the maximum lineage depth for the provenance DAG
+	MaxProvenanceDepth uint32 `json:"max_provenance_depth,omitempty"`
+	// enable_provenance_registry controls whether provenance registration is active
+	EnableProvenanceRegistry bool `json:"enable_provenance_registry,omitempty"`
+	// provenance_schema_version is the schema version for provenance entries
+	ProvenanceSchemaVersion uint32 `json:"provenance_schema_version,omitempty"`
+
+	// ============================================================
+	// Adaptive Reward Vesting System (ARVS) — field group 30-39
+	// ============================================================
+
+	// enable_arvs activates the adaptive vesting system. When false, the legacy
+	// ImmediateRewardRatio + VestingEpochs split is used.
+	EnableARVS bool `json:"enable_arvs,omitempty"`
+
+	// arvs_weights holds the five risk-signal weights (must sum to 10000 bps).
+	ARVSWeights ARVSWeights `json:"arvs_weights"`
+
+	// arvs_vesting_profiles holds the per-tier unlock schedules.
+	// Up to 5 profiles; governance can replace them.
+	ARVSVestingProfiles []VestingProfile `json:"arvs_vesting_profiles"`
+
+	// arvs_category_risk_map maps contribution category strings to risk tiers
+	// (1=low, 2=medium, 3=high). JSON encoded map.
+	ARVSCategoryRiskMapJSON string `json:"arvs_category_risk_map_json,omitempty"`
+
+	// arvs_bounty_distribution defines how slashed rewards are split on fraud.
+	ARVSBountyDistribution BountyDistribution `json:"arvs_bounty_distribution"`
+
+	// arvs_enable_bounty controls whether slashed rewards trigger bounty distribution.
+	ARVSEnableBounty bool `json:"arvs_enable_bounty,omitempty"`
+
+	// arvs_treasury_address is the recipient of the treasury share of bounties.
+	ARVSTreasuryAddress string `json:"arvs_treasury_address,omitempty"`
+
+	// arvs_risk_score_low_threshold is the max risk score (bps) for Low Risk profile.
+	// Default: 3000 (30%). Below this → LowRisk profile.
+	ARVSRiskScoreLowThreshold uint32 `json:"arvs_risk_score_low_threshold,omitempty"`
+
+	// arvs_risk_score_high_threshold is the min risk score (bps) for High Risk profile.
+	// Default: 6500 (65%). Above this → HighRisk profile.
+	ARVSRiskScoreHighThreshold uint32 `json:"arvs_risk_score_high_threshold,omitempty"`
 }
 
 func (m *Params) Reset()         { *m = Params{} }
@@ -184,6 +301,55 @@ func (m *Params) GetMaxContributionsToKeep() uint64 {
 		return m.MaxContributionsToKeep
 	}
 	return 0
+}
+
+func (m *Params) GetEnableCanonicalHashCheck() bool {
+	if m != nil {
+		return m.EnableCanonicalHashCheck
+	}
+	return false
+}
+
+func (m *Params) GetMaxDuplicatesPerEpoch() uint32 {
+	if m != nil {
+		return m.MaxDuplicatesPerEpoch
+	}
+	return 0
+}
+
+func (m *Params) GetDuplicateBondEscalationBps() uint32 {
+	if m != nil {
+		return m.DuplicateBondEscalationBps
+	}
+	return 0
+}
+
+func (m *Params) GetSimilarityOracleAllowlist() []string {
+	if m != nil {
+		return m.SimilarityOracleAllowlist
+	}
+	return nil
+}
+
+func (m *Params) GetDerivativeThreshold() uint32 {
+	if m != nil {
+		return m.DerivativeThreshold
+	}
+	return 0
+}
+
+func (m *Params) GetSimilarityEpochBlocks() int64 {
+	if m != nil {
+		return m.SimilarityEpochBlocks
+	}
+	return 0
+}
+
+func (m *Params) GetEnableSimilarityCheck() bool {
+	if m != nil {
+		return m.EnableSimilarityCheck
+	}
+	return false
 }
 
 func init() {

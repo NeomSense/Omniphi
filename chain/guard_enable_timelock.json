@@ -1,0 +1,37 @@
+{
+  "messages": [
+    {
+      "@type": "/pos.guard.v1.MsgUpdateParams",
+      "authority": "omni10d07y265gmmuvt4z0w9aw880jnsr700j2gz0r8",
+      "params": {
+        "delay_low_blocks": "10",
+        "delay_med_blocks": "50",
+        "delay_high_blocks": "200",
+        "delay_critical_blocks": "500",
+        "visibility_window_blocks": "100",
+        "shock_absorber_window_blocks": "50",
+        "threshold_default_bps": "5000",
+        "threshold_high_bps": "6700",
+        "threshold_critical_bps": "7500",
+        "treasury_throttle_enabled": false,
+        "treasury_max_outflow_bps_per_day": "0",
+        "enable_stability_checks": false,
+        "max_validator_churn_bps": "0",
+        "advisory_ai_enabled": false,
+        "binding_ai_enabled": false,
+        "ai_shadow_mode": false,
+        "critical_requires_second_confirm": false,
+        "critical_second_confirm_window_blocks": "0",
+        "extension_high_blocks": "21600",
+        "extension_critical_blocks": "64800",
+        "max_proposals_per_block": "5",
+        "max_queue_scan_depth": "100",
+        "timelock_integration_enabled": true
+      }
+    }
+  ],
+  "metadata": "ipfs://enable-timelock-integration",
+  "deposit": "10000000000omniphi",
+  "title": "Enable Guard/Timelock Integration",
+  "summary": "Enable timelock_integration_enabled param so guard receives proposals via direct keeper call from timelock instead of polling."
+}

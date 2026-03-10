@@ -6,6 +6,7 @@ import (
 
 	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	vestingexported "github.com/cosmos/cosmos-sdk/x/auth/vesting/exported"
 
 	"pos/x/tokenomics/types"
 )
@@ -155,6 +156,22 @@ func (k Keeper) ProcessTreasuryRedirect(ctx context.Context) (*RedirectResult, e
 
 		if allocationAmount.IsZero() {
 			continue
+		}
+
+		// SECURITY: Verify target is a vesting account to prevent immediate liquidation.
+		// Treasury redirect targets MUST be vesting accounts so funds vest over time,
+		// preventing a governance attacker from redirecting treasury to an EOA and
+		// immediately dumping tokens.
+		// REDIRECT-004: Fail atomically — do NOT silently skip non-vesting targets,
+		// as that would allow partial redirects where some funds go to unprotected accounts.
+		account := k.accountKeeper.GetAccount(ctx, target.Address)
+		if account == nil {
+			return nil, fmt.Errorf("treasury redirect target %s (%s) account does not exist",
+				target.Name, target.Address.String())
+		}
+		if _, ok := account.(vestingexported.VestingAccount); !ok {
+			return nil, fmt.Errorf("treasury redirect target %s (%s) is not a vesting account; all targets must be vesting accounts to prevent immediate liquidation",
+				target.Name, target.Address.String())
 		}
 
 		// Transfer from treasury to target

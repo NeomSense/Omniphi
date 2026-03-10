@@ -1,0 +1,49 @@
+{
+  "_comment": "MAINNET REQUIRED: PoR security parameters governance proposal.",
+  "_instructions": [
+    "This proposal enables security-critical PoR parameters for mainnet.",
+    "These MUST be active before mainnet launch (either via genesis or this proposal).",
+    "",
+    "1. require_leaf_hashes=true  — enables conclusive double-inclusion fraud proofs",
+    "2. require_da_commitment=true — requires DA layer commitment for batch submission",
+    "3. require_poseq_commitment=true — requires PoSeq sequencer commitment for batch submission",
+    "",
+    "Without these flags, fraud verification is best-effort and inconclusive.",
+    "",
+    "Submit: posd tx gov submit-proposal por_mainnet_security_params.json --from <key> --chain-id omniphi-mainnet-1"
+  ],
+  "messages": [
+    {
+      "@type": "pos/por/UpdateParams",
+      "authority": "omni10d07y265gmmuvt4z0w9aw880jnsr700j2gz0r8",
+      "params": {
+        "max_batches_per_block": 20,
+        "min_challenge_period": 3600,
+        "max_challenge_period": 604800,
+        "default_challenge_period": 86400,
+        "min_verifiers_global": 3,
+        "max_verifiers_per_set": 100,
+        "slash_fraction_dishonest": "0.050000000000000000",
+        "challenger_reward_ratio": "0.500000000000000000",
+        "reward_denom": "omniphi",
+        "min_stake_for_verifier": "1000000",
+        "base_record_reward": "100",
+        "max_finalizations_per_block": 50,
+        "fraud_jail_duration": 86400,
+        "min_reputation_for_attestation": "0",
+        "challenge_resolution_timeout": 172800,
+        "max_credits_per_epoch": "50000000000",
+        "max_credits_per_batch": "1000000000",
+        "require_da_commitment": true,
+        "require_leaf_hashes": true,
+        "challenge_bond_amount": "10000000",
+        "max_challenges_per_address": 5,
+        "require_poseq_commitment": true
+      }
+    }
+  ],
+  "metadata": "Enable PoR mainnet security parameters: require DA commitments, leaf hashes, and PoSeq commitments",
+  "deposit": "10000000omniphi",
+  "title": "Enable PoR Mainnet Security Parameters",
+  "summary": "This proposal enables three security-critical PoR parameters required for production: (1) require_leaf_hashes=true for conclusive double-inclusion fraud proofs, (2) require_da_commitment=true for data availability verification, (3) require_poseq_commitment=true for sequencer ordering verification. Without these flags, fraud verification remains best-effort."
+}

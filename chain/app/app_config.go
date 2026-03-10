@@ -2,17 +2,35 @@ package app
 
 import (
 	_ "pos/x/feemarket/module"
+	_ "pos/x/guard/module"
 	_ "pos/x/poc/module"
+	_ "pos/x/por/module"
+	_ "pos/x/repgov/module"
+	_ "pos/x/rewardmult/module"
+	_ "pos/x/royalty/module"
 	_ "pos/x/timelock/module"
 	_ "pos/x/tokenomics/module"
+	_ "pos/x/uci/module"
 	feemarketmodulev1 "pos/proto/pos/feemarket/module/v1"
+	guardmodulev1 "pos/proto/pos/guard/module/v1"
 	pocmodulev1 "pos/proto/pos/poc/module/v1"
+	pormodulev1 "pos/proto/pos/por/module/v1"
+	repgovmodulev1 "pos/proto/pos/repgov/module/v1"
+	rewardmultmodulev1 "pos/proto/pos/rewardmult/module/v1"
+	royaltymodulev1 "pos/proto/pos/royalty/module/v1"
 	timelockmodulev1 "pos/proto/pos/timelock/module/v1"
 	tokenomicsmodulev1 "pos/proto/pos/tokenomics/module/v1"
+	ucimodulev1 "pos/proto/pos/uci/module/v1"
 	feemarketmoduletypes "pos/x/feemarket/types"
+	guardmoduletypes "pos/x/guard/types"
 	pocmoduletypes "pos/x/poc/types"
+	pormoduletypes "pos/x/por/types"
+	repgovmoduletypes "pos/x/repgov/types"
+	rewardmultmoduletypes "pos/x/rewardmult/types"
+	royaltymoduletypes "pos/x/royalty/types"
 	timelockmoduletypes "pos/x/timelock/types"
 	tokenomicsmoduletypes "pos/x/tokenomics/types"
+	ucimoduletypes "pos/x/uci/types"
 	"time"
 
 	runtimev1alpha1 "cosmossdk.io/api/cosmos/app/runtime/v1alpha1"
@@ -93,7 +111,10 @@ var (
 		
 		{Account: feemarketmoduletypes.ModuleName, Permissions: []string{authtypes.Burner}},
 		{Account: pocmoduletypes.ModuleName, Permissions: []string{authtypes.Minter, authtypes.Burner}},
+		{Account: pormoduletypes.ModuleName, Permissions: []string{authtypes.Burner}},
 		{Account: tokenomicsmoduletypes.ModuleName, Permissions: []string{authtypes.Minter, authtypes.Burner}},
+		{Account: royaltymoduletypes.ModuleName, Permissions: []string{authtypes.Minter, authtypes.Burner}},
+		{Account: ucimoduletypes.ModuleName, Permissions: []string{authtypes.Burner}},
 	}
 
 	// blocked account addresses
@@ -138,18 +159,27 @@ var (
 						ibcexported.ModuleName,
 						// chain modules
 						pocmoduletypes.ModuleName,
+						guardmoduletypes.ModuleName,
 						// this line is used by starport scaffolding # stargate/app/beginBlockers
 					},
 					EndBlockers: []string{
 						feemarketmoduletypes.ModuleName,  // Process fees first (burn + distribute)
 						timelockmoduletypes.ModuleName,   // MUST run before gov to intercept proposals
+						guardmoduletypes.ModuleName,      // Guard runs after timelock, before gov to queue passed proposals
 						govtypes.ModuleName,
 						stakingtypes.ModuleName,
 						feegrant.ModuleName,
 						group.ModuleName,
 						// chain modules
-						tokenomicsmoduletypes.ModuleName, // Process IBC acknowledgements
+						tokenomicsmoduletypes.ModuleName,   // Process IBC acknowledgements
+						rewardmultmoduletypes.ModuleName,   // Compute PoS reward multipliers at epoch boundaries
+						repgovmoduletypes.ModuleName,       // Recompute reputation-weighted governance scores
 						pocmoduletypes.ModuleName,
+						pormoduletypes.ModuleName,          // Finalize expired batches
+						royaltymoduletypes.ModuleName,      // Process royalty stream distributions
+						ucimoduletypes.ModuleName,          // Process DePIN contribution interface\n\t\t\t\t\t\troyaltymoduletypes.ModuleName,      // Process royalty stream distributions\n\t\t\t\t\t\tucimoduletypes.ModuleName,          // Process DePIN contribution interface
+						royaltymoduletypes.ModuleName,      // Process royalty stream distributions
+						ucimoduletypes.ModuleName,          // Process DePIN contribution interface
 						// this line is used by starport scaffolding # stargate/app/endBlockers
 					},
 					// The following is mostly only needed when ModuleName != StoreKey name.
@@ -172,6 +202,7 @@ var (
 						stakingtypes.ModuleName,
 						slashingtypes.ModuleName,
 						govtypes.ModuleName,
+						guardmoduletypes.ModuleName,      // Initialize after gov for guard integration
 						timelockmoduletypes.ModuleName,   // Initialize after gov for timelock integration
 						minttypes.ModuleName,
 						genutiltypes.ModuleName,
@@ -189,6 +220,11 @@ var (
 						icatypes.ModuleName,
 						// chain modules
 						pocmoduletypes.ModuleName,
+						pormoduletypes.ModuleName,
+						rewardmultmoduletypes.ModuleName, // Initialize after staking/slashing for keeper access
+						repgovmoduletypes.ModuleName,     // Initialize after staking for reputation weights
+						royaltymoduletypes.ModuleName,    // Initialize after poc for royalty token streams
+						ucimoduletypes.ModuleName,        // Initialize after poc for DePIN contribution interface
 						// this line is used by starport scaffolding # stargate/app/initGenesis
 					},
 				}),
@@ -201,7 +237,7 @@ var (
 					EnableUnorderedTransactions: true,
 					// By default modules authority is the governance module. This is configurable with the following:
 					// Authority: "group", // A custom module authority can be set using a module name
-					// Authority: "cosmos1cwwv22j5ca08ggdv9c2uky355k908694z577tv", // or a specific address
+					// Authority: "omni1cwwv22j5ca08ggdv9c2uky355k908694z577tv", // or a specific address
 				}),
 			},
 			{
@@ -296,6 +332,32 @@ var (
 			{
 				Name:   timelockmoduletypes.ModuleName,
 				Config: appconfig.WrapAny(&timelockmodulev1.Module{}),
+			},
+			{
+				Name:   pormoduletypes.ModuleName,
+				Config: appconfig.WrapAny(&pormodulev1.Module{}),
+			},
+			{
+				Name:   rewardmultmoduletypes.ModuleName,
+				Config: appconfig.WrapAny(&rewardmultmodulev1.Module{}),
+			},
+			{
+				Name:   guardmoduletypes.ModuleName,
+				Config: appconfig.WrapAny(&guardmodulev1.Module{
+					// Authority defaults to gov module if not specified
+				}),
+			},
+			{
+				Name:   repgovmoduletypes.ModuleName,
+				Config: appconfig.WrapAny(&repgovmodulev1.Module{}),
+			},
+			{
+				Name:   royaltymoduletypes.ModuleName,
+				Config: appconfig.WrapAny(&royaltymodulev1.Module{}),
+			},
+			{
+				Name:   ucimoduletypes.ModuleName,
+				Config: appconfig.WrapAny(&ucimodulev1.Module{}),
 			},
 			// this line is used by starport scaffolding # stargate/app/moduleConfig
 		},

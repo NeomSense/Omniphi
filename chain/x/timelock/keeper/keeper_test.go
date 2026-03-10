@@ -112,7 +112,7 @@ func (s *TimelockTestSuite) TestParams() {
 				MinDelaySeconds:       48 * 3600,
 				MaxDelaySeconds:       7 * 24 * 3600,
 				GracePeriodSeconds:    3 * 24 * 3600,
-				EmergencyDelaySeconds: 2 * 3600,
+				EmergencyDelaySeconds: 7 * 3600,
 				Guardian:              "omni1...",
 			},
 			expectError: false,
@@ -227,8 +227,8 @@ func (s *TimelockTestSuite) TestOperationStatus() {
 
 // TestSecurityConstants tests that security constants are set correctly
 func TestSecurityConstants(t *testing.T) {
-	require.Equal(t, uint64(3600), types.AbsoluteMinDelaySeconds,
-		"Absolute minimum delay should be 3600 seconds (1 hour)")
+	require.Equal(t, uint64(21600), types.AbsoluteMinDelaySeconds,
+		"Absolute minimum delay should be 21600 seconds (6 hours)")
 
 	require.Equal(t, uint64(30*24*3600), types.AbsoluteMaxDelaySeconds,
 		"Absolute maximum delay should be 2592000 seconds (30 days)")
@@ -245,12 +245,12 @@ func TestSecurityConstants(t *testing.T) {
 	require.Equal(t, uint64(7*24*3600), types.DefaultGracePeriodSeconds,
 		"Default grace period should be 604800 seconds (7 days)")
 
-	require.Equal(t, uint64(3600), types.DefaultEmergencyDelaySeconds,
-		"Default emergency delay should be 3600 seconds (1 hour)")
+	require.Equal(t, uint64(21600), types.DefaultEmergencyDelaySeconds,
+		"Default emergency delay should be 21600 seconds (6 hours)")
 
 	// Also test the time.Duration constants for backward compatibility
-	require.Equal(t, 1*time.Hour, types.AbsoluteMinDelay,
-		"Absolute minimum delay should be 1 hour")
+	require.Equal(t, 6*time.Hour, types.AbsoluteMinDelay,
+		"Absolute minimum delay should be 6 hours")
 
 	require.Equal(t, 30*24*time.Hour, types.AbsoluteMaxDelay,
 		"Absolute maximum delay should be 30 days")

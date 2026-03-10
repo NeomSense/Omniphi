@@ -43,7 +43,7 @@ var (
 	ErrInvalidDelay = errors.Register(ModuleName, 3012, "invalid delay parameters")
 
 	// ErrMinDelayTooShort is returned when minimum delay is below absolute minimum
-	ErrMinDelayTooShort = errors.Register(ModuleName, 3013, "minimum delay is below absolute minimum (1 hour)")
+	ErrMinDelayTooShort = errors.Register(ModuleName, 3013, "minimum delay is below absolute minimum (6 hours)")
 
 	// ErrMaxDelayTooLong is returned when maximum delay exceeds limit
 	ErrMaxDelayTooLong = errors.Register(ModuleName, 3014, "maximum delay exceeds limit (30 days)")
@@ -52,7 +52,7 @@ var (
 	ErrGracePeriodInvalid = errors.Register(ModuleName, 3015, "grace period must be at least 1 hour")
 
 	// ErrEmergencyDelayInvalid is returned when emergency delay is invalid
-	ErrEmergencyDelayInvalid = errors.Register(ModuleName, 3016, "emergency delay must be at least 1 hour")
+	ErrEmergencyDelayInvalid = errors.Register(ModuleName, 3016, "emergency delay must be at least 6 hours")
 
 	// ErrEmergencyNotEligible is returned when operation can't use emergency execution
 	ErrEmergencyNotEligible = errors.Register(ModuleName, 3017, "operation not eligible for emergency execution")
@@ -92,4 +92,52 @@ var (
 
 	// ErrEmergencyExceedsMin is returned when emergency_delay >= min_delay
 	ErrEmergencyExceedsMin = errors.Register(ModuleName, 3029, "emergency_delay must be less than min_delay")
+
+	// ErrGuardianCannotCancelProtected is returned when guardian tries to cancel
+	// an operation containing MsgUpdateGuardian or MsgUpdateParams (timelock).
+	// This prevents the guardian from making themselves irremovable.
+	ErrGuardianCannotCancelProtected = errors.Register(ModuleName, 3030, "guardian cannot cancel operations that modify guardian role or timelock params")
+
+	// ErrGuardianAutoRevoked is returned after guardian is auto-revoked due to
+	// exceeding the maximum number of cancellations within a rolling window
+	ErrGuardianAutoRevoked = errors.Register(ModuleName, 3031, "guardian auto-revoked due to excessive cancellations")
+
+	// ErrProtectedOperationEmergency is returned when guardian tries to emergency-execute
+	// an operation containing MsgUpdateGuardian or MsgUpdateParams (timelock).
+	// Protected operations must go through the full governance delay.
+	ErrProtectedOperationEmergency = errors.Register(ModuleName, 3032, "protected operations cannot be emergency-executed; must wait for full governance delay")
+
+	// ErrExecutionDisabled is returned when timelock execution is disabled
+	// because guard is the sole executor.
+	ErrExecutionDisabled = errors.Register(ModuleName, 3033, "timelock execution disabled; guard is authoritative executor")
+
+	// --- AST v2: Track system errors (range 3033-3049) ---
+
+	// ErrTrackNotFound is returned when a track name is not in the store.
+	ErrTrackNotFound = errors.Register(ModuleName, 3034, "track not found")
+
+	// ErrTrackPaused is returned when a proposal attempts to queue on a paused track.
+	ErrTrackPaused = errors.Register(ModuleName, 3035, "track is paused: new operations cannot be queued")
+
+	// ErrTrackFrozen is returned when execution is attempted on a frozen track.
+	ErrTrackFrozen = errors.Register(ModuleName, 3036, "track is frozen until the specified height")
+
+	// ErrInvalidTrackName is returned when an unrecognised track name is supplied.
+	ErrInvalidTrackName = errors.Register(ModuleName, 3037, "invalid or unknown track name")
+
+	// ErrInvalidTrackMultiplier is returned when a multiplier is out of [1000,5000].
+	ErrInvalidTrackMultiplier = errors.Register(ModuleName, 3038, "track multiplier must be in range [1000, 5000]")
+
+	// ErrCumulativeTreasuryExceeded is returned when queuing would push
+	// 24-hour cumulative treasury outflow above the configured threshold.
+	ErrCumulativeTreasuryExceeded = errors.Register(ModuleName, 3039, "cumulative 24-hour treasury outflow would exceed threshold")
+
+	// ErrAdaptiveDelayOverflow is returned if the multi-factor delay calculation
+	// would exceed AbsoluteMaxDelaySeconds before clamping logic runs.
+	// (Informational; clamping always applies — this error is never user-visible
+	// in normal operation but is registered so it can appear in logs.)
+	ErrAdaptiveDelayOverflow = errors.Register(ModuleName, 3040, "adaptive delay overflow clamped to absolute maximum")
+
+	// ErrFreezeTooLong is returned when freeze_until_height is too far in the future.
+	ErrFreezeTooLong = errors.Register(ModuleName, 3041, "freeze_until_height exceeds maximum allowed freeze duration")
 )

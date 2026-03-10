@@ -1,0 +1,71 @@
+{
+  "model_version": "omniphi-governance-l2-v1",
+  "scale": 10000,
+  "feature_order": [
+    "is_upgrade",
+    "is_param_change",
+    "is_treasury_spend",
+    "is_slashing_change",
+    "is_poc_rule_change",
+    "is_poseq_rule_change",
+    "treasury_spend_bps",
+    "modules_touched_count",
+    "touches_consensus_critical",
+    "reduces_slashing",
+    "changes_validator_rules"
+  ],
+  "weights_int": [
+    74307,
+    -14142,
+    -51987,
+    -464,
+    -15570,
+    -15095,
+    165,
+    1720,
+    112946,
+    99068,
+    4328
+  ],
+  "bias_int": -51729,
+  "schema_hash_sha256": "ac76dce03713204c4729dfbe21cb16de3fc585c8fd1929436a332e2ab58596bf",
+  "score_mapping": "score = clamp((raw // scale) + 50, 0, 100) where raw = bias_int + sum(weights_int[i] * features[i])",
+  "tier_thresholds": {
+    "LOW": "0-30",
+    "MED": "31-55",
+    "HIGH": "56-80",
+    "CRITICAL": "81-100"
+  },
+  "created_at": "2026-02-16T02:55:24.296107+00:00",
+  "notes": "Quantized from trained logistic regression. Use with FeatureSchemaV1.",
+  "weights": [
+    74307,
+    -14142,
+    -51987,
+    -464,
+    -15570,
+    -15095,
+    165,
+    1720,
+    112946,
+    99068,
+    4328
+  ],
+  "bias": -51729,
+  "feature_names": [
+    "is_upgrade",
+    "is_param_change",
+    "is_treasury_spend",
+    "is_slashing_change",
+    "is_poc_rule_change",
+    "is_poseq_rule_change",
+    "treasury_spend_bps",
+    "modules_touched_count",
+    "touches_consensus_critical",
+    "reduces_slashing",
+    "changes_validator_rules"
+  ],
+  "num_features": 11,
+  "feature_schema_hash": "ac76dce03713204c4729dfbe21cb16de3fc585c8fd1929436a332e2ab58596bf",
+  "weights_hash": "d0dfb4ffdd26d4059ee9b07ce24ccc49007dea0d61ab8e84454b1901f9797412"
+}

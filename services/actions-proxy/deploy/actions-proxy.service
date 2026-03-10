@@ -1,0 +1,24 @@
+[Unit]
+Description=Omniphi Actions Proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=omniphi
+Group=omniphi
+EnvironmentFile=/etc/omniphi/actions-proxy.env
+ExecStart=/usr/local/bin/actions-proxy
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/omniphi
+
+[Install]
+WantedBy=multi-user.target

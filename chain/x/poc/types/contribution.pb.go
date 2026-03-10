@@ -114,6 +114,20 @@ type Contribution struct {
 	BlockTime int64 `protobuf:"varint,9,opt,name=block_time,json=blockTime,proto3" json:"block_time,omitempty"`
 	// rewarded indicates if the contribution has been rewarded
 	Rewarded bool `protobuf:"varint,10,opt,name=rewarded,proto3" json:"rewarded,omitempty"`
+	// canonical_hash is the canonical content hash for deduplication (SHA-256, 32 bytes)
+	CanonicalHash []byte `protobuf:"bytes,11,opt,name=canonical_hash,json=canonicalHash,proto3" json:"canonical_hash,omitempty"`
+	// canonical_spec_version is the normalization spec version used
+	CanonicalSpecVersion uint32 `protobuf:"varint,12,opt,name=canonical_spec_version,json=canonicalSpecVersion,proto3" json:"canonical_spec_version,omitempty"`
+	// duplicate_of is set if this contribution duplicates an earlier one (0 = not duplicate)
+	DuplicateOf uint64 `protobuf:"varint,13,opt,name=duplicate_of,json=duplicateOf,proto3" json:"duplicate_of,omitempty"`
+	// is_derivative is true if the similarity engine flagged this as derivative content
+	IsDerivative bool `protobuf:"varint,14,opt,name=is_derivative,json=isDerivative,proto3" json:"is_derivative,omitempty"`
+	// review_status tracks the human review lifecycle (0=none, 1=pending, 2=in_review, 3=accepted, 4=rejected, 5=appealed)
+	ReviewStatus uint32 `protobuf:"varint,15,opt,name=review_status,json=reviewStatus,proto3" json:"review_status,omitempty"`
+	// parent_claim_id is set by human reviewers to indicate a derivative's parent (0 = no parent)
+	ParentClaimId uint64 `protobuf:"varint,16,opt,name=parent_claim_id,json=parentClaimId,proto3" json:"parent_claim_id,omitempty"`
+	// claim_status is the unified pipeline status across all 5 layers (see types.ClaimStatus)
+	ClaimStatus uint32 `protobuf:"varint,17,opt,name=claim_status,json=claimStatus,proto3" json:"claim_status,omitempty"`
 }
 
 func (m *Contribution) Reset()         { *m = Contribution{} }
@@ -217,6 +231,55 @@ func (m *Contribution) GetRewarded() bool {
 		return m.Rewarded
 	}
 	return false
+}
+
+func (m *Contribution) GetCanonicalHash() []byte {
+	if m != nil {
+		return m.CanonicalHash
+	}
+	return nil
+}
+
+func (m *Contribution) GetCanonicalSpecVersion() uint32 {
+	if m != nil {
+		return m.CanonicalSpecVersion
+	}
+	return 0
+}
+
+func (m *Contribution) GetDuplicateOf() uint64 {
+	if m != nil {
+		return m.DuplicateOf
+	}
+	return 0
+}
+
+func (m *Contribution) GetIsDerivative() bool {
+	if m != nil {
+		return m.IsDerivative
+	}
+	return false
+}
+
+func (m *Contribution) GetReviewStatus() uint32 {
+	if m != nil {
+		return m.ReviewStatus
+	}
+	return 0
+}
+
+func (m *Contribution) GetParentClaimId() uint64 {
+	if m != nil {
+		return m.ParentClaimId
+	}
+	return 0
+}
+
+func (m *Contribution) GetClaimStatus() uint32 {
+	if m != nil {
+		return m.ClaimStatus
+	}
+	return 0
 }
 
 // Credits represents accumulated PoC credits for an address
@@ -385,6 +448,55 @@ func (m *Contribution) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	// Field 17: claim_status (tag = 17<<3|0 = 0x88 0x01)
+	if m.ClaimStatus != 0 {
+		i = encodeVarintContribution(dAtA, i, uint64(m.ClaimStatus))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0x88
+	}
+	// Field 16: parent_claim_id (tag = 16<<3|0 = 0x80 0x01)
+	if m.ParentClaimId != 0 {
+		i = encodeVarintContribution(dAtA, i, uint64(m.ParentClaimId))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0x80
+	}
+	// Field 15: review_status (tag = 15<<3|0 = 0x78)
+	if m.ReviewStatus != 0 {
+		i = encodeVarintContribution(dAtA, i, uint64(m.ReviewStatus))
+		i--
+		dAtA[i] = 0x78
+	}
+	if m.IsDerivative {
+		i--
+		if m.IsDerivative {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x70
+	}
+	if m.DuplicateOf != 0 {
+		i = encodeVarintContribution(dAtA, i, uint64(m.DuplicateOf))
+		i--
+		dAtA[i] = 0x68
+	}
+	if m.CanonicalSpecVersion != 0 {
+		i = encodeVarintContribution(dAtA, i, uint64(m.CanonicalSpecVersion))
+		i--
+		dAtA[i] = 0x60
+	}
+	if len(m.CanonicalHash) > 0 {
+		i -= len(m.CanonicalHash)
+		copy(dAtA[i:], m.CanonicalHash)
+		i = encodeVarintContribution(dAtA, i, uint64(len(m.CanonicalHash)))
+		i--
+		dAtA[i] = 0x5a
+	}
 	if m.Rewarded {
 		i--
 		if m.Rewarded {
@@ -579,6 +691,31 @@ func (m *Contribution) Size() (n int) {
 	}
 	if m.Rewarded {
 		n += 2
+	}
+	l = len(m.CanonicalHash)
+	if l > 0 {
+		n += 1 + l + sovContribution(uint64(l))
+	}
+	if m.CanonicalSpecVersion != 0 {
+		n += 1 + sovContribution(uint64(m.CanonicalSpecVersion))
+	}
+	if m.DuplicateOf != 0 {
+		n += 1 + sovContribution(uint64(m.DuplicateOf))
+	}
+	if m.IsDerivative {
+		n += 2
+	}
+	// Field 15: review_status (1-byte tag + varint)
+	if m.ReviewStatus != 0 {
+		n += 1 + sovContribution(uint64(m.ReviewStatus))
+	}
+	// Field 16: parent_claim_id (2-byte tag + varint)
+	if m.ParentClaimId != 0 {
+		n += 2 + sovContribution(uint64(m.ParentClaimId))
+	}
+	// Field 17: claim_status (2-byte tag + varint)
+	if m.ClaimStatus != 0 {
+		n += 2 + sovContribution(uint64(m.ClaimStatus))
 	}
 	return n
 }
@@ -1049,6 +1186,155 @@ func (m *Contribution) Unmarshal(dAtA []byte) error {
 				}
 			}
 			m.Rewarded = bool(v != 0)
+		case 11:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CanonicalHash", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowContribution
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthContribution
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthContribution
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.CanonicalHash = append(m.CanonicalHash[:0], dAtA[iNdEx:postIndex]...)
+			if m.CanonicalHash == nil {
+				m.CanonicalHash = []byte{}
+			}
+			iNdEx = postIndex
+		case 12:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CanonicalSpecVersion", wireType)
+			}
+			m.CanonicalSpecVersion = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowContribution
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.CanonicalSpecVersion |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 13:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DuplicateOf", wireType)
+			}
+			m.DuplicateOf = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowContribution
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.DuplicateOf |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 14:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IsDerivative", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowContribution
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.IsDerivative = bool(v != 0)
+		case 15:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ReviewStatus", wireType)
+			}
+			m.ReviewStatus = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowContribution
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ReviewStatus |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 16:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ParentClaimId", wireType)
+			}
+			m.ParentClaimId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowContribution
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ParentClaimId |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 17:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ClaimStatus", wireType)
+			}
+			m.ClaimStatus = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowContribution
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ClaimStatus |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipContribution(dAtA[iNdEx:])

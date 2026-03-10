@@ -57,10 +57,27 @@ func (ms msgServer) CancelOperation(ctx context.Context, msg *types.MsgCancelOpe
 		return nil, err
 	}
 
+	// SECURITY (F7): Warn-level audit logging for guardian cancel actions
+	ms.Keeper.Logger().Warn("GUARDIAN CANCEL OPERATION initiated",
+		"operation_id", msg.OperationId,
+		"guardian", msg.Authority,
+		"reason", msg.Reason,
+	)
+
 	// Cancel the operation
 	if err := ms.Keeper.CancelOperation(ctx, msg.OperationId, msg.Authority, msg.Reason); err != nil {
 		return nil, err
 	}
+
+	// F7: Emit detailed audit event for cancellation
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	sdkCtx.EventManager().EmitEvent(sdk.NewEvent(
+		"timelock_guardian_cancel_operation",
+		sdk.NewAttribute("operation_id", fmt.Sprintf("%d", msg.OperationId)),
+		sdk.NewAttribute("guardian", msg.Authority),
+		sdk.NewAttribute("reason", msg.Reason),
+		sdk.NewAttribute("block_height", fmt.Sprintf("%d", sdkCtx.BlockHeight())),
+	))
 
 	return &types.MsgCancelOperationResponse{}, nil
 }
@@ -81,10 +98,28 @@ func (ms msgServer) EmergencyExecute(ctx context.Context, msg *types.MsgEmergenc
 		return nil, err
 	}
 
+	// SECURITY (F7): Warn-level audit logging for guardian emergency actions
+	ms.Keeper.Logger().Warn("GUARDIAN EMERGENCY EXECUTE initiated",
+		"operation_id", msg.OperationId,
+		"guardian", msg.Authority,
+		"justification", msg.Justification,
+	)
+
 	// Emergency execute the operation
 	if err := ms.Keeper.EmergencyExecute(ctx, msg.OperationId, msg.Authority, msg.Justification); err != nil {
 		return nil, err
 	}
+
+	// F7: Emit detailed audit event for emergency execution
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	sdkCtx.EventManager().EmitEvent(sdk.NewEvent(
+		"timelock_guardian_emergency_execute",
+		sdk.NewAttribute("operation_id", fmt.Sprintf("%d", msg.OperationId)),
+		sdk.NewAttribute("guardian", msg.Authority),
+		sdk.NewAttribute("justification", msg.Justification),
+		sdk.NewAttribute("block_height", fmt.Sprintf("%d", sdkCtx.BlockHeight())),
+		sdk.NewAttribute("block_time", sdkCtx.BlockTime().String()),
+	))
 
 	return &types.MsgEmergencyExecuteResponse{
 		Success: true,

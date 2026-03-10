@@ -1,0 +1,7 @@
+{
+  "messages": [],
+  "metadata": "E2E guard test: text-only proposal",
+  "deposit": "10000000000omniphi",
+  "title": "E2E Test: Text-Only Proposal",
+  "summary": "This is a text-only E2E test proposal with no executable messages. Should be classified as LOW risk."
+}

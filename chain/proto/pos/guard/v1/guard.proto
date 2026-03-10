@@ -1,0 +1,83 @@
+syntax = "proto3";
+package pos.guard.v1;
+
+import "google/protobuf/timestamp.proto";
+import "gogoproto/gogo.proto";
+import "amino/amino.proto";
+
+option go_package = "pos/x/guard/types";
+
+// RiskTier represents the severity level of a proposal
+enum RiskTier {
+  option (gogoproto.goproto_enum_prefix) = false;
+
+  RISK_TIER_UNSPECIFIED = 0;
+  RISK_TIER_LOW = 1;
+  RISK_TIER_MED = 2;
+  RISK_TIER_HIGH = 3;
+  RISK_TIER_CRITICAL = 4;
+}
+
+// ExecutionGateState represents the current phase of proposal execution
+enum ExecutionGateState {
+  option (gogoproto.goproto_enum_prefix) = false;
+
+  EXECUTION_GATE_UNSPECIFIED = 0;
+  EXECUTION_GATE_VISIBILITY = 1;
+  EXECUTION_GATE_SHOCK_ABSORBER = 2;
+  EXECUTION_GATE_CONDITIONAL_EXECUTION = 3;
+  EXECUTION_GATE_READY = 4;
+  EXECUTION_GATE_EXECUTED = 5;
+  EXECUTION_GATE_ABORTED = 6;
+}
+
+// RiskReport contains the risk evaluation results for a proposal
+message RiskReport {
+  option (gogoproto.equal) = true;
+
+  uint64 proposal_id = 1;
+  RiskTier tier = 2;
+  uint32 score = 3; // 0-100
+  uint64 computed_delay_blocks = 4;
+  uint64 computed_threshold_bps = 5; // basis points (0-10000)
+  string reason_codes = 6; // JSON array of reason codes
+  string features_hash = 7; // SHA256 hash of features for determinism verification
+  string model_version = 8; // e.g., "rules-v1"
+  google.protobuf.Timestamp created_at = 9 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+
+  // Layer 2 AI evaluation fields
+  uint32 ai_score = 10;            // AI-computed score 0-100
+  RiskTier ai_tier = 11;           // AI-computed risk tier
+  uint64 ai_delay_blocks = 12;     // AI-recommended delay
+  uint64 ai_threshold_bps = 13;    // AI-recommended threshold
+  string ai_model_version = 14;    // AI model version used
+  string feature_schema_hash = 15; // hash of feature schema
+  string ai_features_hash = 16;    // hash of features fed to AI
+}
+
+// QueuedExecution represents a proposal in the execution queue
+message QueuedExecution {
+  option (gogoproto.equal) = true;
+
+  uint64 proposal_id = 1;
+  uint64 queued_height = 2;
+  uint64 earliest_exec_height = 3;
+  ExecutionGateState gate_state = 4;
+  uint64 gate_entered_height = 5;
+  RiskTier tier = 6;
+  uint64 required_threshold_bps = 7;
+  bool requires_second_confirm = 8;
+  bool second_confirm_received = 9;
+  string status_note = 10;
+}
+
+// AdvisoryLink stores a reference to an off-chain advisory report (Layer 3)
+message AdvisoryLink {
+  option (gogoproto.equal) = true;
+
+  uint64 proposal_id = 1;
+  string uri = 2;             // IPFS CID or HTTP URI
+  string report_hash = 3;     // SHA256 hex of report bytes
+  string reporter = 4;        // address of reporter
+  int64 created_at = 5;       // block height when submitted
+}

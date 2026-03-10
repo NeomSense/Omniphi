@@ -1,0 +1,58 @@
+syntax = "proto3";
+package pos.guard.v1;
+
+import "gogoproto/gogo.proto";
+import "amino/amino.proto";
+
+option go_package = "pos/x/guard/types";
+
+// Params defines the parameters for the guard module
+message Params {
+  option (amino.name) = "pos/x/guard/Params";
+  option (gogoproto.equal) = true;
+
+  // Base delays per tier (in blocks)
+  uint64 delay_low_blocks = 1;
+  uint64 delay_med_blocks = 2;
+  uint64 delay_high_blocks = 3;
+  uint64 delay_critical_blocks = 4;
+
+  // Gate window durations (in blocks)
+  uint64 visibility_window_blocks = 5;
+  uint64 shock_absorber_window_blocks = 6;
+
+  // Thresholds in basis points (0-10000)
+  uint64 threshold_default_bps = 7;
+  uint64 threshold_high_bps = 8;
+  uint64 threshold_critical_bps = 9;
+
+  // Treasury throttle settings
+  bool treasury_throttle_enabled = 10;
+  uint64 treasury_max_outflow_bps_per_day = 11; // max % of treasury per day
+
+  // Stability checks
+  bool enable_stability_checks = 12;
+  uint64 max_validator_churn_bps = 13; // max allowed validator power change
+
+  // AI flags (for future use)
+  bool advisory_ai_enabled = 14;
+  bool binding_ai_enabled = 15;
+  bool ai_shadow_mode = 16;
+
+  // CRITICAL tier confirmation requirements
+  bool critical_requires_second_confirm = 17;
+  uint64 critical_second_confirm_window_blocks = 18;
+
+  // Extension delays when conditions fail (in blocks)
+  uint64 extension_high_blocks = 19;
+  uint64 extension_critical_blocks = 20;
+
+  // Anti-DOS: maximum proposals processed per EndBlocker invocation
+  uint64 max_proposals_per_block = 21;
+  // Anti-DOS: maximum queue entries scanned per EndBlocker invocation
+  uint64 max_queue_scan_depth = 22;
+
+  // When true, guard receives proposals via direct keeper call from timelock
+  // instead of polling. Should be true when x/timelock is active.
+  bool timelock_integration_enabled = 23;
+}

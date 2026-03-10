@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package pos.rewardmult.module.v1;
+
+import "cosmos/app/v1alpha1/module.proto";
+
+option go_package = "pos/proto/pos/rewardmult/module/v1";
+
+// Module is the config object for the rewardmult module.
+message Module {
+  option (cosmos.app.v1alpha1.module) = {
+    go_import: "pos/x/rewardmult"
+  };
+}

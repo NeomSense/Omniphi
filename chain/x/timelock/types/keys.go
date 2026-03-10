@@ -41,6 +41,30 @@ var (
 
 	// NextOperationIDKey is the key for the next operation ID counter
 	NextOperationIDKey = []byte{0x07}
+
+	// KeyGuardianCancelCount tracks the number of cancellations by the guardian in the current window
+	KeyGuardianCancelCount = []byte{0x10}
+
+	// KeyGuardianCancelWindowStart tracks the block height when the guardian cancel window started
+	KeyGuardianCancelWindowStart = []byte{0x11}
+
+	// --- AST v2: Track system ---
+
+	// TrackKeyPrefix is the prefix for per-track configuration (Track structs).
+	// Key: TrackKeyPrefix | track_name_bytes
+	TrackKeyPrefix = []byte{0x20}
+
+	// OperationTrackKeyPrefix maps operation ID → track name + computed delay.
+	// Key: OperationTrackKeyPrefix | BigEndian(operationID)
+	OperationTrackKeyPrefix = []byte{0x21}
+
+	// TreasuryWindowKey stores the rolling 24-hour treasury outflow window.
+	// Single entry (one rolling window at a time).
+	TreasuryWindowKey = []byte{0x22}
+
+	// ParamChangeFreqKeyPrefix counts governance parameter mutation events.
+	// Key: ParamChangeFreqKeyPrefix | BigEndian(windowStartBlock)
+	ParamChangeFreqKeyPrefix = []byte{0x23}
 )
 
 // GetOperationKey returns the store key for an operation
@@ -89,4 +113,16 @@ func GetOperationByExecutableTimePrefix(beforeTime time.Time) []byte {
 	timeBz := make([]byte, 8)
 	binary.BigEndian.PutUint64(timeBz, uint64(beforeTime.Unix()))
 	return append(OperationByExecutableTimeKeyPrefix, timeBz...)
+}
+
+// GetTrackKey returns the store key for a track by name.
+func GetTrackKey(name string) []byte {
+	return append(TrackKeyPrefix, []byte(name)...)
+}
+
+// GetOperationTrackKey returns the store key mapping an operation to its track record.
+func GetOperationTrackKey(operationID uint64) []byte {
+	bz := make([]byte, 8)
+	binary.BigEndian.PutUint64(bz, operationID)
+	return append(OperationTrackKeyPrefix, bz...)
 }

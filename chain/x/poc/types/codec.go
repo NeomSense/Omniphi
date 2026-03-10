@@ -24,6 +24,12 @@ func RegisterInterfaces(registry types.InterfaceRegistry) {
 		&MsgEndorse{},
 		&MsgWithdrawPOCRewards{},
 		&MsgUpdateParams{},
+		&MsgSubmitSimilarityCommitment{},
+		&MsgStartReview{},
+		&MsgCastReviewVote{},
+		&MsgFinalizeReview{},
+		&MsgAppealReview{},
+		&MsgResolveAppeal{},
 	)
 
 	msgservice.RegisterMsgServiceDesc(registry, &_Msg_serviceDesc)

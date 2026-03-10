@@ -1,0 +1,44 @@
+{
+  "feature_order": [
+    "is_upgrade",
+    "is_param_change",
+    "is_treasury_spend",
+    "is_slashing_change",
+    "is_poc_rule_change",
+    "is_poseq_rule_change",
+    "treasury_spend_bps",
+    "modules_touched_count",
+    "touches_consensus_critical",
+    "reduces_slashing",
+    "changes_validator_rules"
+  ],
+  "schema_hash": "ac76dce03713204c4729dfbe21cb16de3fc585c8fd1929436a332e2ab58596bf",
+  "coef": [
+    7.430721862112097,
+    -1.4141865818187866,
+    -5.198686162444537,
+    -0.046371675245595066,
+    -1.5570058000021794,
+    -1.5095433280809922,
+    0.016475269461911007,
+    0.17195626565084582,
+    11.294630740034679,
+    9.906754846434454,
+    0.4328363677167988
+  ],
+  "intercept": -5.172852808472241,
+  "seed": 42,
+  "n_rows": 20000,
+  "train_accuracy": 0.999062,
+  "test_accuracy": 0.99875,
+  "confusion_matrix": [
+    [
+      2610,
+      0
+    ],
+    [
+      5,
+      1385
+    ]
+  ]
+}

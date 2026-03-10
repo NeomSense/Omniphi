@@ -19,7 +19,7 @@ func TestTC034_ContributionSubmission(t *testing.T) {
 	tc := SetupTestContext(t)
 
 	// Contributor account
-	contributor := sdk.AccAddress("contributor_______")
+	contributor := sdk.AccAddress("contributor_________")
 	tc.BankKeeper.SetBalance(tc.Ctx, contributor, sdk.NewCoins(sdk.NewCoin(TestDenom, math.NewInt(1000000))))
 
 	// Submit contribution
@@ -43,18 +43,18 @@ func TestTC035_EndorsementMixedVotes(t *testing.T) {
 	tc := SetupTestContext(t)
 
 	contributionID := "contrib-002"
-	contributor := sdk.AccAddress("contributor_______")
+	contributor := sdk.AccAddress("contributor_________")
 
 	// Submit contribution
 	tc.PoCKeeper.SubmitContribution(tc.Ctx, contributionID, contributor, "QmHash")
 
 	// 5 validators endorse: 3 yes, 2 no (60% - should fail to reach threshold)
 	// But let's test 4 yes, 1 no (80% - should pass)
-	tc.PoCKeeper.Endorse(tc.Ctx, contributionID, sdk.ValAddress("val1____________"), true)
-	tc.PoCKeeper.Endorse(tc.Ctx, contributionID, sdk.ValAddress("val2____________"), true)
-	tc.PoCKeeper.Endorse(tc.Ctx, contributionID, sdk.ValAddress("val3____________"), true)
-	tc.PoCKeeper.Endorse(tc.Ctx, contributionID, sdk.ValAddress("val4____________"), true)
-	tc.PoCKeeper.Endorse(tc.Ctx, contributionID, sdk.ValAddress("val5____________"), false)
+	tc.PoCKeeper.Endorse(tc.Ctx, contributionID, sdk.ValAddress("val1________________"), true)
+	tc.PoCKeeper.Endorse(tc.Ctx, contributionID, sdk.ValAddress("val2________________"), true)
+	tc.PoCKeeper.Endorse(tc.Ctx, contributionID, sdk.ValAddress("val3________________"), true)
+	tc.PoCKeeper.Endorse(tc.Ctx, contributionID, sdk.ValAddress("val4________________"), true)
+	tc.PoCKeeper.Endorse(tc.Ctx, contributionID, sdk.ValAddress("val5________________"), false)
 
 	// Process endorsements
 	tc.PoCKeeper.ProcessEndorsements(tc.Ctx, contributionID)
@@ -71,17 +71,17 @@ func TestTC036_EndorsementRejection(t *testing.T) {
 	tc := SetupTestContext(t)
 
 	contributionID := "contrib-003"
-	contributor := sdk.AccAddress("contributor_______")
+	contributor := sdk.AccAddress("contributor_________")
 
 	// Submit contribution
 	tc.PoCKeeper.SubmitContribution(tc.Ctx, contributionID, contributor, "QmHash")
 
 	// 5 validators endorse: 2 yes, 3 no (40% - below threshold)
-	tc.PoCKeeper.Endorse(tc.Ctx, contributionID, sdk.ValAddress("val1____________"), true)
-	tc.PoCKeeper.Endorse(tc.Ctx, contributionID, sdk.ValAddress("val2____________"), true)
-	tc.PoCKeeper.Endorse(tc.Ctx, contributionID, sdk.ValAddress("val3____________"), false)
-	tc.PoCKeeper.Endorse(tc.Ctx, contributionID, sdk.ValAddress("val4____________"), false)
-	tc.PoCKeeper.Endorse(tc.Ctx, contributionID, sdk.ValAddress("val5____________"), false)
+	tc.PoCKeeper.Endorse(tc.Ctx, contributionID, sdk.ValAddress("val1________________"), true)
+	tc.PoCKeeper.Endorse(tc.Ctx, contributionID, sdk.ValAddress("val2________________"), true)
+	tc.PoCKeeper.Endorse(tc.Ctx, contributionID, sdk.ValAddress("val3________________"), false)
+	tc.PoCKeeper.Endorse(tc.Ctx, contributionID, sdk.ValAddress("val4________________"), false)
+	tc.PoCKeeper.Endorse(tc.Ctx, contributionID, sdk.ValAddress("val5________________"), false)
 
 	// Process endorsements
 	tc.PoCKeeper.ProcessEndorsements(tc.Ctx, contributionID)
@@ -98,7 +98,7 @@ func TestTC037_CreditMinting(t *testing.T) {
 	tc := SetupTestContext(t)
 
 	contributionID := "contrib-004"
-	contributor := sdk.AccAddress("contributor_______")
+	contributor := sdk.AccAddress("contributor_________")
 
 	// Record initial credits
 	initialCredits := tc.PoCKeeper.GetCredits(tc.Ctx, contributor)
@@ -128,7 +128,7 @@ func TestTC038_NoCreditForRejected(t *testing.T) {
 	tc := SetupTestContext(t)
 
 	contributionID := "contrib-005"
-	contributor := sdk.AccAddress("contributor_______")
+	contributor := sdk.AccAddress("contributor_________")
 
 	// Record initial credits
 	initialCredits := tc.PoCKeeper.GetCredits(tc.Ctx, contributor)
@@ -160,7 +160,7 @@ func TestTC038_NoCreditForRejected(t *testing.T) {
 func TestTC039_EffectivePowerBase(t *testing.T) {
 	tc := SetupTestContext(t)
 
-	_ = sdk.ValAddress("validator1_________") // Not used in mock implementation
+	_ = sdk.ValAddress("validator1__________") // Not used in mock implementation
 	stake := math.NewInt(100_000_000_000)     // 100k OMNI
 	credits := int64(0)
 	alpha := math.LegacyMustNewDecFromStr("0.1")
@@ -262,8 +262,8 @@ func TestTC044_FraudFalseEndorsement(t *testing.T) {
 	tc := SetupTestContext(t)
 
 	contributionID := "contrib-fraud-001"
-	contributor := sdk.AccAddress("contributor_______")
-	fraudValidator := sdk.ValAddress("fraud_validator___")
+	contributor := sdk.AccAddress("contributor_________")
+	fraudValidator := sdk.ValAddress("fraud_validator_____")
 
 	// Submit invalid contribution (marked as fraudulent)
 	tc.PoCKeeper.SubmitContribution(tc.Ctx, contributionID, contributor, "InvalidHash")
@@ -288,8 +288,8 @@ func TestTC045_FraudContradictoryVotes(t *testing.T) {
 	tc := SetupTestContext(t)
 
 	contributionID := "contrib-006"
-	contributor := sdk.AccAddress("contributor_______")
-	validator := sdk.ValAddress("validator1_________")
+	contributor := sdk.AccAddress("contributor_________")
+	validator := sdk.ValAddress("validator1__________")
 
 	// Submit contribution
 	tc.PoCKeeper.SubmitContribution(tc.Ctx, contributionID, contributor, "QmHash")
@@ -310,7 +310,7 @@ func TestTC046_RateLimitingBurst(t *testing.T) {
 	tc := SetupTestContext(t)
 
 	perBlockQuota := 10 // Max 10 contributions per block
-	contributor := sdk.AccAddress("contributor_______")
+	contributor := sdk.AccAddress("contributor_________")
 
 	// Submit quota + 1 contributions in same block
 	for i := 0; i < perBlockQuota+1; i++ {
@@ -332,7 +332,7 @@ func TestTC046_RateLimitingBurst(t *testing.T) {
 func TestTC047_RateLimitingSpam(t *testing.T) {
 	tc := SetupTestContext(t)
 
-	contributor := sdk.AccAddress("contributor_______")
+	contributor := sdk.AccAddress("contributor_________")
 	initialBalance := math.NewInt(500_000_000) // 500 OMNI (enough for ~5000 submissions)
 	tc.BankKeeper.SetBalance(tc.Ctx, contributor, sdk.NewCoins(sdk.NewCoin(TestDenom, initialBalance)))
 
@@ -366,7 +366,7 @@ func TestTC047_RateLimitingSpam(t *testing.T) {
 func TestTC048_CreditDecay(t *testing.T) {
 	tc := SetupTestContext(t)
 
-	contributor := sdk.AccAddress("contributor_______")
+	contributor := sdk.AccAddress("contributor_________")
 	initialCredits := int64(100)
 	tc.PoCKeeper.SetCredits(tc.Ctx, contributor, initialCredits)
 
@@ -391,7 +391,7 @@ func TestTC048_CreditDecay(t *testing.T) {
 func TestTC049_CreditNonNegative(t *testing.T) {
 	tc := SetupTestContext(t)
 
-	contributor := sdk.AccAddress("contributor_______")
+	contributor := sdk.AccAddress("contributor_________")
 	initialCredits := int64(10)
 	tc.PoCKeeper.SetCredits(tc.Ctx, contributor, initialCredits)
 

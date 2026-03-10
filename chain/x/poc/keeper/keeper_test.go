@@ -2,6 +2,7 @@ package keeper_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"cosmossdk.io/log"
@@ -24,20 +25,38 @@ import (
 )
 
 type KeeperTestFixture struct {
-	ctx    sdk.Context
-	keeper keeper.Keeper
-	cdc    codec.Codec
+	ctx           sdk.Context
+	keeper        keeper.Keeper
+	cdc           codec.Codec
+	accountKeeper *mockAccountKeeper
+	bankKeeper    *mockTrackingBankKeeper
 }
 
 // Mock interfaces for testing
-type mockAccountKeeper struct{}
-
-func (m mockAccountKeeper) GetModuleAddress(moduleName string) sdk.AccAddress {
-	return sdk.AccAddress("module_address____")
+type mockAccountKeeper struct {
+	accounts map[string]sdk.AccountI
 }
 
-func (m mockAccountKeeper) GetModuleAccount(ctx context.Context, moduleName string) sdk.ModuleAccountI {
+func (m *mockAccountKeeper) GetModuleAddress(moduleName string) sdk.AccAddress {
+	return sdk.AccAddress("module_address______")
+}
+
+func (m *mockAccountKeeper) GetModuleAccount(ctx context.Context, moduleName string) sdk.ModuleAccountI {
 	return nil
+}
+
+func (m *mockAccountKeeper) GetAccount(ctx context.Context, addr sdk.AccAddress) sdk.AccountI {
+	if m.accounts == nil {
+		return nil
+	}
+	return m.accounts[addr.String()]
+}
+
+func (m *mockAccountKeeper) SetAccount(acc sdk.AccountI) {
+	if m.accounts == nil {
+		m.accounts = make(map[string]sdk.AccountI)
+	}
+	m.accounts[acc.GetAddress().String()] = acc
 }
 
 type mockBankKeeper struct{}
@@ -59,6 +78,82 @@ func (m mockBankKeeper) MintCoins(ctx context.Context, moduleName string, amt sd
 }
 
 func (m mockBankKeeper) BurnCoins(ctx context.Context, moduleName string, amt sdk.Coins) error {
+	return nil
+}
+
+// mockTrackingBankKeeper tracks balances so tests can verify mint/send/burn flows.
+type mockTrackingBankKeeper struct {
+	balances map[string]map[string]math.Int // addr -> denom -> amount
+}
+
+func newMockTrackingBankKeeper() *mockTrackingBankKeeper {
+	return &mockTrackingBankKeeper{balances: make(map[string]map[string]math.Int)}
+}
+
+func (m *mockTrackingBankKeeper) getOrInit(addr string, denom string) math.Int {
+	if m.balances[addr] == nil {
+		m.balances[addr] = make(map[string]math.Int)
+	}
+	if bal, ok := m.balances[addr][denom]; ok {
+		return bal
+	}
+	return math.ZeroInt()
+}
+
+func (m *mockTrackingBankKeeper) setBalance(addr string, denom string, amt math.Int) {
+	if m.balances[addr] == nil {
+		m.balances[addr] = make(map[string]math.Int)
+	}
+	m.balances[addr][denom] = amt
+}
+
+func (m *mockTrackingBankKeeper) GetBalance(ctx context.Context, addr sdk.AccAddress, denom string) sdk.Coin {
+	return sdk.NewCoin(denom, m.getOrInit(addr.String(), denom))
+}
+
+func (m *mockTrackingBankKeeper) SendCoinsFromModuleToAccount(ctx context.Context, senderModule string, recipientAddr sdk.AccAddress, amt sdk.Coins) error {
+	moduleAddr := sdk.AccAddress("module_address______").String()
+	for _, coin := range amt {
+		src := m.getOrInit(moduleAddr, coin.Denom)
+		if src.LT(coin.Amount) {
+			return fmt.Errorf("insufficient module balance")
+		}
+		m.setBalance(moduleAddr, coin.Denom, src.Sub(coin.Amount))
+		dst := m.getOrInit(recipientAddr.String(), coin.Denom)
+		m.setBalance(recipientAddr.String(), coin.Denom, dst.Add(coin.Amount))
+	}
+	return nil
+}
+
+func (m *mockTrackingBankKeeper) SendCoinsFromAccountToModule(ctx context.Context, senderAddr sdk.AccAddress, recipientModule string, amt sdk.Coins) error {
+	moduleAddr := sdk.AccAddress("module_address______").String()
+	for _, coin := range amt {
+		src := m.getOrInit(senderAddr.String(), coin.Denom)
+		if src.LT(coin.Amount) {
+			return fmt.Errorf("insufficient balance")
+		}
+		m.setBalance(senderAddr.String(), coin.Denom, src.Sub(coin.Amount))
+		dst := m.getOrInit(moduleAddr, coin.Denom)
+		m.setBalance(moduleAddr, coin.Denom, dst.Add(coin.Amount))
+	}
+	return nil
+}
+
+func (m *mockTrackingBankKeeper) MintCoins(ctx context.Context, moduleName string, amt sdk.Coins) error {
+	moduleAddr := sdk.AccAddress("module_address______").String()
+	for _, coin := range amt {
+		bal := m.getOrInit(moduleAddr, coin.Denom)
+		m.setBalance(moduleAddr, coin.Denom, bal.Add(coin.Amount))
+	}
+	return nil
+}
+
+func (m *mockTrackingBankKeeper) BurnCoins(ctx context.Context, moduleName string, amt sdk.Coins) error {
+	moduleAddr := sdk.AccAddress("module_address______").String()
+	for _, coin := range amt {
+		bal := m.getOrInit(moduleAddr, coin.Denom)
+		m.setBalance(moduleAddr, coin.Denom, bal.Sub(coin.Amount))
+	}
 	return nil
 }
 
@@ -111,7 +206,10 @@ func SetupKeeperTest(t *testing.T) *KeeperTestFixture {
 	ctx := sdk.NewContext(stateStore, cmtproto.Header{}, false, log.NewNopLogger())
 
 	// Create authority address
-	authority := sdk.AccAddress("gov_______________").String()
+	authority := sdk.AccAddress("gov_________________").String()
+
+	accountKeeper := &mockAccountKeeper{}
+	bankKeeper := newMockTrackingBankKeeper()
 
 	// Create PoC keeper with mocks (order: storeService, tStoreKey, logger, authority, staking, bank, account)
 	pocKeeper := keeper.NewKeeper(
@@ -121,8 +219,8 @@ func SetupKeeperTest(t *testing.T) *KeeperTestFixture {
 		log.NewNopLogger(),
 		authority,
 		mockStakingKeeper{},
-		mockBankKeeper{},
-		mockAccountKeeper{},
+		bankKeeper,
+		accountKeeper,
 	)
 
 	// Initialize PoC params
@@ -134,8 +232,10 @@ func SetupKeeperTest(t *testing.T) *KeeperTestFixture {
 	require.NoError(t, err)
 
 	return &KeeperTestFixture{
-		ctx:    ctx,
-		keeper: pocKeeper,
-		cdc:    cdc,
+		ctx:           ctx,
+		keeper:        pocKeeper,
+		cdc:           cdc,
+		accountKeeper: accountKeeper,
+		bankKeeper:    bankKeeper,
 	}
 }

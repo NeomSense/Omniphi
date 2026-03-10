@@ -266,3 +266,54 @@ class AlertType(str, enum.Enum):
     SLASHED = "slashed"                # Validator slashed
     CERTIFICATE_EXPIRY = "certificate_expiry"  # TLS cert expiring
     UPGRADE_REQUIRED = "upgrade_required"      # Chain upgrade needed
+
+
+# =============================================================================
+# SECURITY & CREDENTIAL ENUMS
+# =============================================================================
+
+class APIKeyStatus(str, enum.Enum):
+    """
+    API key lifecycle status.
+
+    Flow: ACTIVE -> ROTATING -> EXPIRED or REVOKED
+    """
+    ACTIVE = "active"          # Currently valid for use
+    ROTATING = "rotating"      # In rotation process (overlap period)
+    EXPIRED = "expired"        # Reached expiration date
+    REVOKED = "revoked"        # Manually revoked before expiration
+
+
+class CredentialType(str, enum.Enum):
+    """Types of credentials that can be rotated."""
+    API_KEY = "api_key"                    # Internal API keys
+    MASTER_KEY = "master_key"              # Master API key
+    AWS_IAM = "aws_iam"                    # AWS IAM credentials
+    AWS_SESSION = "aws_session"            # AWS temporary session tokens
+    DIGITALOCEAN_TOKEN = "digitalocean_token"  # DigitalOcean API tokens
+    GCP_SERVICE_ACCOUNT = "gcp_service_account"  # GCP service account keys
+    DATABASE_PASSWORD = "database_password"  # Database credentials
+    JWT_SECRET = "jwt_secret"              # JWT signing secret
+    ENCRYPTION_KEY = "encryption_key"      # Data encryption keys
+
+
+class RotationStatus(str, enum.Enum):
+    """
+    Credential rotation lifecycle status.
+
+    Standard flow:
+    PENDING -> GENERATING -> DEPLOYING -> TESTING -> ACTIVE -> FINALIZING -> COMPLETED
+
+    Failure flows:
+    Any stage -> FAILED
+    Any stage -> ROLLED_BACK
+    """
+    PENDING = "pending"            # Scheduled but not started
+    GENERATING = "generating"      # Creating new credentials
+    DEPLOYING = "deploying"        # Deploying to systems
+    TESTING = "testing"            # Validating new credentials
+    ACTIVE = "active"              # Overlap period (both valid)
+    FINALIZING = "finalizing"      # Revoking old credentials
+    COMPLETED = "completed"        # Successfully completed
+    FAILED = "failed"              # Rotation failed
+    ROLLED_BACK = "rolled_back"    # Reverted to old credentials

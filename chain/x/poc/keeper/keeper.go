@@ -89,6 +89,22 @@ type Keeper struct {
 	// If nil, identity checks will fail-safe and reject submissions requiring identity
 	identityKeeper types.IdentityKeeper
 
+	// OPTIONAL: PoR keeper for finality integration (v2 hardening)
+	// If nil, direct PoV finality is used (verified = final)
+	porKeeper types.PorKeeper
+
+	// OPTIONAL: Epochs keeper for epoch tracking (v2 hardening)
+	// If nil, epoch-based caps use block-based approximation
+	epochsKeeper types.EpochsKeeper
+
+	// OPTIONAL: Slashing keeper for fraud endorsement slashing
+	// If nil, only soft penalties (weight reduction, bonus blocking) are applied
+	slashingKeeper types.SlashingKeeper
+
+	// OPTIONAL: RewardMult keeper for validator reward multiplier integration
+	// If nil, all validators get neutral 1.0x multiplier
+	rewardmultKeeper types.RewardmultKeeper
+
 	// PERFORMANCE OPTIMIZATION: Cache validator power to reduce staking keeper lookups
 	valCache *validatorCache
 }
@@ -126,6 +142,40 @@ func NewKeeper(
 // This should be called during app initialization if x/identity module is available
 func (k *Keeper) SetIdentityKeeper(identityKeeper types.IdentityKeeper) {
 	k.identityKeeper = identityKeeper
+}
+
+// SetPorKeeper sets the PoR keeper (optional dependency for v2 hardening)
+// This should be called during app initialization if x/por module is available
+func (k *Keeper) SetPorKeeper(porKeeper types.PorKeeper) {
+	k.porKeeper = porKeeper
+}
+
+// SetEpochsKeeper sets the epochs keeper (optional dependency for v2 hardening)
+// This should be called during app initialization if x/epochs module is available
+func (k *Keeper) SetEpochsKeeper(epochsKeeper types.EpochsKeeper) {
+	k.epochsKeeper = epochsKeeper
+}
+
+// SetSlashingKeeper sets the slashing keeper (optional dependency for fraud endorsement slashing)
+// This should be called during app initialization if x/slashing module is available
+func (k *Keeper) SetSlashingKeeper(slashingKeeper types.SlashingKeeper) {
+	k.slashingKeeper = slashingKeeper
+}
+
+// SetRewardMultKeeper sets the rewardmult keeper (optional dependency for Layer 4 economic integration)
+// This should be called during app initialization after both keepers are created
+func (k *Keeper) SetRewardMultKeeper(rmKeeper types.RewardmultKeeper) {
+	k.rewardmultKeeper = rmKeeper
+}
+
+// GetCurrentEpoch returns the current epoch (uses epochs keeper if available, otherwise approximates)
+func (k Keeper) GetCurrentEpoch(ctx context.Context) uint64 {
+	if k.epochsKeeper != nil {
+		return k.epochsKeeper.GetCurrentEpoch(ctx)
+	}
+	// Fallback: approximate epoch based on block height (100 blocks per epoch)
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	return uint64(sdkCtx.BlockHeight() / 100)
 }
 
 // GetAuthority returns the module's authority
@@ -180,6 +230,32 @@ func (k Keeper) SetContribution(ctx context.Context, contribution types.Contribu
 	}
 
 	return nil
+}
+
+// TransitionClaimStatus validates and applies a unified claim status transition.
+// Best-effort: logs errors but never blocks the calling operation.
+func (k Keeper) TransitionClaimStatus(ctx context.Context, contributionID uint64, newStatus types.ClaimStatus) {
+	contribution, found := k.GetContribution(ctx, contributionID)
+	if !found {
+		return
+	}
+
+	currentStatus := types.ClaimStatus(contribution.ClaimStatus)
+	if err := types.ValidateClaimTransition(currentStatus, newStatus); err != nil {
+		k.Logger().Error("invalid claim status transition",
+			"contribution_id", contributionID,
+			"from", currentStatus.String(),
+			"to", newStatus.String(),
+			"error", err.Error())
+		return
+	}
+
+	contribution.ClaimStatus = uint32(newStatus)
+	if err := k.SetContribution(ctx, contribution); err != nil {
+		k.Logger().Error("failed to update claim status",
+			"contribution_id", contributionID,
+			"error", err.Error())
+	}
 }
 
 // GetContribution retrieves a contribution by ID
@@ -471,3 +547,4 @@ func (k Keeper) GetValidatorCached(ctx context.Context, valAddr sdk.ValAddress) 
 func (k Keeper) ClearValidatorCache() {
 	k.valCache.clear()
 }
+

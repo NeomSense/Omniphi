@@ -47,9 +47,17 @@ import (
 
 	"pos/docs"
 
-	feegrantkeeper "cosmossdk.io/x/feegrant/keeper"
 	feemarketkeeper "pos/x/feemarket/keeper"
+	guardkeeper "pos/x/guard/keeper"
+	pockeeper "pos/x/poc/keeper"
+	porkeeper "pos/x/por/keeper"
+	repgovkeeper "pos/x/repgov/keeper"
+	rewardmultkeeper "pos/x/rewardmult/keeper"
+	royaltykeeper "pos/x/royalty/keeper"
 	timelockkeeper "pos/x/timelock/keeper"
+	ucikeeper "pos/x/uci/keeper"
+
+	feegrantkeeper "cosmossdk.io/x/feegrant/keeper"
 )
 
 const (
@@ -98,7 +106,14 @@ type App struct {
 	ParamsKeeper          paramskeeper.Keeper
 	FeegrantKeeper        feegrantkeeper.Keeper
 	FeemarketKeeper       feemarketkeeper.Keeper
+	PocKeeper             *pockeeper.Keeper
+	PorKeeper             porkeeper.Keeper
+	RewardmultKeeper      *rewardmultkeeper.Keeper
+	GuardKeeper           *guardkeeper.Keeper
 	TimelockKeeper        *timelockkeeper.Keeper
+	RepgovKeeper          *repgovkeeper.Keeper
+	RoyaltyKeeper         *royaltykeeper.Keeper
+	UCIKeeper             *ucikeeper.Keeper
 
 	// ibc keepers
 	IBCKeeper           *ibckeeper.Keeper
@@ -181,7 +196,14 @@ func New(
 		&app.ParamsKeeper,
 		&app.FeegrantKeeper,
 		&app.FeemarketKeeper,
+		&app.PocKeeper,
+		&app.PorKeeper,
+		&app.RewardmultKeeper,
+		&app.GuardKeeper,
 		&app.TimelockKeeper,
+		&app.RepgovKeeper,
+		&app.RoyaltyKeeper,
+		&app.UCIKeeper,
 	); err != nil {
 		panic(err)
 	}
@@ -196,6 +218,29 @@ func New(
 	// Wire up timelock with gov keeper for proposal interception
 	// Use adapter to provide clean interface for accessing gov proposals
 	app.TimelockKeeper.SetGovKeeper(timelockkeeper.NewGovKeeperAdapter(app.GovKeeper))
+
+	// Wire guard keeper into timelock so timelock can notify guard when proposals are queued.
+	// Guard's OnTimelockQueued performs risk evaluation and queues for guarded execution.
+	app.TimelockKeeper.SetGuardKeeper(app.GuardKeeper)
+
+	// Wire message router into guard keeper so it can dispatch proposal messages.
+	// MsgServiceRouter is only available after appBuilder.Build().
+	app.GuardKeeper.SetRouter(app.MsgServiceRouter())
+
+	// Wire timelock keeper into guard for track freeze checks
+	app.GuardKeeper.SetTimelockKeeper(app.TimelockKeeper)
+
+	// Wire PoC ↔ RewardMult bidirectional integration (Layer 4 economic adjustment)
+	// RewardMult reads quality metrics from PoC; PoC reads effective multipliers from RewardMult
+	app.RewardmultKeeper.SetPocKeeper(app.PocKeeper)
+	app.PocKeeper.SetRewardMultKeeper(app.RewardmultKeeper)
+
+	// Wire Layer 5 modules: reputation governance, royalty streams, and UCI
+	// Each module uses a PoC adapter that translates between the PoC keeper's
+	// concrete types and the module's expected interface types.
+	app.RepgovKeeper.SetPocKeeper(NewRepgovPocKeeperAdapter(app.PocKeeper))
+	app.RoyaltyKeeper.SetPocKeeper(NewRoyaltyPocKeeperAdapter(app.PocKeeper))
+	app.UCIKeeper.SetPocKeeper(NewUCIPocKeeperAdapter(app.PocKeeper))
 
 	// Note: Gov hooks are automatically set by depinject via GovHooksWrapper
 	// See: x/timelock/module/depinject.go:69

@@ -23,6 +23,14 @@ class AuditAction(str, enum.Enum):
     STOP_NODE = "stop_node"
     UPDATE_SETTINGS = "update_settings"
     ACKNOWLEDGE_ALERT = "acknowledge_alert"
+    # API Key & Credential Management (HIGH-1 remediation)
+    GENERATE_API_KEY = "generate_api_key"
+    REVOKE_API_KEY = "revoke_api_key"
+    ROTATE_API_KEY = "rotate_api_key"
+    START_CREDENTIAL_ROTATION = "start_credential_rotation"
+    COMPLETE_CREDENTIAL_ROTATION = "complete_credential_rotation"
+    ROLLBACK_CREDENTIAL_ROTATION = "rollback_credential_rotation"
+    EMERGENCY_CREDENTIAL_REVOCATION = "emergency_credential_revocation"
 
 
 class AuditLog(Base):

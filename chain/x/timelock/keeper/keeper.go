@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -39,13 +40,16 @@ type Keeper struct {
 	// Gov keeper reference for accessing proposals (set after initialization)
 	govKeeper GovKeeperI
 
+	// Guard keeper reference for notifying guard module of queued proposals
+	guardKeeper types.GuardKeeperI
+
 	// Collections for type-safe state management
-	Schema            collections.Schema
-	Params            collections.Item[types.Params]
-	Operations        collections.Map[uint64, types.QueuedOperation]
-	OperationsByHash  collections.Map[string, uint64]
-	NextOperationID   collections.Sequence
-	PendingProposals  collections.Map[uint64, bool] // Proposals pending timelock processing
+	Schema           collections.Schema
+	Params           collections.Item[types.Params]
+	Operations       collections.Map[uint64, types.QueuedOperation]
+	OperationsByHash collections.Map[string, uint64]
+	NextOperationID  collections.Sequence
+	PendingProposals collections.Map[uint64, bool] // Proposals pending timelock processing
 }
 
 // NewKeeper creates a new timelock keeper
@@ -122,6 +126,12 @@ func (k Keeper) Logger() log.Logger {
 // This must be called after keeper initialization in app.go
 func (k *Keeper) SetGovKeeper(govKeeper GovKeeperI) {
 	k.govKeeper = govKeeper
+}
+
+// SetGuardKeeper sets the guard keeper reference for proposal notifications.
+// This must be called after keeper initialization in app.go.
+func (k *Keeper) SetGuardKeeper(gk types.GuardKeeperI) {
+	k.guardKeeper = gk
 }
 
 // ----------------------------------------------------------------------------
@@ -218,7 +228,19 @@ func (k Keeper) SetOperation(ctx context.Context, op *types.QueuedOperation) err
 	return nil
 }
 
-// QueueOperation creates and stores a new queued operation
+// QueueOperation creates and stores a new queued operation.
+//
+// AST v2 extension: before queuing, this method:
+//  1. Resolves the execution track for the proposal's message types.
+//  2. Checks whether the track is paused (blocks new queuing).
+//  3. Computes the adaptive delay via the multi-factor formula.
+//  4. Records treasury outflow (for proposals on TRACK_TREASURY) to the
+//     rolling 24-hour window and applies escalation if threshold exceeded.
+//  5. Stores an immutable OperationTrackRecord alongside the operation so
+//     that track classification cannot be re-evaluated or modified later.
+//
+// All existing behaviour (hash computation, duplicate detection, event emission)
+// is preserved. The function signature is unchanged to maintain call-site compatibility.
 func (k Keeper) QueueOperation(
 	ctx context.Context,
 	proposalID uint64,
@@ -236,20 +258,113 @@ func (k Keeper) QueueOperation(
 		return nil, types.ErrNoMessages
 	}
 
+	// --- AST v2: Track resolution and paused-gate check ---
+
+	// Extract type URLs for classification (does not require proto decode)
+	msgTypeURLs := make([]string, len(messages))
+	for i, msg := range messages {
+		msgTypeURLs[i] = sdk.MsgTypeURL(msg)
+	}
+
+	track, err := k.TrackForProposal(ctx, msgTypeURLs)
+	if err != nil {
+		// Non-fatal: fall back to TRACK_OTHER and log
+		k.logger.Warn("track resolution failed, using TRACK_OTHER",
+			"proposal_id", proposalID, "error", err)
+		track = types.Track{
+			Name:       string(types.TrackOther),
+			Multiplier: types.DelayPrecision,
+		}
+	}
+
+	// Gate: paused track blocks new queuing
+	if track.Paused {
+		return nil, fmt.Errorf("%w: track %s is paused", types.ErrTrackPaused, track.Name)
+	}
+
+	// --- AST v2: Cumulative treasury outflow detection ---
+	cumulativeEscalate := false
+	if track.Name == string(types.TrackTreasury) {
+		// We don't have the exact spend bps here (that's in the guard risk report),
+		// so we record a sentinel value and rely on the guard's risk tier for the
+		// economic multiplier. Escalation tracking is still valuable at this layer
+		// because timelock sees every treasury proposal regardless of guard status.
+		//
+		// We use 500 bps (5%) as a conservative floor when the exact amount is
+		// unknown; the guard's EconomicImpactMultiplier handles the precise figure.
+		_, cumulativeEscalate, err = k.RecordTreasuryOutflow(ctx, 500)
+		if err != nil {
+			k.logger.Warn("failed to record treasury outflow (non-fatal)",
+				"proposal_id", proposalID, "error", err)
+			cumulativeEscalate = false
+		}
+
+		if cumulativeEscalate {
+			k.logger.Warn("cumulative 24h treasury outflow threshold exceeded — escalating delay",
+				"proposal_id", proposalID)
+			sdkCtx.EventManager().EmitEvent(
+				sdk.NewEvent(
+					"cumulative_risk_escalation",
+					sdk.NewAttribute("proposal_id", fmt.Sprintf("%d", proposalID)),
+					sdk.NewAttribute("track", track.Name),
+					sdk.NewAttribute("reason", "cumulative_24h_treasury_threshold_exceeded"),
+				),
+			)
+		}
+	}
+
+	// --- AST v2: Param mutation frequency for TRACK_PARAM_CHANGE ---
+	mutationFreqExceeded := false
+	if track.Name == string(types.TrackParamChange) || track.Name == string(types.TrackConsensus) {
+		mutationFreqExceeded, err = k.IncrementParamMutationCount(ctx)
+		if err != nil {
+			k.logger.Warn("failed to update param mutation counter (non-fatal)",
+				"proposal_id", proposalID, "error", err)
+			mutationFreqExceeded = false
+		}
+		if mutationFreqExceeded {
+			k.logger.Warn("param mutation frequency threshold exceeded — applying extra delay",
+				"proposal_id", proposalID)
+		}
+	}
+
+	// --- AST v2: Adaptive delay computation ---
+	// riskTierStr is empty here because the guard hasn't scored this proposal yet
+	// (guard is notified after queuing).  We pass "" which maps to MED (1.5×) as
+	// a safe conservative default.  The guard's own delay (block-based) is additive
+	// on top of this time-based delay.
+	adaptiveDelay := k.ComputeAdaptiveDelay(
+		params.MinDelaySeconds,
+		"", // risk tier not yet available; guard will add block-based delay
+		0,  // economic bps not yet known; escalation handled separately above
+		track,
+		cumulativeEscalate,
+		mutationFreqExceeded,
+	)
+
+	k.logger.Info("adaptive delay computed for proposal",
+		"proposal_id", proposalID,
+		"track", track.Name,
+		"base_delay_seconds", params.MinDelaySeconds,
+		"adaptive_delay_seconds", adaptiveDelay,
+		"cumulative_escalate", cumulativeEscalate,
+		"mutation_freq_exceeded", mutationFreqExceeded,
+	)
+
 	// Get next operation ID
 	opID, err := k.GetNextOperationID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// Create the operation
+	// Create the operation using the adaptive delay
 	op, err := types.NewQueuedOperation(
 		opID,
 		proposalID,
 		messages,
 		executor,
 		sdkCtx.BlockTime(),
-		params.MinDelaySeconds,
+		adaptiveDelay,
 		params.GracePeriodSeconds,
 		k.cdc,
 	)
@@ -272,15 +387,30 @@ func (k Keeper) QueueOperation(
 		return nil, err
 	}
 
+	// --- AST v2: Persist immutable track record ---
+	trackRecord := types.OperationTrackRecord{
+		OperationID:          opID,
+		TrackName:            track.Name,
+		ComputedDelaySeconds: adaptiveDelay,
+	}
+	if err := k.SetOperationTrackRecord(ctx, trackRecord); err != nil {
+		// Non-fatal: operation is already stored. Log and continue.
+		k.logger.Error("failed to store operation track record (non-fatal)",
+			"operation_id", opID, "error", err)
+	}
+
 	k.logger.Info("operation queued",
 		"operation_id", op.Id,
 		"proposal_id", proposalID,
+		"track", track.Name,
+		"track_multiplier", track.Multiplier,
+		"adaptive_delay_seconds", adaptiveDelay,
 		"executable_at", op.ExecutableTime(),
 		"expires_at", op.ExpiresTime(),
 		"hash", hashStr,
 	)
 
-	// Emit event
+	// Emit enriched event (backward-compatible: all original attributes preserved)
 	sdkCtx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			"operation_queued",
@@ -289,6 +419,10 @@ func (k Keeper) QueueOperation(
 			sdk.NewAttribute("executable_at", op.ExecutableTime().String()),
 			sdk.NewAttribute("expires_at", op.ExpiresTime().String()),
 			sdk.NewAttribute("operation_hash", hashStr),
+			// AST v2 additions
+			sdk.NewAttribute("track", track.Name),
+			sdk.NewAttribute("track_multiplier", fmt.Sprintf("%d", track.Multiplier)),
+			sdk.NewAttribute("adaptive_delay_seconds", fmt.Sprintf("%d", adaptiveDelay)),
 		),
 	)
 
@@ -300,10 +434,20 @@ func (k Keeper) ExecuteOperation(ctx context.Context, operationID uint64, execut
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	now := sdkCtx.BlockTime()
 
+	// If guard integration is enabled, guard is the sole executor.
+	if k.guardKeeper != nil && k.guardKeeper.IsTimelockIntegrationEnabled(ctx) {
+		return types.ErrExecutionDisabled
+	}
+
 	// Get the operation
 	op, err := k.GetOperation(ctx, operationID)
 	if err != nil {
 		return err
+	}
+
+	// Prevent double execution if guard already executed this proposal.
+	if k.guardKeeper != nil && k.guardKeeper.HasExecutionMarker(ctx, op.ProposalId) {
+		return types.ErrOperationAlreadyExecuted
 	}
 
 	// Validate executor
@@ -409,6 +553,23 @@ func (k Keeper) CancelOperation(ctx context.Context, operationID uint64, cancell
 		return types.ErrOperationNotQueued
 	}
 
+	// SECURITY: Prevent guardian from canceling operations that modify guardian role or timelock params.
+	// This prevents the guardian from making themselves irremovable by canceling governance proposals
+	// that would replace or remove them.
+	if isGuardian && canceller != k.authority {
+		for _, anyMsg := range op.Messages {
+			if anyMsg.TypeUrl == "/pos.timelock.v1.MsgUpdateGuardian" ||
+				anyMsg.TypeUrl == "/pos.timelock.v1.MsgUpdateParams" {
+				k.logger.Warn("GUARDIAN CANCEL BLOCKED: attempted to cancel protected operation",
+					"operation_id", op.Id,
+					"guardian", canceller,
+					"blocked_msg_type", anyMsg.TypeUrl,
+				)
+				return types.ErrGuardianCannotCancelProtected
+			}
+		}
+	}
+
 	// Mark as cancelled
 	op.MarkCancelled(sdkCtx.BlockTime(), reason)
 	if err := k.SetOperation(ctx, op); err != nil {
@@ -433,6 +594,13 @@ func (k Keeper) CancelOperation(ctx context.Context, operationID uint64, cancell
 		),
 	)
 
+	// SECURITY: Track guardian cancellation frequency and auto-revoke if excessive.
+	// This prevents a guardian from DoS-ing governance by spamming cancels on
+	// non-protected operations.
+	if isGuardian && canceller != k.authority {
+		k.trackGuardianCancel(ctx, canceller)
+	}
+
 	return nil
 }
 
@@ -440,6 +608,11 @@ func (k Keeper) CancelOperation(ctx context.Context, operationID uint64, cancell
 func (k Keeper) EmergencyExecute(ctx context.Context, operationID uint64, guardian string, justification string) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	now := sdkCtx.BlockTime()
+
+	// If guard integration is enabled, guard is the sole executor.
+	if k.guardKeeper != nil && k.guardKeeper.IsTimelockIntegrationEnabled(ctx) {
+		return types.ErrExecutionDisabled
+	}
 
 	// Validate justification
 	if err := types.ValidateJustification(justification); err != nil {
@@ -467,9 +640,29 @@ func (k Keeper) EmergencyExecute(ctx context.Context, operationID uint64, guardi
 		return err
 	}
 
+	// Prevent double execution if guard already executed this proposal.
+	if k.guardKeeper != nil && k.guardKeeper.HasExecutionMarker(ctx, op.ProposalId) {
+		return types.ErrOperationAlreadyExecuted
+	}
+
 	// Check status
 	if !op.IsQueued() {
 		return types.ErrOperationNotQueued
+	}
+
+	// SECURITY: Prevent emergency execution of operations that modify guardian role or timelock params.
+	// The guardian must not be able to fast-track changes to their own role or the timelock
+	// configuration, bypassing the full governance delay. These must go through normal execution.
+	for _, anyMsg := range op.Messages {
+		if anyMsg.TypeUrl == "/pos.timelock.v1.MsgUpdateGuardian" ||
+			anyMsg.TypeUrl == "/pos.timelock.v1.MsgUpdateParams" {
+			k.logger.Warn("EMERGENCY EXECUTE BLOCKED: protected operation",
+				"operation_id", op.Id,
+				"guardian", guardian,
+				"blocked_msg_type", anyMsg.TypeUrl,
+			)
+			return types.ErrProtectedOperationEmergency
+		}
 	}
 
 	// Check if can emergency execute (emergency delay has passed)
@@ -552,25 +745,34 @@ func (k Keeper) executeMessages(ctx context.Context, op *types.QueuedOperation) 
 			len(msgs), maxMessagesPerOperation)
 	}
 
-	// Execute each message with gas metering
+	// Execute each message with gas metering and atomicity
+	cacheCtx, writeCache := gasLimitedCtx.CacheContext()
+	var events sdk.Events
+
 	for i, msg := range msgs {
 		handler := k.msgRouter.Handler(msg)
 		if handler == nil {
 			return fmt.Errorf("no handler for message %d (%s)", i, sdk.MsgTypeURL(msg))
 		}
 
-		_, err := handler(gasLimitedCtx, msg)
+		res, err := safeExecuteHandler(cacheCtx, msg, handler)
 		if err != nil {
 			return fmt.Errorf("message %d (%s) execution failed: %w", i, sdk.MsgTypeURL(msg), err)
 		}
+
+		events = append(events, res.GetEvents()...)
 
 		k.logger.Debug("message executed",
 			"operation_id", op.Id,
 			"message_index", i,
 			"message_type", sdk.MsgTypeURL(msg),
-			"gas_used", gasLimitedCtx.GasMeter().GasConsumed(),
+			"gas_used", cacheCtx.GasMeter().GasConsumed(),
 		)
 	}
+
+	// All messages succeeded — commit state changes
+	writeCache()
+	sdkCtx.EventManager().EmitEvents(events)
 
 	k.logger.Info("operation messages executed",
 		"operation_id", op.Id,
@@ -580,6 +782,16 @@ func (k Keeper) executeMessages(ctx context.Context, op *types.QueuedOperation) 
 	)
 
 	return nil
+}
+
+// safeExecuteHandler executes handler(msg) and recovers from panics.
+func safeExecuteHandler(ctx sdk.Context, msg sdk.Msg, handler func(sdk.Context, sdk.Msg) (*sdk.Result, error)) (res *sdk.Result, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("handler panicked: %v", r)
+		}
+	}()
+	return handler(ctx, msg)
 }
 
 // ----------------------------------------------------------------------------
@@ -799,6 +1011,22 @@ func (k Keeper) processProposal(ctx context.Context, sdkCtx sdk.Context, proposa
 		return nil
 	}
 
+	// Text-only proposals (zero executable messages) don't need timelock queueing.
+	// Leave the proposal as StatusPassed so it displays correctly in governance UIs.
+	if len(proposal.Messages) == 0 {
+		k.logger.Info("text-only proposal, skipping timelock",
+			"proposal_id", proposalID,
+		)
+		sdkCtx.EventManager().EmitEvent(
+			sdk.NewEvent(
+				"timelock_text_proposal_skipped",
+				sdk.NewAttribute("proposal_id", fmt.Sprintf("%d", proposalID)),
+				sdk.NewAttribute("reason", "EMPTY_PROPOSAL_MSGS"),
+			),
+		)
+		return nil
+	}
+
 	k.logger.Info("queueing passed governance proposal in timelock",
 		"proposal_id", proposalID,
 		"num_messages", len(proposal.Messages),
@@ -828,6 +1056,17 @@ func (k Keeper) processProposal(ctx context.Context, sdkCtx sdk.Context, proposa
 		"executable_time", operation.ExecutableTime(),
 		"queued_at", time.Unix(operation.QueuedAtUnix, 0),
 	)
+
+	// Notify guard module so it can perform risk evaluation and queue for guarded execution.
+	// Non-fatal: timelock proceeds regardless of guard evaluation outcome.
+	if k.guardKeeper != nil {
+		if err := k.guardKeeper.OnTimelockQueued(ctx, proposalID); err != nil {
+			k.logger.Error("guard notification failed (non-fatal)",
+				"proposal_id", proposalID,
+				"error", err,
+			)
+		}
+	}
 
 	// CRITICAL: Prevent the gov module from executing this proposal
 	// We mark it as FAILED so the gov EndBlocker skips it
@@ -867,6 +1106,12 @@ const MaxOperationsPerBlock = 5
 func (k Keeper) AutoExecuteReadyOperations(ctx context.Context) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	now := sdkCtx.BlockTime()
+
+	// If guard integration is enabled, guard is the sole executor.
+	if k.guardKeeper != nil && k.guardKeeper.IsTimelockIntegrationEnabled(ctx) {
+		k.logger.Info("auto-execution disabled: guard is authoritative executor")
+		return nil
+	}
 
 	var executedCount, failedCount, skippedCount int
 
@@ -912,6 +1157,35 @@ func (k Keeper) AutoExecuteReadyOperations(ctx context.Context) error {
 				k.logger.Error("failed to update operation after hash failure",
 					"operation_id", op.Id, "error", err)
 			}
+			return false, nil
+		}
+
+		// Prevent double execution if guard already executed this proposal.
+		if k.guardKeeper != nil && k.guardKeeper.HasExecutionMarker(ctx, op.ProposalId) {
+			k.logger.Warn("auto-execution skipped: guard already executed proposal",
+				"operation_id", op.Id,
+				"proposal_id", op.ProposalId,
+			)
+			op.MarkFailed(now, types.ErrOperationAlreadyExecuted)
+			if err := k.SetOperation(ctx, &op); err != nil {
+				k.logger.Error("failed to update operation after guard execution check",
+					"operation_id", op.Id, "error", err)
+			}
+			failedCount++
+			return false, nil
+		}
+
+		// --- AST v2: Track freeze check ---
+		// Execution is deferred (not failed) when a track is frozen.
+		// The operation remains QUEUED and will be retried each block until
+		// the freeze height passes.  This does NOT count against the per-block cap.
+		if trackFrozen, trackName := k.isOperationTrackFrozen(ctx, op.Id, sdkCtx.BlockHeight()); trackFrozen {
+			k.logger.Info("auto-execution deferred: track frozen",
+				"operation_id", op.Id,
+				"proposal_id", op.ProposalId,
+				"track", trackName,
+			)
+			skippedCount++
 			return false, nil
 		}
 
@@ -986,4 +1260,115 @@ func (k Keeper) AutoExecuteReadyOperations(ctx context.Context) error {
 	}
 
 	return err
+}
+
+// IsTrackFrozen checks if the track for a given operation is frozen.
+// Exposed for use by x/guard to enforce freeze during guarded execution.
+func (k Keeper) IsTrackFrozen(ctx context.Context, operationID uint64) (bool, string) {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	return k.isOperationTrackFrozen(ctx, operationID, sdkCtx.BlockHeight())
+}
+
+// ----------------------------------------------------------------------------
+// Guardian Cancel Tracking & Auto-Revoke
+// ----------------------------------------------------------------------------
+
+// trackGuardianCancel tracks guardian cancellation frequency and auto-revokes
+// the guardian if they exceed MaxGuardianCancelsPerWindow cancels within a
+// rolling window of GuardianCancelWindowBlocks blocks.
+func (k Keeper) trackGuardianCancel(ctx context.Context, guardian string) {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	currentHeight := sdkCtx.BlockHeight()
+
+	windowStart := k.getGuardianCancelWindowStart(ctx, guardian)
+
+	// If window has expired, reset it
+	if currentHeight-windowStart > types.GuardianCancelWindowBlocks {
+		k.setGuardianCancelWindowStart(ctx, guardian, currentHeight)
+		k.setGuardianCancelCount(ctx, guardian, 1)
+		return
+	}
+
+	// Increment count within window
+	count := k.getGuardianCancelCount(ctx, guardian) + 1
+	k.setGuardianCancelCount(ctx, guardian, count)
+
+	if count >= types.MaxGuardianCancelsPerWindow {
+		// Auto-revoke: clear guardian address
+		params, err := k.GetParams(ctx)
+		if err != nil {
+			k.logger.Error("failed to get params for guardian auto-revoke", "error", err)
+			return
+		}
+
+		oldGuardian := params.Guardian
+		params.Guardian = ""
+
+		// Use Params.Set directly to bypass validation (empty guardian is valid)
+		if err := k.Params.Set(ctx, params); err != nil {
+			k.logger.Error("failed to auto-revoke guardian", "error", err)
+			return
+		}
+
+		k.logger.Warn("GUARDIAN AUTO-REVOKED due to excessive cancellations",
+			"revoked_guardian", oldGuardian,
+			"cancel_count", count,
+			"window_blocks", types.GuardianCancelWindowBlocks,
+			"block_height", currentHeight,
+		)
+
+		sdkCtx.EventManager().EmitEvent(
+			sdk.NewEvent(
+				"guardian_auto_revoked",
+				sdk.NewAttribute("guardian", oldGuardian),
+				sdk.NewAttribute("cancel_count", fmt.Sprintf("%d", count)),
+				sdk.NewAttribute("max_allowed", fmt.Sprintf("%d", types.MaxGuardianCancelsPerWindow)),
+				sdk.NewAttribute("block_height", fmt.Sprintf("%d", currentHeight)),
+			),
+		)
+
+		// Reset tracking state
+		k.setGuardianCancelCount(ctx, guardian, 0)
+		k.setGuardianCancelWindowStart(ctx, guardian, 0)
+	}
+}
+
+// getGuardianCancelCount returns the number of cancellations by the guardian in the current window
+func (k Keeper) getGuardianCancelCount(ctx context.Context, guardian string) uint64 {
+	store := k.storeKey.OpenKVStore(ctx)
+	key := append(types.KeyGuardianCancelCount, []byte(guardian)...)
+	bz, err := store.Get(key)
+	if err != nil || bz == nil || len(bz) < 8 {
+		return 0
+	}
+	return binary.BigEndian.Uint64(bz)
+}
+
+// setGuardianCancelCount stores the cancellation count for the guardian
+func (k Keeper) setGuardianCancelCount(ctx context.Context, guardian string, count uint64) {
+	store := k.storeKey.OpenKVStore(ctx)
+	key := append(types.KeyGuardianCancelCount, []byte(guardian)...)
+	bz := make([]byte, 8)
+	binary.BigEndian.PutUint64(bz, count)
+	_ = store.Set(key, bz)
+}
+
+// getGuardianCancelWindowStart returns the block height when the cancel window started
+func (k Keeper) getGuardianCancelWindowStart(ctx context.Context, guardian string) int64 {
+	store := k.storeKey.OpenKVStore(ctx)
+	key := append(types.KeyGuardianCancelWindowStart, []byte(guardian)...)
+	bz, err := store.Get(key)
+	if err != nil || bz == nil || len(bz) < 8 {
+		return 0
+	}
+	return int64(binary.BigEndian.Uint64(bz))
+}
+
+// setGuardianCancelWindowStart stores the block height when the cancel window started
+func (k Keeper) setGuardianCancelWindowStart(ctx context.Context, guardian string, height int64) {
+	store := k.storeKey.OpenKVStore(ctx)
+	key := append(types.KeyGuardianCancelWindowStart, []byte(guardian)...)
+	bz := make([]byte, 8)
+	binary.BigEndian.PutUint64(bz, uint64(height))
+	_ = store.Set(key, bz)
 }

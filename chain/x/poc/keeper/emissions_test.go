@@ -51,6 +51,10 @@ func (m *mockAccountKeeperWithBalance) GetModuleAccount(ctx context.Context, mod
 	return nil
 }
 
+func (m *mockAccountKeeperWithBalance) GetAccount(ctx context.Context, addr sdk.AccAddress) sdk.AccountI {
+	return nil
+}
+
 // Mock bank keeper with minting support
 type mockBankKeeperWithMinting struct {
 	balances map[string]sdk.Coins

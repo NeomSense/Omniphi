@@ -77,11 +77,16 @@ func (k Keeper) ProcessPendingRewards(ctx context.Context) error {
 		return nil
 	}
 
-	// Calculate total credits for pending contributions
+	// Calculate total credits for pending contributions, applying RewardMult multiplier
 	totalCredits := math.ZeroInt()
 	for _, c := range pendingContributions {
 		weight := k.weightFor(ctx, c)
 		credits := params.BaseRewardUnit.Mul(weight)
+
+		// Apply RewardMult validator multiplier (power-weighted average of endorsing validators)
+		rmMult := k.getContributionRewardMultiplier(ctx, c)
+		credits = rmMult.MulInt(credits).TruncateInt()
+
 		totalCredits = totalCredits.Add(credits)
 	}
 
@@ -94,6 +99,10 @@ func (k Keeper) ProcessPendingRewards(ctx context.Context) error {
 	for i, c := range pendingContributions {
 		weight := k.weightFor(ctx, c)
 		credits := params.BaseRewardUnit.Mul(weight)
+
+		// Apply RewardMult validator multiplier (same as totalCredits calculation above)
+		rmMult := k.getContributionRewardMultiplier(ctx, c)
+		credits = rmMult.MulInt(credits).TruncateInt()
 
 		// Calculate share of available balance
 		// share = (credits / totalCredits) * availableBalance
@@ -143,6 +152,7 @@ func (k Keeper) ProcessPendingRewards(ctx context.Context) error {
 					sdk.NewAttribute("contributor", c.Contributor),
 					sdk.NewAttribute("amount", share.String()),
 					sdk.NewAttribute("credits", credits.String()),
+					sdk.NewAttribute("rewardmult_applied", rmMult.String()),
 				),
 			)
 
@@ -192,4 +202,36 @@ func (k Keeper) GetPendingRewardsAmount(ctx context.Context, addr sdk.AccAddress
 	// pending = (userCredits / totalCredits) * availableBalance
 	pending := userCredits.Mul(availableBalance.Amount).Quo(totalCredits)
 	return pending
+}
+
+// getContributionRewardMultiplier computes the power-weighted average RewardMult
+// multiplier for a contribution's endorsing validators. Returns 1.0 (neutral) if
+// the rewardmult keeper is not available or no endorsements exist.
+func (k Keeper) getContributionRewardMultiplier(ctx context.Context, c types.Contribution) math.LegacyDec {
+	if k.rewardmultKeeper == nil || len(c.Endorsements) == 0 {
+		return math.LegacyOneDec()
+	}
+
+	totalPower := math.LegacyZeroDec()
+	weightedMult := math.LegacyZeroDec()
+
+	for _, e := range c.Endorsements {
+		if !e.Decision {
+			continue // only count approving endorsements
+		}
+		power := e.Power.ToLegacyDec()
+		if power.IsZero() {
+			continue
+		}
+
+		mult := k.rewardmultKeeper.GetEffectiveMultiplier(ctx, e.ValAddr)
+		weightedMult = weightedMult.Add(power.Mul(mult))
+		totalPower = totalPower.Add(power)
+	}
+
+	if totalPower.IsZero() {
+		return math.LegacyOneDec()
+	}
+
+	return weightedMult.Quo(totalPower)
 }

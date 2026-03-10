@@ -29,6 +29,8 @@ type BankKeeper interface {
 type AccountKeeper interface {
 	GetModuleAddress(moduleName string) sdk.AccAddress
 	GetModuleAccount(ctx context.Context, moduleName string) sdk.ModuleAccountI
+	// GetAccount retrieves an account by address (used by similarity oracle signature verification)
+	GetAccount(ctx context.Context, addr sdk.AccAddress) sdk.AccountI
 }
 
 // IdentityKeeper defines the expected identity keeper methods (optional - used for PoA layer)
@@ -41,4 +43,62 @@ type IdentityKeeper interface {
 	// GetIdentityLevel returns the verification level of an address (0 = none, 1 = basic, 2 = enhanced, etc.)
 	// This can be used for tiered identity requirements in the future
 	GetIdentityLevel(ctx context.Context, addr sdk.AccAddress) uint32
+}
+
+// ============================================================================
+// PoC Hardening Upgrade Keeper Interfaces (v2)
+// ============================================================================
+
+// PorKeeper defines the expected PoR keeper interface for finality integration
+// This interface is used when PoR module is live to provide record finality
+type PorKeeper interface {
+	// GetBatch returns a batch by ID
+	GetBatch(ctx context.Context, batchID uint64) (batch interface{}, found bool)
+
+	// IsBatchFinalized returns true if the batch has passed challenge window
+	IsBatchFinalized(ctx context.Context, batchID uint64) bool
+
+	// IsBatchChallenged returns true if the batch has an open challenge
+	IsBatchChallenged(ctx context.Context, batchID uint64) bool
+
+	// IsBatchRejected returns true if the batch was invalidated by fraud proof
+	IsBatchRejected(ctx context.Context, batchID uint64) bool
+
+	// GetBatchForContribution returns the batch ID that contains a contribution
+	// Returns 0 if the contribution is not linked to any batch (direct PoV mode)
+	GetBatchForContribution(ctx context.Context, contributionID uint64) uint64
+
+	// HasFraudulentAttestation returns true if an address has fraudulent attestations
+	// in the lookback window (used by x/rewardmult for fraud penalties)
+	HasFraudulentAttestation(ctx context.Context, addr sdk.ValAddress, lookbackEpochs int64) (bool, error)
+}
+
+// EpochsKeeper defines the expected epochs keeper interface for epoch tracking
+type EpochsKeeper interface {
+	// GetCurrentEpoch returns the current epoch number
+	GetCurrentEpoch(ctx context.Context) uint64
+
+	// GetEpochDuration returns the duration of an epoch in blocks
+	GetEpochDuration(ctx context.Context) int64
+}
+
+// RewardmultKeeper defines the expected rewardmult keeper interface for metrics export
+type RewardmultKeeper interface {
+	// RecordEndorsementParticipation records validator endorsement participation
+	// Called when an endorsement is submitted to track participation metrics
+	RecordEndorsementParticipation(ctx context.Context, valAddr sdk.ValAddress, participated bool) error
+
+	// GetEffectiveMultiplier returns the effective reward multiplier for a validator.
+	// Returns 1.0 (neutral) if no multiplier data is available.
+	GetEffectiveMultiplier(ctx context.Context, valAddr string) math.LegacyDec
+}
+
+// SlashingKeeper defines the expected slashing keeper interface for fraud endorsement penalties.
+// OPTIONAL: If not set, fraud endorsement slashing is skipped (soft penalties still apply).
+type SlashingKeeper interface {
+	// Slash slashes a validator's bonded tokens by slashFactor
+	Slash(ctx context.Context, consAddr sdk.ConsAddress, infractionHeight int64, power int64, slashFactor math.LegacyDec) (math.Int, error)
+
+	// Jail jails a validator
+	Jail(ctx context.Context, consAddr sdk.ConsAddress) error
 }

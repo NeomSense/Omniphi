@@ -91,11 +91,11 @@ func (AppModuleBasic) GetQueryCmd() *cobra.Command {
 // AppModule implements an application module for the poc module.
 type AppModule struct {
 	AppModuleBasic
-	keeper keeper.Keeper
+	keeper *keeper.Keeper
 }
 
 // NewAppModule creates a new AppModule object
-func NewAppModule(keeper keeper.Keeper) AppModule {
+func NewAppModule(keeper *keeper.Keeper) AppModule {
 	return AppModule{
 		AppModuleBasic: AppModuleBasic{},
 		keeper:         keeper,
@@ -109,13 +109,13 @@ func (AppModule) Name() string {
 
 // RegisterInvariants registers the poc module invariants.
 func (am AppModule) RegisterInvariants(ir sdk.InvariantRegistry) {
-	keeper.RegisterInvariants(ir, am.keeper)
+	keeper.RegisterInvariants(ir, *am.keeper)
 }
 
 // RegisterServices registers module services.
 func (am AppModule) RegisterServices(cfg module.Configurator) {
-	types.RegisterMsgServer(cfg.MsgServer(), keeper.NewMsgServerImpl(am.keeper))
-	types.RegisterQueryServer(cfg.QueryServer(), keeper.NewQueryServerImpl(am.keeper))
+	types.RegisterMsgServer(cfg.MsgServer(), keeper.NewMsgServerImpl(*am.keeper))
+	types.RegisterQueryServer(cfg.QueryServer(), keeper.NewQueryServerImpl(*am.keeper))
 }
 
 // InitGenesis performs genesis initialization for the poc module. It returns
@@ -146,15 +146,30 @@ func (AppModule) ConsensusVersion() uint64 { return 1 }
 
 // EndBlock returns the end blocker for the poc module. It returns no validator updates.
 func (am AppModule) EndBlock(ctx context.Context) error {
-	// Process pending rewards for verified contributions
+	// 1. Finalize expired review sessions (Layer 3)
+	// Must run before rewards so that newly-finalized contributions can be rewarded
+	if err := am.keeper.FinalizeExpiredReviews(ctx); err != nil {
+		am.keeper.Logger().Error("failed to finalize expired reviews", "error", err)
+	}
+
+	// 2. Process pending rewards for verified contributions (Layer 4)
 	if err := am.keeper.ProcessPendingRewards(ctx); err != nil {
-		// Log error but don't halt chain
 		am.keeper.Logger().Error("failed to process pending PoC rewards", "error", err)
 	}
 
-	// PERFORMANCE OPTIMIZATION: Clear validator cache to prevent stale data
+	// 3. Process vesting releases (Layer 4) — legacy linear schedules
+	if err := am.keeper.ProcessVestingReleases(ctx); err != nil {
+		am.keeper.Logger().Error("failed to process vesting releases", "error", err)
+	}
+
+	// 3b. Process ARVS multi-stage vesting releases
+	if err := am.keeper.ProcessARVSVestingReleases(ctx); err != nil {
+		am.keeper.Logger().Error("failed to process ARVS vesting releases", "error", err)
+	}
+
+	// 4. Clear validator cache to prevent stale data
 	am.keeper.ClearValidatorCache()
 
-	// Prune old rate limit counters
+	// 5. Prune old rate limit counters
 	return am.keeper.PruneRateLimits(ctx)
 }

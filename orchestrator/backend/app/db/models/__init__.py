@@ -45,6 +45,10 @@ from app.db.models.enums import (
     IncidentSeverity,
     IncidentStatus,
     AlertType,
+    # Security enums
+    APIKeyStatus,
+    CredentialType,
+    RotationStatus,
 )
 
 # Region & Infrastructure models
@@ -85,6 +89,10 @@ from app.db.models.upgrade_rollout import UpgradeRollout
 from app.db.models.node_metrics import NodeMetrics
 from app.db.models.incident import Incident
 
+# Security & credential management models
+from app.db.models.api_key import APIKey
+from app.db.models.credential_rotation import CredentialRotation
+
 __all__ = [
     # Enums
     "RegionCode",
@@ -109,6 +117,9 @@ __all__ = [
     "IncidentSeverity",
     "IncidentStatus",
     "AlertType",
+    "APIKeyStatus",
+    "CredentialType",
+    "RotationStatus",
     # Region & Infrastructure
     "Region",
     "RegionServer",
@@ -140,4 +151,7 @@ __all__ = [
     # Monitoring & SRE
     "NodeMetrics",
     "Incident",
+    # Security & Credentials
+    "APIKey",
+    "CredentialRotation",
 ]

@@ -1,0 +1,90 @@
+{
+  "schema_name": "FeatureSchemaV1",
+  "schema_string": "FeatureSchemaV1:is_upgrade,is_param_change,is_treasury_spend,is_slashing_change,is_poc_rule_change,is_poseq_rule_change,treasury_spend_bps:0-10000,modules_touched_count:0-50,touches_consensus_critical:0-1,reduces_slashing:0-1,changes_validator_rules:0-1",
+  "num_features": 11,
+  "features": [
+    {
+      "index": 0,
+      "name": "is_upgrade",
+      "type": "binary",
+      "range": [0, 1],
+      "description": "1 if proposal is a software upgrade"
+    },
+    {
+      "index": 1,
+      "name": "is_param_change",
+      "type": "binary",
+      "range": [0, 1],
+      "description": "1 if proposal is a parameter change"
+    },
+    {
+      "index": 2,
+      "name": "is_treasury_spend",
+      "type": "binary",
+      "range": [0, 1],
+      "description": "1 if proposal is a treasury/community pool spend"
+    },
+    {
+      "index": 3,
+      "name": "is_slashing_change",
+      "type": "binary",
+      "range": [0, 1],
+      "description": "1 if proposal changes slashing parameters"
+    },
+    {
+      "index": 4,
+      "name": "is_poc_rule_change",
+      "type": "binary",
+      "range": [0, 1],
+      "description": "1 if proposal changes Proof-of-Contribution rules"
+    },
+    {
+      "index": 5,
+      "name": "is_poseq_rule_change",
+      "type": "binary",
+      "range": [0, 1],
+      "description": "1 if proposal changes Proof-of-Sequence rules"
+    },
+    {
+      "index": 6,
+      "name": "treasury_spend_bps",
+      "type": "numeric",
+      "range": [0, 10000],
+      "description": "Treasury spend as basis points (0-10000 = 0-100%)"
+    },
+    {
+      "index": 7,
+      "name": "modules_touched_count",
+      "type": "numeric",
+      "range": [0, 50],
+      "description": "Number of modules touched by proposal (clamped to 50)"
+    },
+    {
+      "index": 8,
+      "name": "touches_consensus_critical",
+      "type": "binary",
+      "range": [0, 1],
+      "description": "1 if proposal touches consensus-critical parameters"
+    },
+    {
+      "index": 9,
+      "name": "reduces_slashing",
+      "type": "binary",
+      "range": [0, 1],
+      "description": "1 if proposal reduces slashing fractions"
+    },
+    {
+      "index": 10,
+      "name": "changes_validator_rules",
+      "type": "binary",
+      "range": [0, 1],
+      "description": "1 if proposal changes validator-related rules"
+    }
+  ],
+  "notes": [
+    "Feature order is canonical and MUST NOT change",
+    "Binary features: exactly one of indices 0-5 can be 1 (one-hot proposal type)",
+    "Indices 8-10 are modifier flags (can be 1 regardless of proposal type)",
+    "Schema hash = sha256(schema_string) as hex"
+  ]
+}

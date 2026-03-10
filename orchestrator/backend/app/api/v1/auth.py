@@ -3,10 +3,11 @@
 import logging
 import time
 import hashlib
+import uuid
 from datetime import timedelta
-from typing import Optional
+from typing import Optional, List
 
-from fastapi import APIRouter, HTTPException, Depends, Security
+from fastapi import APIRouter, HTTPException, Depends, Security, Request
 from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
@@ -22,6 +23,9 @@ from app.core.security import (
 )
 from app.core.nonce_store import nonce_store
 from app.db.session import get_db
+from app.services.api_key_service import APIKeyService
+from app.services.credential_rotation_service import CredentialRotationService
+from app.db.models.enums import CredentialType
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +97,39 @@ class ChallengeResponse(BaseModel):
     nonce: str
     message_to_sign: str
     expires_at: int
+
+
+# HIGH-1 Security Remediation: API Key Management Models
+class CreateAPIKeyRequest(BaseModel):
+    """Request model for creating a new API key."""
+    name: str
+    scopes: List[str]
+    expires_in_days: Optional[int] = None
+
+
+class APIKeyDetailResponse(BaseModel):
+    """Response model for API key details (without plaintext key)."""
+    id: str
+    key_prefix: str
+    name: str
+    status: str
+    scopes: List[str]
+    expires_at: Optional[str]
+    last_used_at: Optional[str]
+    usage_count: int
+    created_at: str
+
+
+class RotateAPIKeyRequest(BaseModel):
+    """Request model for rotating an API key."""
+    key_id: str
+    overlap_days: int = 7
+
+
+class RevokeAPIKeyRequest(BaseModel):
+    """Request model for revoking an API key."""
+    key_id: str
+    reason: str
 
 
 @router.get("/challenge/{wallet_address}", response_model=ChallengeResponse)
@@ -285,43 +322,171 @@ async def refresh_token(
 
 @router.post("/api-key/generate", response_model=APIKeyResponse)
 async def generate_new_api_key(
+    request_data: CreateAPIKeyRequest,
     _: bool = Security(verify_api_key_header),  # SECURITY: Requires master API key
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    req: Request = None
 ):
     """
     Generate a new API key for external integrations.
 
+    **HIGH-1 SECURITY REMEDIATION**: Integrated with automated rotation system.
+
     **IMPORTANT**:
     - This endpoint requires the master API key (X-API-Key header)
     - Store the generated key securely. It will only be shown once.
+    - Keys are hashed with bcrypt before storage
+    - Supports expiration and automatic rotation
+
+    Args:
+        request_data: API key configuration (name, scopes, expiration)
 
     Returns:
-        Generated API key
+        Generated API key (ONLY SHOWN ONCE)
 
     Example:
         ```bash
         curl -X POST http://localhost:8000/api/v1/auth/api-key/generate \\
-          -H "X-API-Key: your-master-api-key"
+          -H "X-API-Key: your-master-api-key" \\
+          -H "Content-Type: application/json" \\
+          -d '{"name": "CI/CD Pipeline", "scopes": ["read:validators"], "expires_in_days": 90}'
         ```
 
     Raises:
         HTTPException 401: Missing or invalid master API key
     """
-    api_key = generate_api_key()
+    # Use system UUID for API key generation (since it's authenticated via master key)
+    system_user_id = uuid.UUID('00000000-0000-0000-0000-000000000000')
 
-    logger.info("Generated new API key (first 8 chars): " + api_key[:8] + "...")
+    # Get client IP for audit
+    client_ip = req.client.host if req else 'unknown'
 
-    # TODO: Store the hashed API key in database with metadata:
-    # - Created timestamp
-    # - Owner/description
-    # - Permissions/scopes
-    # - Expiration date
-    # - Last used timestamp
+    # Create API key with new service
+    api_key_record, plaintext_key = APIKeyService.create_api_key(
+        db=db,
+        name=request_data.name,
+        scopes=request_data.scopes,
+        created_by=system_user_id,
+        expires_in_days=request_data.expires_in_days,
+        metadata={'created_via': 'api', 'username': 'master_key_auth'},
+        ip_address=client_ip
+    )
+
+    logger.info(f"Generated new API key: {api_key_record.key_prefix}...")
 
     return APIKeyResponse(
-        api_key=api_key,
+        api_key=plaintext_key,
         message="Store this key securely. It will not be shown again."
     )
+
+
+@router.get("/api-key/list", response_model=List[APIKeyDetailResponse])
+async def list_api_keys(
+    _: bool = Security(verify_api_key_header),
+    db: Session = Depends(get_db)
+):
+    """
+    List all API keys (HIGH-1 Security Remediation).
+
+    Returns keys without plaintext values - only metadata.
+
+    Returns:
+        List of API key details
+    """
+    keys = APIKeyService.list_api_keys(db, include_deleted=False)
+
+    return [
+        APIKeyDetailResponse(
+            id=str(key.id),
+            key_prefix=key.key_prefix,
+            name=key.name,
+            status=key.status,
+            scopes=key.scopes or [],
+            expires_at=key.expires_at.isoformat() if key.expires_at else None,
+            last_used_at=key.last_used_at.isoformat() if key.last_used_at else None,
+            usage_count=key.usage_count,
+            created_at=key.created_at.isoformat()
+        )
+        for key in keys
+    ]
+
+
+@router.post("/api-key/rotate", response_model=APIKeyResponse)
+async def rotate_api_key(
+    request_data: RotateAPIKeyRequest,
+    _: bool = Security(verify_api_key_header),
+    db: Session = Depends(get_db),
+    req: Request = None
+):
+    """
+    Rotate an API key with zero-downtime overlap (HIGH-1 Security Remediation).
+
+    Creates a new key and keeps the old one valid for the overlap period.
+
+    Args:
+        request_data: Key ID to rotate and overlap period
+
+    Returns:
+        New API key (plaintext, only shown once)
+    """
+    system_user_id = uuid.UUID('00000000-0000-0000-0000-000000000000')
+    client_ip = req.client.host if req else 'unknown'
+
+    try:
+        key_id = uuid.UUID(request_data.key_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid key ID format")
+
+    new_key, plaintext_key = APIKeyService.rotate_api_key(
+        db=db,
+        old_key_id=key_id,
+        rotated_by=system_user_id,
+        overlap_days=request_data.overlap_days,
+        ip_address=client_ip
+    )
+
+    if not new_key:
+        raise HTTPException(status_code=404, detail="API key not found")
+
+    return APIKeyResponse(
+        api_key=plaintext_key,
+        message=f"New key created. Old key valid for {request_data.overlap_days} more days."
+    )
+
+
+@router.post("/api-key/revoke")
+async def revoke_api_key(
+    request_data: RevokeAPIKeyRequest,
+    _: bool = Security(verify_api_key_header),
+    db: Session = Depends(get_db)
+):
+    """
+    Immediately revoke an API key (HIGH-1 Security Remediation).
+
+    Args:
+        request_data: Key ID and revocation reason
+
+    Returns:
+        Success status
+    """
+    system_user_id = uuid.UUID('00000000-0000-0000-0000-000000000000')
+
+    try:
+        key_id = uuid.UUID(request_data.key_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid key ID format")
+
+    success = APIKeyService.revoke_api_key(
+        db=db,
+        key_id=key_id,
+        reason=request_data.reason,
+        revoked_by=system_user_id
+    )
+
+    if not success:
+        raise HTTPException(status_code=404, detail="API key not found")
+
+    return {"message": "API key revoked successfully"}
 
 
 @router.get("/verify")

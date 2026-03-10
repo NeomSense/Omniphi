@@ -208,18 +208,14 @@ func TestSoak_25kBlocks_ParamUpdates(t *testing.T) {
 		if block%100 == 0 {
 			params := ptc.TokenomicsKeeper.GetParams(ptc.Ctx)
 
-			// Cycle through different inflation rates
-			switch (block / 100) % 5 {
+			// Cycle through different inflation rates (bounded by 3% protocol hard cap)
+			switch (block / 100) % 3 {
 			case 0:
 				params.InflationRate = math.LegacyNewDecWithPrec(1, 2) // 1%
 			case 1:
 				params.InflationRate = math.LegacyNewDecWithPrec(2, 2) // 2%
 			case 2:
 				params.InflationRate = math.LegacyNewDecWithPrec(3, 2) // 3%
-			case 3:
-				params.InflationRate = math.LegacyNewDecWithPrec(4, 2) // 4%
-			case 4:
-				params.InflationRate = math.LegacyNewDecWithPrec(5, 2) // 5%
 			}
 
 			err := ptc.TokenomicsKeeper.SetParams(ptc.Ctx, params)
@@ -295,9 +291,9 @@ func TestSoak_50kBlocks_ExtendedStability(t *testing.T) {
 			require.NoError(t, err)
 			burnCount++
 
-		case 2: // Param update
+		case 2: // Param update (1-3% to stay within 3% protocol hard cap)
 			params := ptc.TokenomicsKeeper.GetParams(ptc.Ctx)
-			params.InflationRate = math.LegacyNewDecWithPrec(int64(2+(block%3)), 2)
+			params.InflationRate = math.LegacyNewDecWithPrec(int64(1+(block%3)), 2)
 			err := ptc.TokenomicsKeeper.SetParams(ptc.Ctx, params)
 			require.NoError(t, err)
 			paramUpdateCount++

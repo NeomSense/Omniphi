@@ -483,6 +483,119 @@ func (m *QueryContributorFeeStatsResponse) GetStats() ContributorFeeStats {
 	return ContributorFeeStats{}
 }
 
+// ============================================================================
+// Provenance Registry Query Types (Layer 5)
+// ============================================================================
+
+// QueryProvenanceEntryRequest is the request type for the Query/ProvenanceEntry RPC method.
+type QueryProvenanceEntryRequest struct {
+	ClaimId uint64 `protobuf:"varint,1,opt,name=claim_id,json=claimId,proto3" json:"claim_id,omitempty"`
+}
+
+func (m *QueryProvenanceEntryRequest) Reset()         { *m = QueryProvenanceEntryRequest{} }
+func (m *QueryProvenanceEntryRequest) String() string { return proto.CompactTextString(m) }
+func (*QueryProvenanceEntryRequest) ProtoMessage()    {}
+
+// QueryProvenanceEntryResponse is the response type for the Query/ProvenanceEntry RPC method.
+type QueryProvenanceEntryResponse struct {
+	Entry ProvenanceEntry `json:"entry"`
+}
+
+func (m *QueryProvenanceEntryResponse) Reset()         { *m = QueryProvenanceEntryResponse{} }
+func (m *QueryProvenanceEntryResponse) String() string { return proto.CompactTextString(m) }
+func (*QueryProvenanceEntryResponse) ProtoMessage()    {}
+
+// QueryProvenanceChildrenRequest is the request type for the Query/ProvenanceChildren RPC method.
+type QueryProvenanceChildrenRequest struct {
+	ParentClaimId uint64 `protobuf:"varint,1,opt,name=parent_claim_id,json=parentClaimId,proto3" json:"parent_claim_id,omitempty"`
+}
+
+func (m *QueryProvenanceChildrenRequest) Reset()         { *m = QueryProvenanceChildrenRequest{} }
+func (m *QueryProvenanceChildrenRequest) String() string { return proto.CompactTextString(m) }
+func (*QueryProvenanceChildrenRequest) ProtoMessage()    {}
+
+// QueryProvenanceChildrenResponse is the response type for the Query/ProvenanceChildren RPC method.
+type QueryProvenanceChildrenResponse struct {
+	ChildClaimIds []uint64          `json:"child_claim_ids"`
+	Entries       []ProvenanceEntry `json:"entries"`
+}
+
+func (m *QueryProvenanceChildrenResponse) Reset()         { *m = QueryProvenanceChildrenResponse{} }
+func (m *QueryProvenanceChildrenResponse) String() string { return proto.CompactTextString(m) }
+func (*QueryProvenanceChildrenResponse) ProtoMessage()    {}
+
+// QueryProvenanceLineageRequest is the request type for the Query/ProvenanceLineage RPC method.
+type QueryProvenanceLineageRequest struct {
+	ClaimId uint64 `protobuf:"varint,1,opt,name=claim_id,json=claimId,proto3" json:"claim_id,omitempty"`
+}
+
+func (m *QueryProvenanceLineageRequest) Reset()         { *m = QueryProvenanceLineageRequest{} }
+func (m *QueryProvenanceLineageRequest) String() string { return proto.CompactTextString(m) }
+func (*QueryProvenanceLineageRequest) ProtoMessage()    {}
+
+// QueryProvenanceLineageResponse is the response type for the Query/ProvenanceLineage RPC method.
+type QueryProvenanceLineageResponse struct {
+	Path []ProvenanceEntry `json:"path"`
+}
+
+func (m *QueryProvenanceLineageResponse) Reset()         { *m = QueryProvenanceLineageResponse{} }
+func (m *QueryProvenanceLineageResponse) String() string { return proto.CompactTextString(m) }
+func (*QueryProvenanceLineageResponse) ProtoMessage()    {}
+
+// QueryProvenanceByHashRequest is the request type for the Query/ProvenanceByHash RPC method.
+type QueryProvenanceByHashRequest struct {
+	CanonicalHash []byte `protobuf:"bytes,1,opt,name=canonical_hash,json=canonicalHash,proto3" json:"canonical_hash,omitempty"`
+}
+
+func (m *QueryProvenanceByHashRequest) Reset()         { *m = QueryProvenanceByHashRequest{} }
+func (m *QueryProvenanceByHashRequest) String() string { return proto.CompactTextString(m) }
+func (*QueryProvenanceByHashRequest) ProtoMessage()    {}
+
+// QueryProvenanceByHashResponse is the response type for the Query/ProvenanceByHash RPC method.
+type QueryProvenanceByHashResponse struct {
+	Entries []ProvenanceEntry `json:"entries"`
+}
+
+func (m *QueryProvenanceByHashResponse) Reset()         { *m = QueryProvenanceByHashResponse{} }
+func (m *QueryProvenanceByHashResponse) String() string { return proto.CompactTextString(m) }
+func (*QueryProvenanceByHashResponse) ProtoMessage()    {}
+
+// QueryProvenanceBySubmitterRequest is the request type for the Query/ProvenanceBySubmitter RPC method.
+type QueryProvenanceBySubmitterRequest struct {
+	Submitter string `protobuf:"bytes,1,opt,name=submitter,proto3" json:"submitter,omitempty"`
+}
+
+func (m *QueryProvenanceBySubmitterRequest) Reset()         { *m = QueryProvenanceBySubmitterRequest{} }
+func (m *QueryProvenanceBySubmitterRequest) String() string { return proto.CompactTextString(m) }
+func (*QueryProvenanceBySubmitterRequest) ProtoMessage()    {}
+
+// QueryProvenanceBySubmitterResponse is the response type for the Query/ProvenanceBySubmitter RPC method.
+type QueryProvenanceBySubmitterResponse struct {
+	Entries []ProvenanceEntry `json:"entries"`
+}
+
+func (m *QueryProvenanceBySubmitterResponse) Reset() {
+	*m = QueryProvenanceBySubmitterResponse{}
+}
+func (m *QueryProvenanceBySubmitterResponse) String() string { return proto.CompactTextString(m) }
+func (*QueryProvenanceBySubmitterResponse) ProtoMessage()    {}
+
+// QueryProvenanceStatsRequest is the request type for the Query/ProvenanceStats RPC method.
+type QueryProvenanceStatsRequest struct{}
+
+func (m *QueryProvenanceStatsRequest) Reset()         { *m = QueryProvenanceStatsRequest{} }
+func (m *QueryProvenanceStatsRequest) String() string { return proto.CompactTextString(m) }
+func (*QueryProvenanceStatsRequest) ProtoMessage()    {}
+
+// QueryProvenanceStatsResponse is the response type for the Query/ProvenanceStats RPC method.
+type QueryProvenanceStatsResponse struct {
+	Stats ProvenanceStats `json:"stats"`
+}
+
+func (m *QueryProvenanceStatsResponse) Reset()         { *m = QueryProvenanceStatsResponse{} }
+func (m *QueryProvenanceStatsResponse) String() string { return proto.CompactTextString(m) }
+func (*QueryProvenanceStatsResponse) ProtoMessage()    {}
+
 func init() {
 	proto.RegisterType((*QueryParamsRequest)(nil), "pos.poc.v1.QueryParamsRequest")
 	proto.RegisterType((*QueryParamsResponse)(nil), "pos.poc.v1.QueryParamsResponse")
@@ -641,6 +754,18 @@ type QueryServer interface {
 	FeeMetrics(context.Context, *QueryFeeMetricsRequest) (*QueryFeeMetricsResponse, error)
 	// ContributorFeeStats queries fee statistics for a specific contributor
 	ContributorFeeStats(context.Context, *QueryContributorFeeStatsRequest) (*QueryContributorFeeStatsResponse, error)
+	// ProvenanceEntry queries a single provenance entry by claim ID
+	ProvenanceEntry(context.Context, *QueryProvenanceEntryRequest) (*QueryProvenanceEntryResponse, error)
+	// ProvenanceChildren queries all child claims of a parent
+	ProvenanceChildren(context.Context, *QueryProvenanceChildrenRequest) (*QueryProvenanceChildrenResponse, error)
+	// ProvenanceLineage computes the full lineage path from root to a claim
+	ProvenanceLineage(context.Context, *QueryProvenanceLineageRequest) (*QueryProvenanceLineageResponse, error)
+	// ProvenanceByHash queries claims by canonical hash
+	ProvenanceByHash(context.Context, *QueryProvenanceByHashRequest) (*QueryProvenanceByHashResponse, error)
+	// ProvenanceBySubmitter queries claims by submitter address
+	ProvenanceBySubmitter(context.Context, *QueryProvenanceBySubmitterRequest) (*QueryProvenanceBySubmitterResponse, error)
+	// ProvenanceStats queries aggregate provenance registry statistics
+	ProvenanceStats(context.Context, *QueryProvenanceStatsRequest) (*QueryProvenanceStatsResponse, error)
 }
 
 // UnimplementedQueryServer can be embedded to have forward compatible implementations.
@@ -658,6 +783,30 @@ func (*UnimplementedQueryServer) Contributions(ctx context.Context, req *QueryCo
 }
 func (*UnimplementedQueryServer) Credits(ctx context.Context, req *QueryCreditsRequest) (*QueryCreditsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Credits not implemented")
+}
+func (*UnimplementedQueryServer) FeeMetrics(ctx context.Context, req *QueryFeeMetricsRequest) (*QueryFeeMetricsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FeeMetrics not implemented")
+}
+func (*UnimplementedQueryServer) ContributorFeeStats(ctx context.Context, req *QueryContributorFeeStatsRequest) (*QueryContributorFeeStatsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ContributorFeeStats not implemented")
+}
+func (*UnimplementedQueryServer) ProvenanceEntry(ctx context.Context, req *QueryProvenanceEntryRequest) (*QueryProvenanceEntryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProvenanceEntry not implemented")
+}
+func (*UnimplementedQueryServer) ProvenanceChildren(ctx context.Context, req *QueryProvenanceChildrenRequest) (*QueryProvenanceChildrenResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProvenanceChildren not implemented")
+}
+func (*UnimplementedQueryServer) ProvenanceLineage(ctx context.Context, req *QueryProvenanceLineageRequest) (*QueryProvenanceLineageResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProvenanceLineage not implemented")
+}
+func (*UnimplementedQueryServer) ProvenanceByHash(ctx context.Context, req *QueryProvenanceByHashRequest) (*QueryProvenanceByHashResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProvenanceByHash not implemented")
+}
+func (*UnimplementedQueryServer) ProvenanceBySubmitter(ctx context.Context, req *QueryProvenanceBySubmitterRequest) (*QueryProvenanceBySubmitterResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProvenanceBySubmitter not implemented")
+}
+func (*UnimplementedQueryServer) ProvenanceStats(ctx context.Context, req *QueryProvenanceStatsRequest) (*QueryProvenanceStatsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProvenanceStats not implemented")
 }
 
 func RegisterQueryServer(s grpc1.Server, srv QueryServer) {

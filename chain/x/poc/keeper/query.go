@@ -154,3 +154,109 @@ func (qs queryServer) ContributorFeeStats(goCtx context.Context, req *types.Quer
 		Stats: stats,
 	}, nil
 }
+
+// ============================================================================
+// Provenance Registry Queries (Layer 5)
+// ============================================================================
+
+// ProvenanceEntry returns a single provenance entry by claim ID
+func (qs queryServer) ProvenanceEntry(goCtx context.Context, req *types.QueryProvenanceEntryRequest) (*types.QueryProvenanceEntryResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid request")
+	}
+
+	entry, found := qs.GetProvenanceEntry(goCtx, req.ClaimId)
+	if !found {
+		return nil, status.Error(codes.NotFound, "provenance entry not found")
+	}
+
+	return &types.QueryProvenanceEntryResponse{Entry: entry}, nil
+}
+
+// ProvenanceChildren returns all child claims of a parent
+func (qs queryServer) ProvenanceChildren(goCtx context.Context, req *types.QueryProvenanceChildrenRequest) (*types.QueryProvenanceChildrenResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid request")
+	}
+
+	childIDs := qs.GetProvenanceChildren(goCtx, req.ParentClaimId)
+
+	var entries []types.ProvenanceEntry
+	for _, id := range childIDs {
+		if entry, found := qs.GetProvenanceEntry(goCtx, id); found {
+			entries = append(entries, entry)
+		}
+	}
+
+	return &types.QueryProvenanceChildrenResponse{
+		ChildClaimIds: childIDs,
+		Entries:       entries,
+	}, nil
+}
+
+// ProvenanceLineage computes the full lineage path from root to a claim
+func (qs queryServer) ProvenanceLineage(goCtx context.Context, req *types.QueryProvenanceLineageRequest) (*types.QueryProvenanceLineageResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid request")
+	}
+
+	path, err := qs.ComputeLineagePath(goCtx, req.ClaimId)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, err.Error())
+	}
+
+	return &types.QueryProvenanceLineageResponse{Path: path}, nil
+}
+
+// ProvenanceByHash returns all provenance entries matching a canonical hash
+func (qs queryServer) ProvenanceByHash(goCtx context.Context, req *types.QueryProvenanceByHashRequest) (*types.QueryProvenanceByHashResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid request")
+	}
+	if len(req.CanonicalHash) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "canonical_hash is required")
+	}
+
+	claimIDs := qs.GetProvenanceByHash(goCtx, req.CanonicalHash)
+
+	var entries []types.ProvenanceEntry
+	for _, id := range claimIDs {
+		if entry, found := qs.GetProvenanceEntry(goCtx, id); found {
+			entries = append(entries, entry)
+		}
+	}
+
+	return &types.QueryProvenanceByHashResponse{Entries: entries}, nil
+}
+
+// ProvenanceBySubmitter returns all provenance entries for a submitter address
+func (qs queryServer) ProvenanceBySubmitter(goCtx context.Context, req *types.QueryProvenanceBySubmitterRequest) (*types.QueryProvenanceBySubmitterResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid request")
+	}
+	if req.Submitter == "" {
+		return nil, status.Error(codes.InvalidArgument, "submitter is required")
+	}
+
+	claimIDs := qs.GetProvenanceBySubmitter(goCtx, req.Submitter)
+
+	var entries []types.ProvenanceEntry
+	for _, id := range claimIDs {
+		if entry, found := qs.GetProvenanceEntry(goCtx, id); found {
+			entries = append(entries, entry)
+		}
+	}
+
+	return &types.QueryProvenanceBySubmitterResponse{Entries: entries}, nil
+}
+
+// ProvenanceStats returns aggregate provenance registry statistics
+func (qs queryServer) ProvenanceStats(goCtx context.Context, req *types.QueryProvenanceStatsRequest) (*types.QueryProvenanceStatsResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid request")
+	}
+
+	stats := qs.Keeper.GetProvenanceStats(goCtx)
+
+	return &types.QueryProvenanceStatsResponse{Stats: stats}, nil
+}

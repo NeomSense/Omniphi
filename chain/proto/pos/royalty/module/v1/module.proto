@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package pos.royalty.module.v1;
+
+import "cosmos/app/v1alpha1/module.proto";
+
+option go_package = "pos/proto/pos/royalty/module/v1";
+
+// Module is the config object for the royalty module.
+message Module {
+  option (cosmos.app.v1alpha1.module) = {
+    go_import: "pos/x/royalty"
+  };
+}

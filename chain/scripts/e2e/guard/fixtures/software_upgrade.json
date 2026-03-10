@@ -1,0 +1,17 @@
+{
+  "messages": [
+    {
+      "@type": "/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade",
+      "authority": "AUTHORITY_PLACEHOLDER",
+      "plan": {
+        "name": "e2e-test-upgrade-v99",
+        "height": "999999999",
+        "info": "E2E test software upgrade proposal for guard module testing"
+      }
+    }
+  ],
+  "metadata": "E2E guard test: software upgrade",
+  "deposit": "10000000000omniphi",
+  "title": "E2E Test: Software Upgrade v99",
+  "summary": "This is an E2E test proposal to verify guard classifies software upgrades as CRITICAL risk tier with maximum delay."
+}

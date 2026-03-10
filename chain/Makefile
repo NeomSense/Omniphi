@@ -43,7 +43,11 @@ bench:
 
 test: govet govulncheck test-unit
 
-.PHONY: test test-unit test-race test-cover bench
+guard-e2e:
+	@echo "--> Running x/guard E2E scenario tests"
+	@bash scripts/e2e/guard/run_all.sh
+
+.PHONY: test test-unit test-race test-cover bench guard-e2e
 
 #################
 ###  Install  ###

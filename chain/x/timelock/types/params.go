@@ -7,9 +7,10 @@ import (
 
 // Security constants - absolute minimums that cannot be overridden
 const (
-	// AbsoluteMinDelaySeconds is the minimum delay that cannot be reduced (1 hour = 3600 seconds)
-	// This ensures even emergency operations have a review window
-	AbsoluteMinDelaySeconds uint64 = 3600
+	// AbsoluteMinDelaySeconds is the minimum delay that cannot be reduced (6 hours = 21600 seconds)
+	// SECURITY: Increased from 1 hour to 6 hours to prevent blitzkrieg governance takeover.
+	// A 1-hour window is insufficient for community coordination in response to malicious proposals.
+	AbsoluteMinDelaySeconds uint64 = 21600
 
 	// AbsoluteMaxDelaySeconds is the maximum delay allowed (30 days = 2592000 seconds)
 	// Prevents indefinite queueing that could lock governance
@@ -27,17 +28,18 @@ const (
 	// DefaultGracePeriodSeconds is the default grace period (7 days = 604800 seconds)
 	DefaultGracePeriodSeconds uint64 = 7 * 24 * 3600
 
-	// DefaultEmergencyDelaySeconds is the default emergency delay (1 hour = 3600 seconds)
-	DefaultEmergencyDelaySeconds uint64 = 3600
+	// DefaultEmergencyDelaySeconds is the default emergency delay (6 hours = 21600 seconds)
+	// SECURITY: Matches AbsoluteMinDelaySeconds to ensure minimum community review window
+	DefaultEmergencyDelaySeconds uint64 = 21600
 
 	// Legacy time.Duration constants for backward compatibility in tests
-	AbsoluteMinDelay       = 1 * time.Hour
+	AbsoluteMinDelay       = 6 * time.Hour
 	AbsoluteMaxDelay       = 30 * 24 * time.Hour
 	AbsoluteMinGracePeriod = 1 * time.Hour
 	DefaultMinDelay        = 24 * time.Hour
 	DefaultMaxDelay        = 14 * 24 * time.Hour
 	DefaultGracePeriod     = 7 * 24 * time.Hour
-	DefaultEmergencyDelay  = 1 * time.Hour
+	DefaultEmergencyDelay  = 6 * time.Hour
 
 	// MinCancelReasonLength is the minimum length for cancellation reason
 	MinCancelReasonLength = 10
@@ -50,6 +52,61 @@ const (
 
 	// MaxJustificationLength is the maximum length for emergency justification
 	MaxJustificationLength = 1000
+
+	// MaxGuardianCancelsPerWindow is the max cancellations a guardian can perform
+	// within a rolling window before being auto-revoked. Prevents guardian DoS on governance.
+	MaxGuardianCancelsPerWindow uint64 = 3
+
+	// GuardianCancelWindowBlocks is the rolling window size in blocks (~24 hours at 6s/block)
+	// for tracking guardian cancel frequency
+	GuardianCancelWindowBlocks int64 = 50000
+
+	// --- AST v2: Adaptive delay constants ---
+
+	// DelayPrecision is the fixed-point denominator used in multiplier arithmetic.
+	// All multipliers are integers with implied division by DelayPrecision.
+	// e.g. RiskMultiplier = 1500 means 1.5×.
+	DelayPrecision uint64 = 1000
+
+	// DefaultRiskMultiplierLow maps RISK_TIER_LOW to a 1.0× delay.
+	DefaultRiskMultiplierLow uint64 = 1000
+	// DefaultRiskMultiplierMed maps RISK_TIER_MED to a 1.5× delay.
+	DefaultRiskMultiplierMed uint64 = 1500
+	// DefaultRiskMultiplierHigh maps RISK_TIER_HIGH to a 2.0× delay.
+	DefaultRiskMultiplierHigh uint64 = 2000
+	// DefaultRiskMultiplierCritical maps RISK_TIER_CRITICAL to a 3.0× delay.
+	DefaultRiskMultiplierCritical uint64 = 3000
+
+	// DefaultEconomicImpactMultiplierBase is applied when treasury spend < 5%.
+	DefaultEconomicImpactMultiplierBase uint64 = 1000 // 1.0×
+	// DefaultEconomicImpactMultiplierMed is applied for 5–25% treasury spend.
+	DefaultEconomicImpactMultiplierMed uint64 = 1400 // 1.4×
+	// DefaultEconomicImpactMultiplierHigh is applied for > 25% treasury spend.
+	DefaultEconomicImpactMultiplierHigh uint64 = 2000 // 2.0×
+
+	// CumulativeTreasuryWindow is the rolling window (seconds) for cumulative
+	// treasury outflow detection. Default: 24 hours.
+	CumulativeTreasuryWindow int64 = 86400
+
+	// DefaultCumulativeTreasuryEscalateBps is the threshold at which cumulative
+	// treasury outflow triggers delay escalation (in bps of community pool).
+	DefaultCumulativeTreasuryEscalateBps uint64 = 3000 // 30%
+
+	// MaxFreezeDurationBlocks is the maximum number of blocks a track can be
+	// frozen in a single governance freeze (≈ 30 days at 5s/block).
+	MaxFreezeDurationBlocks int64 = 518400
+
+	// ParamChangeMutationWindowBlocks is the rolling window for tracking how
+	// frequently governance param changes are made (for stability predicate).
+	ParamChangeMutationWindowBlocks int64 = 50000
+
+	// ParamChangeMutationThreshold is the number of param changes within
+	// ParamChangeMutationWindowBlocks that triggers a stability-check delay.
+	ParamChangeMutationThreshold uint64 = 5
+
+	// MutationFreqMultiplier is the delay multiplier applied when param
+	// mutation frequency exceeds ParamChangeMutationThreshold.  Fixed-point.
+	MutationFreqMultiplier uint64 = 1500 // 1.5×
 )
 
 // Status constants that map to the proto-generated OperationStatus

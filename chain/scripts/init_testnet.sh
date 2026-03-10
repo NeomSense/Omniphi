@@ -79,6 +79,10 @@ if [ -f "${CONFIG_DIR}/genesis.json" ]; then
     echo -e "${GREEN}Removed existing genesis.json${NC}"
 fi
 
+# Ensure data directory and priv_validator_state.json exist (posd init expects them)
+mkdir -p "${POSD_HOME}/data"
+echo '{"height":"0","round":0,"step":0}' > "${POSD_HOME}/data/priv_validator_state.json"
+
 # =============================================================================
 # Step 2: Initialize the chain
 # =============================================================================
@@ -139,6 +143,33 @@ cat "$GENESIS" | jq ".app_state.bank.denom_metadata = [{
     \"name\": \"Omniphi\",
     \"symbol\": \"${DISPLAY_DENOM}\"
 }]" > tmp.json && mv tmp.json "$GENESIS"
+
+# Configure guard module params for testnet (shorter delays for fast iteration)
+cat "$GENESIS" | jq '.app_state.guard = {
+    "delay_low_blocks": "10",
+    "delay_med_blocks": "50",
+    "delay_high_blocks": "200",
+    "delay_critical_blocks": "500",
+    "visibility_window_blocks": "100",
+    "shock_absorber_window_blocks": "50",
+    "threshold_default_bps": "5000",
+    "threshold_high_bps": "6700",
+    "threshold_critical_bps": "7500",
+    "treasury_throttle_enabled": false,
+    "treasury_max_outflow_bps_per_day": "0",
+    "enable_stability_checks": false,
+    "max_validator_churn_bps": "0",
+    "advisory_ai_enabled": false,
+    "binding_ai_enabled": false,
+    "ai_shadow_mode": false,
+    "critical_requires_second_confirm": false,
+    "critical_second_confirm_window_blocks": "0",
+    "extension_high_blocks": "21600",
+    "extension_critical_blocks": "64800",
+    "max_proposals_per_block": "5",
+    "max_queue_scan_depth": "100",
+    "timelock_integration_enabled": true
+}' > tmp.json && mv tmp.json "$GENESIS"
 
 echo -e "${GREEN}Genesis parameters configured${NC}"
 

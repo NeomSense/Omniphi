@@ -1,0 +1,68 @@
+{
+  "model_version": "omniphi-ordinal-l2-v1",
+  "scale": 10000,
+  "feature_order": [
+    "is_upgrade",
+    "is_param_change",
+    "is_treasury_spend",
+    "is_slashing_change",
+    "is_poc_rule_change",
+    "is_poseq_rule_change",
+    "treasury_spend_bps",
+    "modules_touched_count",
+    "touches_consensus_critical",
+    "reduces_slashing",
+    "changes_validator_rules"
+  ],
+  "schema_hash_sha256": "ac76dce03713204c4729dfbe21cb16de3fc585c8fd1929436a332e2ab58596bf",
+  "weights_int_med": [
+    8168,
+    35294,
+    -101110,
+    19721,
+    31359,
+    31017,
+    38128,
+    1709,
+    17860,
+    11583,
+    13657
+  ],
+  "bias_int_med": 27781,
+  "weights_int_high": [
+    54534,
+    -32981,
+    -72801,
+    -19012,
+    -36156,
+    84274,
+    180,
+    778,
+    108478,
+    95989,
+    105358
+  ],
+  "bias_int_high": -28859,
+  "weights_int_crit": [
+    88527,
+    -12892,
+    -63890,
+    -10449,
+    -22289,
+    -22818,
+    49,
+    1270,
+    136218,
+    -805,
+    3571
+  ],
+  "bias_int_crit": -59126,
+  "thresholds": {
+    "t1_med_score": 55,
+    "t2_high_score": 65,
+    "t3_crit_score": 75
+  },
+  "score_mapping": "score = clamp((raw // scale) + 50, 0, 100) where raw = bias_int + sum(weights_int[i] * features[i])",
+  "tier_derivation": "if score_crit >= t3 -> CRITICAL; else if score_high >= t2 -> HIGH; else if score_med >= t1 -> MED; else LOW",
+  "weights_hash": "e08e3d033e27b39e00992c2e9ebeda1860c6cf0cc07993700888692b99b3a82d"
+}
