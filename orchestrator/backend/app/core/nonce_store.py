@@ -99,6 +99,19 @@ class NonceStore:
             logger.error(f"Unexpected error initializing Redis: {e}")
             self._redis_client = None
 
+    def _register_challenge(self, cache_key: str) -> None:
+        """
+        Register a server-issued challenge nonce so verify_and_consume can confirm
+        it was legitimately issued (not fabricated by the client).
+        """
+        if self._using_redis and self._redis_client:
+            try:
+                self._redis_client.set(cache_key, "pending", ex=settings.NONCE_EXPIRY_SECONDS)
+            except Exception as e:
+                logger.error(f"Failed to register challenge nonce: {e}")
+        else:
+            self._memory_cache[cache_key] = time.time()
+
     def verify_and_consume(self, nonce: str, wallet_address: str) -> bool:
         """
         Verify nonce hasn't been used and consume it atomically.
@@ -113,12 +126,22 @@ class NonceStore:
         Returns:
             True if nonce is valid and was consumed, False if already used
         """
-        cache_key = f"nonce:{wallet_address}:{nonce}"
+        challenge_key = f"challenge:{wallet_address}:{nonce}"
+        consume_key = f"nonce:{wallet_address}:{nonce}"
 
         if self._using_redis and self._redis_client:
-            return self._verify_redis(cache_key)
+            # Must have been server-issued AND not yet consumed
+            if not self._redis_client.exists(challenge_key):
+                logger.warning(f"Nonce was not server-issued: {consume_key[:50]}...")
+                return False
+            self._redis_client.delete(challenge_key)
+            return self._verify_redis(consume_key)
         else:
-            return self._verify_memory(cache_key)
+            if challenge_key not in self._memory_cache:
+                logger.warning(f"Nonce was not server-issued (memory): {consume_key[:50]}...")
+                return False
+            del self._memory_cache[challenge_key]
+            return self._verify_memory(consume_key)
 
     def _verify_redis(self, cache_key: str) -> bool:
         """

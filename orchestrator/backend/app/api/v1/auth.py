@@ -160,6 +160,11 @@ async def get_auth_challenge(wallet_address: str):
     timestamp = int(time.time())
     expires_at = timestamp + NONCE_EXPIRY_SECONDS
 
+    # SECURITY: Pre-register nonce so /token can verify it was server-issued.
+    # Without this, any arbitrary nonce string would pass verify_and_consume on first use.
+    cache_key = f"challenge:{wallet_address}:{nonce}"
+    nonce_store._register_challenge(cache_key)
+
     # Message format that client must sign
     message_to_sign = f"{wallet_address}:{nonce}:{timestamp}"
 

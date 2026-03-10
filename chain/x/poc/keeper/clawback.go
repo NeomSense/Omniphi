@@ -43,10 +43,16 @@ func (k Keeper) ExecuteClawback(ctx context.Context, claimID uint64, reason stri
 		Authority:         authority,
 	}
 
-	// 1. Clawback active vesting
-	unvested, err := k.ClawbackVesting(ctx, contributor, claimID)
-	if err == nil {
-		record.VestingClawedBack = unvested
+	// 1. Clawback active vesting — try ARVS first, then legacy
+	arvsUnvested, arvsErr := k.ClawbackARVSVesting(ctx, contributor, claimID)
+	if arvsErr == nil && arvsUnvested.IsPositive() {
+		record.VestingClawedBack = arvsUnvested
+	} else {
+		// Legacy linear vesting fallback
+		unvested, err := k.ClawbackVesting(ctx, contributor, claimID)
+		if err == nil {
+			record.VestingClawedBack = unvested
+		}
 	}
 
 	// 2. Best-effort immediate balance clawback

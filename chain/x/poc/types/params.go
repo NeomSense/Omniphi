@@ -610,6 +610,34 @@ func (p Params) Validate() error {
 		}
 	}
 
+	// Validate ARVS parameters
+	if p.EnableARVS {
+		if err := p.ARVSWeights.Validate(); err != nil {
+			return fmt.Errorf("invalid arvs_weights: %w", err)
+		}
+		if len(p.ARVSVestingProfiles) == 0 {
+			return fmt.Errorf("arvs_vesting_profiles must not be empty when ARVS is enabled")
+		}
+		for _, profile := range p.ARVSVestingProfiles {
+			if err := profile.Validate(); err != nil {
+				return fmt.Errorf("invalid arvs_vesting_profile %d: %w", profile.ProfileID, err)
+			}
+		}
+		if err := p.ARVSBountyDistribution.Validate(); err != nil {
+			return fmt.Errorf("invalid arvs_bounty_distribution: %w", err)
+		}
+		if p.ARVSRiskScoreLowThreshold >= p.ARVSRiskScoreHighThreshold {
+			return fmt.Errorf("arvs_risk_score_low_threshold (%d) must be less than high_threshold (%d)",
+				p.ARVSRiskScoreLowThreshold, p.ARVSRiskScoreHighThreshold)
+		}
+		if p.ARVSRiskScoreHighThreshold > 10000 {
+			return fmt.Errorf("arvs_risk_score_high_threshold cannot exceed 10000 (got %d)", p.ARVSRiskScoreHighThreshold)
+		}
+		if p.ARVSEnableBounty && p.ARVSTreasuryAddress == "" && p.ARVSBountyDistribution.TreasuryBps > 0 {
+			return fmt.Errorf("arvs_treasury_address must be set when bounty treasury share > 0")
+		}
+	}
+
 	// Validate Provenance Registry parameters
 	if p.MaxProvenanceDepth > 20 {
 		return fmt.Errorf("max_provenance_depth cannot exceed 20 (got %d)", p.MaxProvenanceDepth)
