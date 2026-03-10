@@ -419,6 +419,8 @@ func (k Keeper) ProcessARVSVestingReleases(ctx context.Context) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	currentEpoch := k.GetCurrentEpoch(ctx)
 	params := k.GetParams(ctx)
+	maxReleases := int(k.GetMaxVestingReleasesPerEpoch(ctx))
+	processed := 0
 
 	store := k.storeService.OpenKVStore(ctx)
 	iterator, err := store.Iterator(
@@ -430,7 +432,7 @@ func (k Keeper) ProcessARVSVestingReleases(ctx context.Context) error {
 	}
 	defer iterator.Close()
 
-	for ; iterator.Valid(); iterator.Next() {
+	for ; iterator.Valid() && processed < maxReleases; iterator.Next() {
 		var schedule types.ARVSVestingSchedule
 		if err := json.Unmarshal(iterator.Value(), &schedule); err != nil {
 			continue
@@ -505,6 +507,7 @@ func (k Keeper) ProcessARVSVestingReleases(ctx context.Context) error {
 			if err := k.SetARVSVestingSchedule(ctx, schedule); err != nil {
 				k.Logger().Error("ARVS: failed to update vesting schedule", "error", err.Error())
 			}
+			processed++
 		}
 	}
 

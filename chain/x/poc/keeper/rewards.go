@@ -59,12 +59,20 @@ func (k Keeper) removePendingRewardIndex(ctx context.Context, contributionID uin
 	return store.Delete(types.GetPendingRewardIndexKey(contributionID))
 }
 
-// weightFor calculates the weight multiplier for a contribution
-// This can be extended to factor in contribution type, size, etc.
+// weightFor returns the reward weight multiplier for a contribution based on its Ctype.
+// Weights are stored as basis points (10000 = 1.0x) and read from the governance-configurable
+// KeyCtypeWeights sidecar. Unknown ctypes default to 100 bps (0.01x = 1 × BaseRewardUnit).
 func (k Keeper) weightFor(ctx context.Context, c types.Contribution) math.Int {
-	// Simple implementation: uniform weight
-	// Future: vary by ctype ("code"=2, "record"=1, "green"=3, etc.)
-	return math.NewInt(1)
+	weights := k.GetCtypeWeights(ctx)
+	bps, ok := weights[c.Ctype]
+	if !ok || bps == 0 {
+		bps = 100 // fallback: 1x (100 bps out of 10000)
+	}
+	// weight = BaseRewardUnit * bps / 10000 expressed as an integer multiplier
+	// We return the raw bps value and callers multiply by BaseRewardUnit.
+	// To keep backward compatibility where callers do params.BaseRewardUnit.Mul(weight),
+	// return bps/100 so that weight=1 for record (100bps), weight=2 for code (200bps), etc.
+	return math.NewInt(int64(bps) / 100)
 }
 
 // WithdrawCredits converts PoC credits to coins and sends them to the contributor

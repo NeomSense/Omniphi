@@ -234,6 +234,9 @@ func New(
 	// RewardMult reads quality metrics from PoC; PoC reads effective multipliers from RewardMult
 	app.RewardmultKeeper.SetPocKeeper(app.PocKeeper)
 	app.PocKeeper.SetRewardMultKeeper(app.RewardmultKeeper)
+	// Wire PoR → RewardMult fraud-penalty path.
+	// HasFraudulentAttestation checks SlashedCount in VerifierReputation to apply fraud penalties.
+	app.RewardmultKeeper.SetPorKeeper(&app.PorKeeper)
 
 	// Wire Layer 5 modules: reputation governance, royalty streams, and UCI
 	// Each module uses a PoC adapter that translates between the PoC keeper's

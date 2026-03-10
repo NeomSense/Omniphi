@@ -232,6 +232,17 @@ var (
 	// instead of O(all contributions).
 	// Key: 0x30 | contribution_id (big endian uint64)
 	KeyPrefixPendingRewardIndex = []byte{0x30}
+
+	// KeyCtypeWeights stores a JSON map[string]uint32 of contribution-type weights
+	// used by weightFor() to scale emission shares by contribution category.
+	// Example: {"code":200, "record":100, "relay":80, "green":150}
+	// Stored as JSON sidecar to avoid proto field descriptor issues.
+	KeyCtypeWeights = []byte{0x31}
+
+	// KeyMaxVestingReleasesPerEpoch stores a uint32 cap on how many vesting schedules
+	// ProcessVestingReleases and ProcessARVSVestingReleases may release per epoch.
+	// Prevents O(n) EndBlocker stalls when large numbers of schedules mature.
+	KeyMaxVestingReleasesPerEpoch = []byte{0x32}
 )
 
 // GetContributionKey returns the store key for a contribution by ID

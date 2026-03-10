@@ -668,10 +668,15 @@ func TestPoCEconomics_NoStakeWeightedCredits(t *testing.T) {
 	err := f.keeper.EnqueueReward(f.ctx, contribution)
 	require.NoError(t, err)
 
-	// Check credits = BaseRewardUnit (1000), not stake-weighted
+	// Check credits = BaseRewardUnit * ctype_weight (not stake-weighted).
+	// "code" has default weight 200 bps → weight multiplier = 200/100 = 2
+	// so expected credits = BaseRewardUnit * 2 = 2000.
 	credits := f.keeper.GetCredits(f.ctx, testAddr1)
 	params := f.keeper.GetParams(f.ctx)
-	require.True(t, credits.Amount.Equal(params.BaseRewardUnit))
+	ctypeWeights := f.keeper.GetCtypeWeights(f.ctx)
+	bps := ctypeWeights["code"] // 200 by default
+	expected := params.BaseRewardUnit.Mul(math.NewInt(int64(bps) / 100))
+	require.True(t, credits.Amount.Equal(expected))
 }
 
 func TestPoCEconomics_GovBoostCapped(t *testing.T) {

@@ -504,3 +504,57 @@ func (k Keeper) SetMinQualityForEmission(ctx context.Context, minQuality uint32)
 	}
 	return store.Set(types.KeyMinQualityForEmission, bz)
 }
+
+// GetCtypeWeights returns the per-contribution-type reward weight multipliers (basis points).
+// Stored as a JSON map[string]uint32 at KeyCtypeWeights. Falls back to DefaultCtypeWeights
+// when the key is unset (e.g. on first boot before governance sets a custom map).
+func (k Keeper) GetCtypeWeights(ctx context.Context) map[string]uint32 {
+	store := k.storeService.OpenKVStore(ctx)
+	bz, err := store.Get(types.KeyCtypeWeights)
+	if err != nil || len(bz) == 0 {
+		return types.DefaultCtypeWeights()
+	}
+	var weights map[string]uint32
+	if err := json.Unmarshal(bz, &weights); err != nil {
+		return types.DefaultCtypeWeights()
+	}
+	return weights
+}
+
+// SetCtypeWeights persists the per-contribution-type reward weight multipliers (basis points).
+// Each value must be in [1, 10000]. An empty map is allowed (reverts to all-uniform weights).
+func (k Keeper) SetCtypeWeights(ctx context.Context, weights map[string]uint32) error {
+	for ctype, w := range weights {
+		if w == 0 || w > 10000 {
+			return fmt.Errorf("ctype weight for %q must be in [1, 10000], got %d", ctype, w)
+		}
+	}
+	bz, err := json.Marshal(weights)
+	if err != nil {
+		return err
+	}
+	store := k.storeService.OpenKVStore(ctx)
+	return store.Set(types.KeyCtypeWeights, bz)
+}
+
+// GetMaxVestingReleasesPerEpoch returns the cap on vesting schedules processed per EndBlocker call.
+// Defaults to DefaultMaxVestingReleasesPerEpoch (200) when unset.
+func (k Keeper) GetMaxVestingReleasesPerEpoch(ctx context.Context) uint32 {
+	store := k.storeService.OpenKVStore(ctx)
+	bz, err := store.Get(types.KeyMaxVestingReleasesPerEpoch)
+	if err != nil || len(bz) < 4 {
+		return types.DefaultMaxVestingReleasesPerEpoch
+	}
+	return uint32(bz[0])<<24 | uint32(bz[1])<<16 | uint32(bz[2])<<8 | uint32(bz[3])
+}
+
+// SetMaxVestingReleasesPerEpoch persists the vesting-releases-per-epoch cap.
+// Must be in [1, 10000].
+func (k Keeper) SetMaxVestingReleasesPerEpoch(ctx context.Context, cap uint32) error {
+	if cap == 0 || cap > 10000 {
+		return fmt.Errorf("max_vesting_releases_per_epoch must be in [1, 10000], got %d", cap)
+	}
+	bz := []byte{byte(cap >> 24), byte(cap >> 16), byte(cap >> 8), byte(cap)}
+	store := k.storeService.OpenKVStore(ctx)
+	return store.Set(types.KeyMaxVestingReleasesPerEpoch, bz)
+}

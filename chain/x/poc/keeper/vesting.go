@@ -107,11 +107,14 @@ func (k Keeper) GetVestingBalance(ctx context.Context, contributor string) math.
 
 // ProcessVestingReleases iterates all active vesting schedules and releases matured tranches.
 // Called from EndBlocker at each epoch boundary. Never panics.
+// Capped at GetMaxVestingReleasesPerEpoch() schedules per call to prevent burst stalls.
 func (k Keeper) ProcessVestingReleases(ctx context.Context) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	currentEpoch := k.GetCurrentEpoch(ctx)
 	params := k.GetParams(ctx)
 	store := k.storeService.OpenKVStore(ctx)
+	maxReleases := int(k.GetMaxVestingReleasesPerEpoch(ctx))
+	processed := 0
 
 	// Iterate all vesting schedules (prefix scan on 0x23)
 	iterator, err := store.Iterator(
@@ -123,7 +126,7 @@ func (k Keeper) ProcessVestingReleases(ctx context.Context) error {
 	}
 	defer iterator.Close()
 
-	for ; iterator.Valid(); iterator.Next() {
+	for ; iterator.Valid() && processed < maxReleases; iterator.Next() {
 		var schedule types.VestingSchedule
 		if err := json.Unmarshal(iterator.Value(), &schedule); err != nil {
 			continue
@@ -205,6 +208,7 @@ func (k Keeper) ProcessVestingReleases(ctx context.Context) error {
 		balKey := types.GetVestingBalanceKey(schedule.Contributor)
 		balBz, _ := json.Marshal(balance.String())
 		_ = store.Set(balKey, balBz)
+		processed++
 	}
 
 	return nil

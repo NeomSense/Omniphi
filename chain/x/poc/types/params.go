@@ -223,6 +223,22 @@ const DefaultARVSRiskScoreLowThreshold uint32 = 3000
 // DefaultARVSRiskScoreHighThreshold is the min risk score (bps) for High Risk profile (65%)
 const DefaultARVSRiskScoreHighThreshold uint32 = 6500
 
+// DefaultCtypeWeights returns the default reward weight multipliers for each contribution type.
+// Values are in basis points (10000 = 1.0x). Types not in the map default to 100 (= 0.01x weight, i.e. BaseRewardUnit * 1).
+// code=200 (2x), record=100 (1x), relay=80 (0.8x), green=150 (1.5x).
+func DefaultCtypeWeights() map[string]uint32 {
+	return map[string]uint32{
+		"code":   200,
+		"record": 100,
+		"relay":  80,
+		"green":  150,
+	}
+}
+
+// DefaultMaxVestingReleasesPerEpoch is the cap on how many vesting schedules
+// are processed per EndBlocker call (prevents burst stalls). Default: 200.
+const DefaultMaxVestingReleasesPerEpoch uint32 = 200
+
 // DefaultMinCscoreForCtype returns the default C-Score requirements for contribution types
 // Empty map by default = no restrictions (backwards compatible)
 // Governance can set requirements like:
