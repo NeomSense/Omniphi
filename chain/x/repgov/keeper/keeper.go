@@ -442,3 +442,55 @@ func (k Keeper) EnsureVoterRegistered(ctx context.Context, addr string) error {
 	vw := types.NewVoterWeight(addr, 0)
 	return k.SetVoterWeight(ctx, vw)
 }
+
+// RecordContributionOutcome updates a contributor's originality and reputation signals
+// based on a PoC review outcome. Called by the PoC keeper's finalizeReviewSession.
+//
+// For accepted contributions: OriginalityAvg is nudged upward by quality and penalised
+// by similarity (higher similarity = more derivative = lower originality signal).
+// For rejected contributions: OriginalityAvg is nudged downward.
+//
+// The adjustment uses an EMA-style blend to avoid wild swings from single outcomes.
+// alpha = 0.1 (new sample weight); signal = qualityNorm * (1 - similarityScore).
+func (k Keeper) RecordContributionOutcome(ctx context.Context, contributor string, accepted bool, qualityScore math.LegacyDec, similarityScore math.LegacyDec) error {
+	params := k.GetParams(ctx)
+	if !params.Enabled {
+		return nil
+	}
+
+	// Ensure voter is registered
+	vw, found := k.GetVoterWeight(ctx, contributor)
+	if !found {
+		vw = types.NewVoterWeight(contributor, 0)
+	}
+
+	// originality signal: quality normalized to [0,1] penalised by similarity
+	// qualityScore is in [0, 10]; normalize to [0, 1]
+	qualNorm := qualityScore.Quo(math.LegacyNewDec(10))
+	if qualNorm.GT(math.LegacyOneDec()) {
+		qualNorm = math.LegacyOneDec()
+	}
+
+	one := math.LegacyOneDec()
+	originalitySignal := qualNorm.Mul(one.Sub(similarityScore))
+
+	if !accepted {
+		// Rejection: drive signal toward zero
+		originalitySignal = math.LegacyZeroDec()
+	}
+
+	// EMA blend: new = 0.9 * old + 0.1 * signal
+	alpha := math.LegacyNewDecWithPrec(1, 1) // 0.1
+	oneMinusAlpha := one.Sub(alpha)
+	vw.OriginalityAvg = oneMinusAlpha.Mul(vw.OriginalityAvg).Add(alpha.Mul(originalitySignal))
+
+	// Clamp to [0, 1]
+	if vw.OriginalityAvg.IsNegative() {
+		vw.OriginalityAvg = math.LegacyZeroDec()
+	}
+	if vw.OriginalityAvg.GT(one) {
+		vw.OriginalityAvg = one
+	}
+
+	return k.SetVoterWeight(ctx, vw)
+}

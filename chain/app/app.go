@@ -244,6 +244,10 @@ func New(
 	app.RepgovKeeper.SetPocKeeper(NewRepgovPocKeeperAdapter(app.PocKeeper))
 	app.RoyaltyKeeper.SetPocKeeper(NewRoyaltyPocKeeperAdapter(app.PocKeeper))
 	app.UCIKeeper.SetPocKeeper(NewUCIPocKeeperAdapter(app.PocKeeper))
+	// Wire PoC → Royalty: mints IPR token record on contribution acceptance
+	app.PocKeeper.SetRoyaltyKeeper(app.RoyaltyKeeper)
+	// Wire PoC → RepGov: updates originality/reputation signal on review outcomes
+	app.PocKeeper.SetRepgovKeeper(app.RepgovKeeper)
 
 	// Note: Gov hooks are automatically set by depinject via GovHooksWrapper
 	// See: x/timelock/module/depinject.go:69

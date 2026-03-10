@@ -170,6 +170,7 @@ func (am AppModule) EndBlock(ctx context.Context) error {
 	// 4. Clear validator cache to prevent stale data
 	am.keeper.ClearValidatorCache()
 
-	// 5. Prune old rate limit counters
-	return am.keeper.PruneRateLimits(ctx)
+	// Note: PruneRateLimits is intentionally omitted — rate-limit counters live in the
+	// transient store and are auto-cleared at the end of each block by the Cosmos SDK.
+	return nil
 }

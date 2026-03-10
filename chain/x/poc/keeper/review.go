@@ -950,6 +950,27 @@ func (k Keeper) finalizeReviewSession(ctx context.Context, session *types.Review
 				}
 
 				k.UpdateContributorStatsOnAccept(ctx, contribution.Contributor, contribution.IsDerivative, rewardCtx.SimilarityScore)
+
+				// Notify royalty module to create IPR token record (best-effort)
+				if k.royaltyKeeper != nil {
+					if royErr := k.royaltyKeeper.OnContributionAccepted(ctx, session.ContributionID, contribution.Contributor, output.FinalRewardAmount); royErr != nil {
+						k.Logger().Error("royalty OnContributionAccepted failed",
+							"contribution_id", session.ContributionID,
+							"error", royErr.Error())
+					}
+				}
+			}
+		}
+
+		// Notify repgov of contribution outcome (accept or reject) — best-effort
+		if k.repgovKeeper != nil {
+			qualScore := math.LegacyNewDec(int64(avgQuality)).Quo(math.LegacyNewDec(10))
+			simScore := k.GetSimilarityScore(ctx, session.ContributionID)
+			if repErr := k.repgovKeeper.RecordContributionOutcome(ctx, contribution.Contributor, accepted, qualScore, simScore); repErr != nil {
+				k.Logger().Error("repgov RecordContributionOutcome failed",
+					"contribution_id", session.ContributionID,
+					"accepted", accepted,
+					"error", repErr.Error())
 			}
 		}
 	}

@@ -105,6 +105,15 @@ type Keeper struct {
 	// If nil, all validators get neutral 1.0x multiplier
 	rewardmultKeeper types.RewardmultKeeper
 
+	// OPTIONAL: Royalty keeper for IPR token creation and reward routing on contribution acceptance.
+	// If nil, royalty token records are not created (royalty payments in DistributeRewards still work
+	// via params, but no per-token ownership records are written).
+	royaltyKeeper types.RoyaltyKeeper
+
+	// OPTIONAL: RepGov keeper for updating governance reputation on contribution outcomes.
+	// If nil, VoterWeight records are not updated on accept/reject (reputation stays static).
+	repgovKeeper types.RepgovKeeper
+
 	// PERFORMANCE OPTIMIZATION: Cache validator power to reduce staking keeper lookups
 	valCache *validatorCache
 }
@@ -166,6 +175,16 @@ func (k *Keeper) SetSlashingKeeper(slashingKeeper types.SlashingKeeper) {
 // This should be called during app initialization after both keepers are created
 func (k *Keeper) SetRewardMultKeeper(rmKeeper types.RewardmultKeeper) {
 	k.rewardmultKeeper = rmKeeper
+}
+
+// SetRoyaltyKeeper sets the royalty keeper (optional dependency for IPR token creation on acceptance).
+func (k *Keeper) SetRoyaltyKeeper(rk types.RoyaltyKeeper) {
+	k.royaltyKeeper = rk
+}
+
+// SetRepgovKeeper sets the repgov keeper (optional dependency for reputation feedback on outcomes).
+func (k *Keeper) SetRepgovKeeper(rk types.RepgovKeeper) {
+	k.repgovKeeper = rk
 }
 
 // GetCurrentEpoch returns the current epoch (uses epochs keeper if available, otherwise approximates)

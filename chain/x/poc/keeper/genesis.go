@@ -2,11 +2,31 @@ package keeper
 
 import (
 	"context"
+	"encoding/json"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"pos/x/poc/types"
 )
+
+// KeyExtendedGenesis is the store key for the JSON-encoded ExtendedGenesisState sidecar.
+// Using a dedicated key avoids proto field descriptor regeneration requirements.
+var KeyExtendedGenesis = []byte{0x50}
+
+// ExtendedGenesisState captures all PoC module state that cannot fit in the proto-generated
+// GenesisState (which only holds Params, Contributions, Credits, NextContributionId, FeeMetrics,
+// ContributorFeeStats). On export this struct is JSON-marshalled and stored at KeyExtendedGenesis
+// so that InitGenesis can restore full module state across network upgrades.
+type ExtendedGenesisState struct {
+	VestingSchedules     []types.VestingSchedule     `json:"vesting_schedules"`
+	ARVSSchedules        []types.ARVSVestingSchedule `json:"arvs_schedules"`
+	ReviewSessions       []types.ReviewSession       `json:"review_sessions"`
+	ReviewerProfiles     []types.ReviewerProfile     `json:"reviewer_profiles"`
+	ProvenanceEntries    []types.ProvenanceEntry     `json:"provenance_entries"`
+	ContributorStats     []types.ContributorStats    `json:"contributor_stats"`
+	CtypeWeights         map[string]uint32           `json:"ctype_weights"`
+	MinQualityForEmission uint32                     `json:"min_quality_for_emission"`
+}
 
 // InitGenesis initializes the module's state from a provided genesis state
 func (k Keeper) InitGenesis(ctx context.Context, gs types.GenesisState) error {
@@ -47,6 +67,38 @@ func (k Keeper) InitGenesis(ctx context.Context, gs types.GenesisState) error {
 		}
 	}
 
+	// Import extended genesis sidecar (vesting, ARVS, reviews, provenance, stats, sidecars)
+	extBz, extErr := store.Get(KeyExtendedGenesis)
+	if extErr == nil && len(extBz) > 0 {
+		var ext ExtendedGenesisState
+		if jsonErr := json.Unmarshal(extBz, &ext); jsonErr == nil {
+			for _, vs := range ext.VestingSchedules {
+				_ = k.SetVestingSchedule(ctx, vs)
+			}
+			for _, as := range ext.ARVSSchedules {
+				_ = k.SetARVSVestingSchedule(ctx, as)
+			}
+			for _, rs := range ext.ReviewSessions {
+				_ = k.SetReviewSession(ctx, rs)
+			}
+			for _, rp := range ext.ReviewerProfiles {
+				_ = k.SetReviewerProfile(ctx, rp)
+			}
+			for _, pe := range ext.ProvenanceEntries {
+				_ = k.SetProvenanceEntry(ctx, pe)
+			}
+			for _, cs := range ext.ContributorStats {
+				_ = k.SetContributorStats(ctx, cs)
+			}
+			if len(ext.CtypeWeights) > 0 {
+				_ = k.SetCtypeWeights(ctx, ext.CtypeWeights)
+			}
+			if ext.MinQualityForEmission > 0 {
+				_ = k.SetMinQualityForEmission(ctx, ext.MinQualityForEmission)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -78,6 +130,24 @@ func (k Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 		// Log error but don't fail genesis export - use empty slice
 		k.logger.Error("failed to export contributor fee stats", "error", err)
 		contributorFeeStats = []types.ContributorFeeStats{}
+	}
+
+	// Build and persist extended genesis sidecar (state not representable in proto GenesisState)
+	ext := ExtendedGenesisState{
+		VestingSchedules:      k.GetAllVestingSchedules(ctx),
+		ARVSSchedules:         k.GetAllARVSVestingSchedules(ctx),
+		ReviewSessions:        k.GetAllReviewSessions(ctx),
+		ReviewerProfiles:      k.GetAllReviewerProfiles(ctx),
+		ProvenanceEntries:     k.GetAllProvenanceEntries(ctx),
+		ContributorStats:      k.GetAllContributorStats(ctx),
+		CtypeWeights:          k.GetCtypeWeights(ctx),
+		MinQualityForEmission: k.GetMinQualityForEmission(ctx),
+	}
+	if extBz, extErr := json.Marshal(ext); extErr == nil {
+		extStore := k.storeService.OpenKVStore(ctx)
+		if setErr := extStore.Set(KeyExtendedGenesis, extBz); setErr != nil {
+			k.logger.Error("failed to persist extended genesis sidecar", "error", setErr)
+		}
 	}
 
 	return &types.GenesisState{

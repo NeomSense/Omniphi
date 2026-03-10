@@ -157,8 +157,9 @@ func (k Keeper) GetTier(ctx context.Context, creditAmount math.Int) string {
 	return tier
 }
 
-// GovWeightBoost calculates a governance weight boost based on credits
-// This can be used by x/dao or x/gov for contribution-weighted voting
+// GovWeightBoost calculates a governance weight boost based on credits.
+// Reserved for future DAO/gov integration — not yet consumed by x/gov or x/repgov.
+// x/repgov drives its own VoterWeight via ComputeVoterWeight + RecordContributionOutcome.
 func (k Keeper) GovWeightBoost(ctx context.Context, addr sdk.AccAddress) math.LegacyDec {
 	credits := k.GetCredits(ctx, addr)
 

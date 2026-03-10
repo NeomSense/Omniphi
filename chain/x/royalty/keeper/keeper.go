@@ -293,6 +293,51 @@ func (k Keeper) OnContributionRewarded(ctx context.Context, claimID uint64, rewa
 	return nil
 }
 
+// OnContributionAccepted is called by the PoC module when a contribution is accepted by review.
+// It mints a new RoyaltyToken for the contributor, assigning the default royalty share from params,
+// and records the initial reward amount via OnContributionRewarded for proportional accumulation.
+// This satisfies the types.RoyaltyKeeper interface expected by x/poc.
+func (k Keeper) OnContributionAccepted(ctx context.Context, claimID uint64, owner string, rewardAmount math.Int) error {
+	params := k.GetParams(ctx)
+	if !params.Enabled {
+		return nil
+	}
+
+	// Skip if a token already exists for this claim (idempotent)
+	if existing := k.GetTokensByClaim(ctx, claimID); len(existing) > 0 {
+		// Token already minted — just accumulate the reward
+		return k.OnContributionRewarded(ctx, claimID, rewardAmount)
+	}
+
+	// Mint a new royalty token with the minimum share (governance can transfer/fractionalize later)
+	tokenID := k.GetNextTokenID(ctx)
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	token := types.NewRoyaltyToken(tokenID, claimID, owner, params.MinRoyaltyShare, sdkCtx.BlockHeight())
+
+	if err := k.SetRoyaltyToken(ctx, token); err != nil {
+		return fmt.Errorf("failed to set royalty token: %w", err)
+	}
+
+	if err := k.SetNextTokenID(ctx, tokenID+1); err != nil {
+		return fmt.Errorf("failed to increment next token ID: %w", err)
+	}
+
+	sdkCtx.EventManager().EmitEvent(sdk.NewEvent(
+		"royalty_token_minted",
+		sdk.NewAttribute("token_id", fmt.Sprintf("%d", tokenID)),
+		sdk.NewAttribute("claim_id", fmt.Sprintf("%d", claimID)),
+		sdk.NewAttribute("owner", owner),
+		sdk.NewAttribute("royalty_share", params.MinRoyaltyShare.String()),
+	))
+
+	// Record initial reward in accumulated royalties
+	if rewardAmount.IsPositive() {
+		return k.OnContributionRewarded(ctx, claimID, rewardAmount)
+	}
+	return nil
+}
+
 // FreezeTokensForClaim freezes all tokens backed by a claim (called on fraud detection)
 func (k Keeper) FreezeTokensForClaim(ctx context.Context, claimID uint64) error {
 	tokens := k.GetTokensByClaim(ctx, claimID)

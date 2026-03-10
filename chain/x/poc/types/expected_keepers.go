@@ -102,3 +102,25 @@ type SlashingKeeper interface {
 	// Jail jails a validator
 	Jail(ctx context.Context, consAddr sdk.ConsAddress) error
 }
+
+// RoyaltyKeeper defines the expected royalty keeper interface for IPR token creation and reward routing.
+// OPTIONAL: If not set, royalty token records are not created on contribution acceptance.
+type RoyaltyKeeper interface {
+	// OnContributionAccepted creates a royalty token record for a newly accepted contribution
+	// and notifies the royalty module of the reward amount for proportional distribution.
+	// claimID is the contribution ID; rewardAmount is the final reward distributed.
+	OnContributionAccepted(ctx context.Context, claimID uint64, owner string, rewardAmount math.Int) error
+
+	// FreezeTokensForClaim freezes all royalty tokens backed by a claim (called on fraud/clawback).
+	FreezeTokensForClaim(ctx context.Context, claimID uint64) error
+}
+
+// RepgovKeeper defines the expected repgov keeper interface for reputation feedback on contribution outcomes.
+// OPTIONAL: If not set, reputation scores are not updated on contribution acceptance/rejection.
+type RepgovKeeper interface {
+	// RecordContributionOutcome updates a contributor's governance reputation weight
+	// based on a contribution review outcome.
+	// accepted=true increments positive history; accepted=false for rejections.
+	// qualityScore is normalized [0, 10]; similarityScore is [0.0, 1.0].
+	RecordContributionOutcome(ctx context.Context, contributor string, accepted bool, qualityScore math.LegacyDec, similarityScore math.LegacyDec) error
+}
