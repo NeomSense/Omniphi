@@ -36,6 +36,12 @@ pub enum RuntimeError {
     BranchExecutionFailed { branch_id: u32, reason: String },
     FinalityEscalationRequired(String),
     CRXSettlementFailed(String),
+    // Phase 4: Safety Kernel errors
+    SafetyViolation { incident_type: String, severity: String },
+    ContainmentFailed { scope: String, reason: String },
+    KernelEvaluationError(String),
+    IncidentLedgerFull,
+    RecoveryRequiresGovernance(String),
 }
 
 impl fmt::Display for RuntimeError {
@@ -80,6 +86,15 @@ impl fmt::Display for RuntimeError {
             }
             RuntimeError::FinalityEscalationRequired(msg) => write!(f, "FinalityEscalationRequired: {}", msg),
             RuntimeError::CRXSettlementFailed(msg) => write!(f, "CRXSettlementFailed: {}", msg),
+            RuntimeError::SafetyViolation { incident_type, severity } => {
+                write!(f, "SafetyViolation: type={} severity={}", incident_type, severity)
+            }
+            RuntimeError::ContainmentFailed { scope, reason } => {
+                write!(f, "ContainmentFailed: scope={} reason={}", scope, reason)
+            }
+            RuntimeError::KernelEvaluationError(msg) => write!(f, "KernelEvaluationError: {}", msg),
+            RuntimeError::IncidentLedgerFull => write!(f, "IncidentLedgerFull"),
+            RuntimeError::RecoveryRequiresGovernance(msg) => write!(f, "RecoveryRequiresGovernance: {}", msg),
         }
     }
 }

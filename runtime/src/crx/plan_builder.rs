@@ -13,6 +13,11 @@ use crate::state::store::ObjectStore;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
+// Shared constants for metadata keys/values.
+const META_DEBIT_DIR: &str = "debit_direction";
+const VAL_DEBIT: &str = "debit";
+const VAL_CREDIT: &str = "credit";
+
 // ─────────────────────────────────────────────────────────────────────────────
 // DomainMapper
 // ─────────────────────────────────────────────────────────────────────────────
@@ -77,7 +82,7 @@ impl GraphAssembler {
                     };
 
                     let mut mutate_meta = action.metadata.clone();
-                    mutate_meta.insert("debit_direction".to_string(), "debit".to_string());
+                    mutate_meta.insert(META_DEBIT_DIR.to_string(), VAL_DEBIT.to_string());
                     let mutate_node = CausalNode {
                         node_id: mutate_id.clone(),
                         label: format!("MutateBalance(debit:{})", hex::encode(&target_bytes[..4])),
@@ -117,12 +122,12 @@ impl GraphAssembler {
                 }
 
                 PlanActionType::CreditBalance => {
-                    // MutateBalance node (credit) — StateDependent on prior debit
+                    // MutateBalance (credit) StateDependent on last mutation (debit)
                     let mutate_id = NodeId(next_id);
                     next_id += 1;
 
                     let mut mutate_meta = action.metadata.clone();
-                    mutate_meta.insert("debit_direction".to_string(), "credit".to_string());
+                    mutate_meta.insert(META_DEBIT_DIR.to_string(), VAL_CREDIT.to_string());
                     let mutate_node = CausalNode {
                         node_id: mutate_id.clone(),
                         label: format!("MutateBalance(credit:{})", hex::encode(&target_bytes[..4])),
@@ -449,7 +454,7 @@ impl RightsSynthesizer {
                 }
                 NodeExecutionClass::MutateBalance => {
                     let meta = &node.metadata;
-                    if meta.get("debit_direction").map(|s| s.as_str()) == Some("debit") {
+                    if meta.get(META_DEBIT_DIR).map(|s| s.as_str()) == Some(VAL_DEBIT) {
                         action_set.insert(AllowedActionType::DebitBalance);
                         if let Some(amt) = node.amount {
                             max_spend = max_spend.saturating_add(amt);

@@ -27,6 +27,10 @@ pub mod state;
 pub mod crx;
 pub use crx::*;
 
+// Phase 4: Deterministic Safety Kernel
+pub mod safety;
+pub use safety::*;
+
 // Phase 2 modules
 pub mod agent_interfaces;
 pub mod attribution;

@@ -6,6 +6,11 @@ use crate::crx::rights_capsule::RightsCapsule;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
+// Shared constants for metadata keys/values to ensure builder and validator match.
+const META_DEBIT_DIR: &str = "debit_direction";
+const VAL_DEBIT: &str = "debit";
+const VAL_CREDIT: &str = "credit";
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Violation types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -318,13 +323,15 @@ impl CausalValidityEngine {
                 continue;
             }
 
-            // Only debit MutateBalance and SwapPoolAmounts require prior validation nodes
-            let is_debit_mutate = node.execution_class == NodeExecutionClass::MutateBalance
-                && node.metadata.get("debit_direction").map(|s| s.as_str()) == Some("debit");
-            let is_swap = node.execution_class == NodeExecutionClass::SwapPoolAmounts;
+            // Fail-safe: Assume MutateBalance is debit (requires validation)
+            // unless explicitly marked as "credit".
+            let is_credit = node.execution_class == NodeExecutionClass::MutateBalance
+                && node.metadata.get(META_DEBIT_DIR).map(|s| s.as_str()) == Some(VAL_CREDIT);
 
-            if !is_debit_mutate && !is_swap {
-                // Credit, LockObject, UnlockObject — no validation node required
+            let needs_validation = (node.execution_class == NodeExecutionClass::MutateBalance && !is_credit)
+                || node.execution_class == NodeExecutionClass::SwapPoolAmounts;
+
+            if !needs_validation {
                 continue;
             }
 

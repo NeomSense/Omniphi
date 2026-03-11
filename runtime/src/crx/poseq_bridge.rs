@@ -36,6 +36,7 @@ pub struct SelectedCausalPlan {
     pub capsule: RightsCapsule,
 }
 
+#[derive(Debug, Clone)]
 pub struct CRXExecutionResult {
     pub goal_packet_id: [u8; 32],
     pub record: CRXSettlementRecord,

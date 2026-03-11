@@ -56,23 +56,13 @@ impl SettlementEngine {
             // them to a shared mutable store — so we execute sequentially and
             // accumulate receipts.
             for plan in &group.plans {
-                match Self::apply_plan(plan, store) {
-                    Ok(receipt) => {
-                        succeeded += 1;
-                        receipts.push(receipt);
-                    }
-                    Err(err) => {
-                        failed += 1;
-                        receipts.push(ExecutionReceipt {
-                            tx_id: plan.tx_id,
-                            success: false,
-                            affected_objects: vec![],
-                            version_transitions: vec![],
-                            error: Some(err.to_string()),
-                            gas_used: GasCosts::default_costs().base_tx, // base fee even on failure
-                        });
-                    }
+                let receipt = Self::apply_plan(plan, store);
+                if receipt.success {
+                    succeeded += 1;
+                } else {
+                    failed += 1;
                 }
+                receipts.push(receipt);
             }
         }
 
@@ -96,10 +86,13 @@ impl SettlementEngine {
     fn apply_plan(
         plan: &ExecutionPlan,
         store: &mut ObjectStore,
-    ) -> Result<ExecutionReceipt, RuntimeError> {
+    ) -> ExecutionReceipt {
         // ── Phase 0: gas metering setup ──────────────────────────────────────
         let mut meter = GasMeter::new(plan.gas_limit);
-        let costs = meter.costs;
+
+        // Inner function to allow using `?` for error handling while capturing gas
+        let mut execute_logic = |meter: &mut GasMeter| -> Result<ExecutionReceipt, RuntimeError> {
+            let costs = meter.costs;
 
         // Charge base transaction cost immediately
         meter.consume(costs.base_tx)?;
@@ -174,7 +167,20 @@ impl SettlementEngine {
             version_transitions,
             error: None,
             gas_used: meter.consumed,
-        })
+        }) 
+        };
+
+        match execute_logic(&mut meter) {
+            Ok(receipt) => receipt,
+            Err(e) => ExecutionReceipt {
+                tx_id: plan.tx_id,
+                success: false,
+                affected_objects: vec![],
+                version_transitions: vec![],
+                error: Some(e.to_string()),
+                gas_used: meter.consumed, // Capture actual gas used up to failure
+            },
+        }
     }
 
     /// Returns the gas cost for a single operation (used in pre-flight metering).

@@ -2,7 +2,10 @@ use crate::crx::causal_graph::{CausalGraph, CausalNode, NodeAccessType, NodeExec
 use crate::crx::rights_capsule::{AllowedActionType, RightsCapsule};
 use crate::objects::base::ObjectId;
 use crate::state::store::ObjectStore;
-use sha2::{Digest, Sha256};
+
+// Shared constants for metadata keys/values.
+const META_DEBIT_DIR: &str = "debit_direction";
+const VAL_DEBIT: &str = "debit";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Violation types
@@ -106,7 +109,7 @@ impl RightsValidationEngine {
                 // Update cumulative spend for debit nodes
                 if node.execution_class == NodeExecutionClass::MutateBalance {
                     let meta = &node.metadata;
-                    if meta.get("debit_direction").map(|s| s.as_str()) == Some("debit") {
+                    if meta.get(META_DEBIT_DIR).map(|s| s.as_str()) == Some(VAL_DEBIT) {
                         if let Some(amt) = node.amount {
                             cumulative_spend = cumulative_spend.saturating_add(amt);
                         }
@@ -244,7 +247,7 @@ impl RightsValidationEngine {
 
         // Check spend limit for debit nodes
         if node.execution_class == NodeExecutionClass::MutateBalance {
-            let is_debit = node.metadata.get("debit_direction").map(|s| s.as_str()) == Some("debit");
+            let is_debit = node.metadata.get(META_DEBIT_DIR).map(|s| s.as_str()) == Some(VAL_DEBIT);
             if is_debit {
                 if let Some(amt) = node.amount {
                     let new_spend = cumulative_spend.saturating_add(amt);
@@ -284,7 +287,7 @@ fn node_to_action_type(
         | NodeExecutionClass::CheckPolicy
         | NodeExecutionClass::ReserveLiquidity => Some(AllowedActionType::Read),
         NodeExecutionClass::MutateBalance => {
-            let is_debit = node.metadata.get("debit_direction").map(|s| s.as_str()) == Some("debit");
+            let is_debit = node.metadata.get(META_DEBIT_DIR).map(|s| s.as_str()) == Some(VAL_DEBIT);
             if is_debit {
                 Some(AllowedActionType::DebitBalance)
             } else {
