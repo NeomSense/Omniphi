@@ -1,3 +1,6 @@
 pub mod interface;
 
-pub use interface::{OrderedBatch, PoSeqRuntime};
+pub use interface::{
+    FinalSettlement, OrderedBatch, PoSeqRuntime, SelectedPlanResult, SolverMarketBatch,
+    SolverMarketRuntime,
+};

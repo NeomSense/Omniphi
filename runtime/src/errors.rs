@@ -21,6 +21,14 @@ pub enum RuntimeError {
     // Safety extension points (not yet implemented):
     ObjectQuarantined(ObjectId),
     DomainPaused(String),
+    // Phase 2: Solver Market errors
+    SolverNotRegistered(String),
+    SolverNotEligible { solver_id: String, reason: String },
+    NoCandidatePlans,
+    AllPlansInvalid,
+    PlanValidationFailed { plan_id: [u8; 32], reason: String },
+    PolicyViolation(String),
+    SimulationError(String),
 }
 
 impl fmt::Display for RuntimeError {
@@ -44,6 +52,17 @@ impl fmt::Display for RuntimeError {
             RuntimeError::SettlementFailure(msg) => write!(f, "SettlementFailure: {}", msg),
             RuntimeError::ObjectQuarantined(id) => write!(f, "ObjectQuarantined: {}", id),
             RuntimeError::DomainPaused(domain) => write!(f, "DomainPaused: {}", domain),
+            RuntimeError::SolverNotRegistered(id) => write!(f, "SolverNotRegistered: {}", id),
+            RuntimeError::SolverNotEligible { solver_id, reason } => {
+                write!(f, "SolverNotEligible: solver={} reason={}", solver_id, reason)
+            }
+            RuntimeError::NoCandidatePlans => write!(f, "NoCandidatePlans"),
+            RuntimeError::AllPlansInvalid => write!(f, "AllPlansInvalid"),
+            RuntimeError::PlanValidationFailed { plan_id, reason } => {
+                write!(f, "PlanValidationFailed: plan={} reason={}", hex::encode(plan_id), reason)
+            }
+            RuntimeError::PolicyViolation(msg) => write!(f, "PolicyViolation: {}", msg),
+            RuntimeError::SimulationError(msg) => write!(f, "SimulationError: {}", msg),
         }
     }
 }
