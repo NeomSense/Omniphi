@@ -1,6 +1,7 @@
 use crate::attribution::record::{SelectionAuditRecord, SolverAttributionRecord};
 use crate::capabilities::checker::CapabilitySet;
 use crate::errors::RuntimeError;
+use crate::GasCosts;
 use crate::intents::base::{IntentTransaction, IntentType};
 use crate::matching::matcher::IntentSolverMatcher;
 use crate::objects::base::{AccessMode, BoxedObject, ObjectAccess, ObjectId};
@@ -14,6 +15,9 @@ use crate::solver_market::market::{CandidatePlan, PlanEvaluationResult};
 use crate::solver_registry::registry::{SolverProfile, SolverRegistry};
 use crate::state::store::ObjectStore;
 use std::collections::BTreeMap;
+
+/// Special solver ID reserved for the Phase 1 internal fallback resolver.
+const INTERNAL_SOLVER_ID: [u8; 32] = [0xFF; 32];
 
 /// An ordered batch of intent transactions delivered by the PoSeq sequencer.
 /// Transactions are pre-ordered; the runtime must respect this ordering.
@@ -199,9 +203,6 @@ impl SolverMarketRuntime {
                 .cloned()
                 .unwrap_or_default();
 
-            // Find eligible solvers (for logging/matching — actual plan comes from batch)
-            let _eligible = IntentSolverMatcher::find_eligible_solvers(intent, &self.registry);
-
             if candidates.is_empty() {
                 // No candidates: fall back to Phase 1 internal resolver
                 match self.fallback_to_internal_resolver(intent, epoch) {
@@ -340,7 +341,7 @@ impl SolverMarketRuntime {
         let exec_plan = IntentResolver::resolve(intent, &self.base.store, &caps)?;
 
         // Construct a synthetic CandidatePlan representing the internally resolved plan
-        let synthetic_solver_id = [0xFFu8; 32]; // internal resolver marker
+        let synthetic_solver_id = INTERNAL_SOLVER_ID;
         let synthetic_plan_id = intent.tx_id; // reuse tx_id as plan_id
 
         let actions = exec_plan
@@ -460,8 +461,10 @@ fn candidate_plan_to_execution_plan(plan: &CandidatePlan) -> ExecutionPlan {
         });
     }
 
+    let costs = GasCosts::default_costs();
     let gas_limit = (plan.fee_quote as u64).saturating_mul(1_000);
-    let gas_estimate = operations.len() as u64 * 300 + 1_000;
+    // Use base_tx cost from shared config instead of magic number 1000
+    let gas_estimate = operations.len() as u64 * 300 + costs.base_tx;
 
     ExecutionPlan {
         tx_id: plan.plan_id,

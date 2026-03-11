@@ -23,6 +23,10 @@ pub mod scheduler;
 pub mod settlement;
 pub mod state;
 
+// Phase 3: Causal Rights Execution (CRX)
+pub mod crx;
+pub use crx::*;
+
 // Phase 2 modules
 pub mod agent_interfaces;
 pub mod attribution;

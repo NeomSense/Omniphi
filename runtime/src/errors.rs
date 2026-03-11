@@ -29,6 +29,13 @@ pub enum RuntimeError {
     PlanValidationFailed { plan_id: [u8; 32], reason: String },
     PolicyViolation(String),
     SimulationError(String),
+    // Phase 3: Causal Rights Execution (CRX) errors
+    GoalPacketInvalid(String),
+    RightsCapsuleViolation { capsule_id: [u8; 32], reason: String },
+    CausalViolation(String),
+    BranchExecutionFailed { branch_id: u32, reason: String },
+    FinalityEscalationRequired(String),
+    CRXSettlementFailed(String),
 }
 
 impl fmt::Display for RuntimeError {
@@ -63,6 +70,16 @@ impl fmt::Display for RuntimeError {
             }
             RuntimeError::PolicyViolation(msg) => write!(f, "PolicyViolation: {}", msg),
             RuntimeError::SimulationError(msg) => write!(f, "SimulationError: {}", msg),
+            RuntimeError::GoalPacketInvalid(msg) => write!(f, "GoalPacketInvalid: {}", msg),
+            RuntimeError::RightsCapsuleViolation { capsule_id, reason } => {
+                write!(f, "RightsCapsuleViolation: capsule={} reason={}", hex::encode(capsule_id), reason)
+            }
+            RuntimeError::CausalViolation(msg) => write!(f, "CausalViolation: {}", msg),
+            RuntimeError::BranchExecutionFailed { branch_id, reason } => {
+                write!(f, "BranchExecutionFailed: branch={} reason={}", branch_id, reason)
+            }
+            RuntimeError::FinalityEscalationRequired(msg) => write!(f, "FinalityEscalationRequired: {}", msg),
+            RuntimeError::CRXSettlementFailed(msg) => write!(f, "CRXSettlementFailed: {}", msg),
         }
     }
 }
