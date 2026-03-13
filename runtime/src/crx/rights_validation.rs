@@ -6,7 +6,7 @@ use crate::state::store::ObjectStore;
 // Shared constants for metadata keys/values.
 const META_DEBIT_DIR: &str = "debit_direction";
 const VAL_DEBIT: &str = "debit";
-
+ 
 // ─────────────────────────────────────────────────────────────────────────────
 // Violation types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -54,13 +54,48 @@ pub struct RightsValidationEngine;
 
 impl RightsValidationEngine {
     /// Validate every node in the CausalGraph against the RightsCapsule.
+    ///
+    /// `requesting_solver_id` must match `capsule.authorized_solver_id`; if it
+    /// doesn't, every node fails with `SolverMismatch` (FIND-005).
     pub fn validate(
         graph: &CausalGraph,
         capsule: &RightsCapsule,
         store: &ObjectStore,
         epoch: u64,
+        requesting_solver_id: &[u8; 32],
     ) -> RightsValidationResult {
-        // Check capsule epoch validity first
+        // Check solver identity before anything else
+        if capsule.authorized_solver_id != *requesting_solver_id {
+            let mut node_checks = Vec::new();
+            let mut violations = Vec::new();
+            for node_id in &graph.topological_order {
+                let v = RightsViolation {
+                    node_id: node_id.clone(),
+                    breach_reason: ScopeBreachReason::SolverMismatch,
+                    detail: format!(
+                        "capsule authorized solver {}, got {}",
+                        hex::encode(&capsule.authorized_solver_id),
+                        hex::encode(requesting_solver_id)
+                    ),
+                };
+                violations.push(v.clone());
+                node_checks.push(NodeRightsCheck {
+                    node_id: node_id.clone(),
+                    passed: false,
+                    violation: Some(v),
+                });
+            }
+            return RightsValidationResult {
+                capsule_id: capsule.capsule_id,
+                all_passed: false,
+                node_checks,
+                violations,
+                total_spend: 0,
+                objects_touched: 0,
+            };
+        }
+
+        // Check capsule epoch validity
         if !capsule.is_valid_at_epoch(epoch) {
             // All nodes fail with CapsuleExpired
             let mut node_checks = Vec::new();

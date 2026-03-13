@@ -233,9 +233,13 @@ impl SolverMarketRuntime {
                     self.policy.as_ref(),
                 );
 
-                // Update registry reputation
+                // Update registry reputation for non-accepted plans now;
+                // accepted plans are recorded after winner selection (is_winner determined there).
                 let accepted = eval.passed;
-                self.registry.record_submission(&plan.solver_id, accepted, false);
+                if !accepted {
+                    self.registry.record_submission(&plan.solver_id, false, false);
+                }
+                // accepted-but-not-winner plans are recorded after selection below
 
                 all_evals.push(eval.clone());
                 if eval.passed {
@@ -262,10 +266,13 @@ impl SolverMarketRuntime {
                 self.selection_policy.clone(),
             )?;
 
-            // Update winner reputation: mark as won
-            let winner_solver_id = eval_results[winner_idx].0.solver_id;
-            self.registry
-                .record_submission(&winner_solver_id, true, true);
+            // Record reputation for all valid (accepted) plans exactly once.
+            // Non-accepted plans were already recorded above. Winner gets is_winner=true;
+            // other valid plans get is_winner=false. This prevents double-counting.
+            for (i, (plan, _eval)) in eval_results.iter().enumerate() {
+                self.registry
+                    .record_submission(&plan.solver_id, true, i == winner_idx);
+            }
 
             let (winning_plan, winning_eval) = eval_results[winner_idx].clone();
             let all_evaluations_count = all_evals.len();

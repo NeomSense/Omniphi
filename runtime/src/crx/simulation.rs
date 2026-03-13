@@ -97,7 +97,8 @@ impl CRXSimulator {
             }
         };
 
-        let rights_result = RightsValidationEngine::validate(&graph, &capsule, store, epoch);
+        let rights_result =
+            RightsValidationEngine::validate(&graph, &capsule, store, epoch, &plan.solver_id);
         let causal_result = CausalValidityEngine::validate(&graph, &capsule, goal);
 
         let rights_valid = rights_result.all_passed;

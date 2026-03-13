@@ -11,7 +11,7 @@ use crate::gas::meter::GasCosts;
 use crate::objects::base::ObjectId;
 use crate::solver_market::market::CandidatePlan;
 use crate::state::store::ObjectStore;
-use crate::objects::types::BalanceObject;
+use crate::objects::types::{BalanceObject, LiquidityPoolObject, VaultObject};
 use std::collections::BTreeMap;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -70,29 +70,45 @@ pub struct CRXSettlementRecord {
 
 struct StoreSnapshot {
     balances: BTreeMap<ObjectId, BalanceObject>,
+    pools: BTreeMap<ObjectId, LiquidityPoolObject>,
+    vaults: BTreeMap<ObjectId, VaultObject>,
 }
 
 impl StoreSnapshot {
+    /// Snapshot all typed objects referenced by the given object IDs.
     fn take(store: &ObjectStore, object_ids: &[ObjectId]) -> Self {
         let mut balances = BTreeMap::new();
+        let mut pools = BTreeMap::new();
+        let mut vaults = BTreeMap::new();
         for id in object_ids {
             if let Some(b) = store.get_balance_by_id(id) {
                 balances.insert(*id, b.clone());
             }
+            if let Some(p) = store.get_pool_by_id(id) {
+                pools.insert(*id, p.clone());
+            }
+            if let Some(v) = store.get_vault(id) {
+                vaults.insert(*id, v.clone());
+            }
         }
-        StoreSnapshot { balances }
+        StoreSnapshot { balances, pools, vaults }
     }
 
-    fn take_all_balances(store: &ObjectStore) -> Self {
-        // We can't directly iterate balances since it's private;
-        // Instead we snapshot via the graph's objects
-        StoreSnapshot { balances: BTreeMap::new() }
-    }
-
+    /// Restore all snapshotted typed objects back into the store.
     fn restore(self, store: &mut ObjectStore) {
         for (id, bal) in self.balances {
             if let Some(existing) = store.get_balance_by_id_mut(&id) {
                 *existing = bal;
+            }
+        }
+        for (id, pool) in self.pools {
+            if let Some(existing) = store.get_pool_by_id_mut(&id) {
+                *existing = pool;
+            }
+        }
+        for (id, vault) in self.vaults {
+            if let Some(existing) = store.get_vault_mut(&id) {
+                *existing = vault;
             }
         }
     }
@@ -116,8 +132,9 @@ impl CRXSettlementEngine {
         // Step 1: Build CausalGraph + RightsCapsule
         let (graph, capsule) = CausalPlanBuilder::build(plan, goal, store, epoch)?;
 
-        // Step 2: Validate rights
-        let rights_result = RightsValidationEngine::validate(&graph, &capsule, store, epoch);
+        // Step 2: Validate rights (includes solver identity check — FIND-005)
+        let rights_result =
+            RightsValidationEngine::validate(&graph, &capsule, store, epoch, &plan.solver_id);
 
         // Step 3: Validate causal legitimacy
         let causal_result = CausalValidityEngine::validate(&graph, &capsule, goal);

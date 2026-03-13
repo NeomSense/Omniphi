@@ -148,7 +148,7 @@ fn test_all_nodes_pass_rights() {
     let capsule = make_transfer_capsule(0, 1000, 0); // 0 = unlimited
     let graph = make_transfer_graph(make_balance_id(), 100);
 
-    let result = RightsValidationEngine::validate(&graph, &capsule, &store, 50);
+    let result = RightsValidationEngine::validate(&graph, &capsule, &store, 50, &[3u8; 32]);
     assert!(result.all_passed, "All nodes should pass rights validation; violations: {:?}", result.violations.iter().map(|v| format!("{:?}", v.breach_reason)).collect::<Vec<_>>());
 }
 
@@ -158,7 +158,7 @@ fn test_expired_capsule_fails() {
     let capsule = make_transfer_capsule(0, 5, 0); // expires at epoch 5
     let graph = make_transfer_graph(make_balance_id(), 100);
 
-    let result = RightsValidationEngine::validate(&graph, &capsule, &store, 50); // epoch 50 > 5
+    let result = RightsValidationEngine::validate(&graph, &capsule, &store, 50, &[3u8; 32]); // epoch 50 > 5
     assert!(!result.all_passed);
     assert!(result.violations.iter().any(|v| v.breach_reason == ScopeBreachReason::CapsuleExpired));
 }
@@ -196,7 +196,7 @@ fn test_object_out_of_scope_fails() {
     capsule.capsule_hash = capsule.compute_hash();
 
     let graph = make_transfer_graph(make_balance_id(), 100);
-    let result = RightsValidationEngine::validate(&graph, &capsule, &store, 50);
+    let result = RightsValidationEngine::validate(&graph, &capsule, &store, 50, &[3u8; 32]);
     assert!(!result.all_passed);
     assert!(result.violations.iter().any(|v| v.breach_reason == ScopeBreachReason::ObjectNotInScope));
 }
@@ -234,7 +234,7 @@ fn test_action_not_allowed_fails() {
     capsule.capsule_hash = capsule.compute_hash();
 
     let graph = make_transfer_graph(make_balance_id(), 100);
-    let result = RightsValidationEngine::validate(&graph, &capsule, &store, 50);
+    let result = RightsValidationEngine::validate(&graph, &capsule, &store, 50, &[3u8; 32]);
     assert!(!result.all_passed);
     assert!(result.violations.iter().any(|v| v.breach_reason == ScopeBreachReason::ActionNotAllowed));
 }
@@ -245,7 +245,7 @@ fn test_spend_limit_exceeded_fails() {
     let capsule = make_transfer_capsule(0, 1000, 50); // max_spend = 50
     let graph = make_transfer_graph(make_balance_id(), 100); // tries to debit 100
 
-    let result = RightsValidationEngine::validate(&graph, &capsule, &store, 50);
+    let result = RightsValidationEngine::validate(&graph, &capsule, &store, 50, &[3u8; 32]);
     assert!(!result.all_passed);
     assert!(result.violations.iter().any(|v| v.breach_reason == ScopeBreachReason::SpendLimitExceeded));
 }
@@ -284,7 +284,7 @@ fn test_node_count_exceeded_fails() {
     // Graph touches 2 different Write objects
     let graph = make_transfer_graph(make_balance_id(), 100); // touches [10;32] and [11;32]
 
-    let result = RightsValidationEngine::validate(&graph, &capsule, &store, 50);
+    let result = RightsValidationEngine::validate(&graph, &capsule, &store, 50, &[3u8; 32]);
     // With max_objects_touched=1, should fail on second write object
     assert!(!result.all_passed);
     assert!(result.violations.iter().any(|v| v.breach_reason == ScopeBreachReason::ObjectCountExceeded));
