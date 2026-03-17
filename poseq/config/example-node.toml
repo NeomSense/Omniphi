@@ -1,0 +1,92 @@
+# PoSeq node configuration — example for a 3-node devnet
+# Copy to poseq.toml and edit for your deployment.
+
+[node]
+# 32-byte node identity as 64 hex chars.
+# Each node must have a unique ID.
+id = "0101010101010101010101010101010101010101010101010101010101010101"
+
+# TCP address to listen on.
+listen_addr = "0.0.0.0:7001"
+
+# Static peers to connect to on startup.
+# The node will also discover additional peers via the discovery service.
+peers = [
+    "127.0.0.1:7002",
+    "127.0.0.1:7003",
+]
+
+# Quorum threshold: minimum approvals required to finalize a batch.
+# For N nodes, set to floor(2*N/3) + 1 for BFT safety.
+# Example: 3 nodes → quorum=2
+quorum_threshold = 2
+
+# Slot duration in milliseconds (default: 2000).
+slot_duration_ms = 2000
+
+# Directory for durable sled storage.
+# Ensure this path is on a fast local disk.
+data_dir = "./poseq_data_node1"
+
+# Node role: "leader", "attestor", or "observer".
+# In practice all full nodes are "attestor"; the protocol
+# elects the leader deterministically each slot.
+role = "attestor"
+
+# Optional: 32-byte signing key seed as 64 hex chars.
+# If absent, a random ephemeral key is used (not recommended for production).
+# Generate with: openssl rand -hex 32
+# key_seed = "your64hexcharkeyseedhere..."
+
+# Optional: Prometheus metrics HTTP address.
+# If absent, metrics are not exported.
+# metrics_addr = "0.0.0.0:9090"
+
+# Optional: seed node addresses for peer discovery bootstrap.
+# These nodes will provide the initial peer list.
+# seed_peers = ["seed1.omniphi.io:7000", "seed2.omniphi.io:7000"]
+
+
+# ── Policy (optional — all fields have defaults) ───────────────────────────
+[policy]
+version = 1
+
+[policy.batch]
+max_submissions_per_batch = 256
+max_payload_bytes_per_submission = 65536
+max_pending_queue_size = 4096
+
+[policy.ordering]
+tie_break = "lexicographic_ascending"
+enforce_sender_nonce_order = true
+
+# Per-class submission limits (max_per_batch = 0 means unlimited)
+[[policy.class_policies]]
+class = "Transfer"
+max_per_batch = 0
+allowed = true
+
+[[policy.class_policies]]
+class = "Swap"
+max_per_batch = 0
+allowed = true
+
+[[policy.class_policies]]
+class = "YieldAllocate"
+max_per_batch = 50
+allowed = true
+
+[[policy.class_policies]]
+class = "TreasuryRebalance"
+max_per_batch = 10
+allowed = true
+
+[[policy.class_policies]]
+class = "GoalPacket"
+max_per_batch = 0
+allowed = true
+
+[[policy.class_policies]]
+class = "AgentSubmission"
+max_per_batch = 20
+allowed = true

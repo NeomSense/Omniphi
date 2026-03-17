@@ -1,0 +1,76 @@
+{
+  "dashboard": {
+    "title": "Omniphi PoSeq Network",
+    "uid": "omniphi-poseq",
+    "panels": [
+      {
+        "title": "Finalized Batches",
+        "type": "stat",
+        "targets": [{"expr": "poseq_batches_finalized_total"}],
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}
+      },
+      {
+        "title": "Current Epoch / Slot",
+        "type": "stat",
+        "targets": [
+          {"expr": "poseq_current_epoch"},
+          {"expr": "poseq_current_slot"}
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}
+      },
+      {
+        "title": "Peer Count",
+        "type": "gauge",
+        "targets": [{"expr": "poseq_peer_count"}],
+        "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}
+      },
+      {
+        "title": "View Changes",
+        "type": "stat",
+        "targets": [{"expr": "poseq_view_changes_total"}],
+        "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0}
+      },
+      {
+        "title": "Batches Finalized Over Time",
+        "type": "graph",
+        "targets": [{"expr": "rate(poseq_batches_finalized_total[5m])"}],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+      },
+      {
+        "title": "Attestation Latency (ms)",
+        "type": "histogram",
+        "targets": [{"expr": "poseq_attestation_latency_ms"}],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}
+      },
+      {
+        "title": "Fairness Violations",
+        "type": "stat",
+        "targets": [{"expr": "poseq_fairness_violations_total"}],
+        "gridPos": {"h": 4, "w": 8, "x": 0, "y": 12}
+      },
+      {
+        "title": "Runtime Rejections",
+        "type": "stat",
+        "targets": [{"expr": "poseq_runtime_rejections_total"}],
+        "gridPos": {"h": 4, "w": 8, "x": 8, "y": 12}
+      },
+      {
+        "title": "Store Writes",
+        "type": "graph",
+        "targets": [{"expr": "rate(poseq_store_writes[5m])"}],
+        "gridPos": {"h": 4, "w": 8, "x": 16, "y": 12}
+      }
+    ],
+    "templating": {
+      "list": [
+        {
+          "name": "instance",
+          "type": "query",
+          "query": "label_values(poseq_batches_finalized_total, instance)"
+        }
+      ]
+    },
+    "time": {"from": "now-1h", "to": "now"},
+    "refresh": "10s"
+  }
+}

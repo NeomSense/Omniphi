@@ -8,7 +8,53 @@ sha2 = "0.10"
 hex = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+toml = "0.8"
+prometheus = { version = "0.13", features = ["process"] }
 bincode = "1"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand = "0.8"
+sled = "0.34"
+tempfile = "3"
+# Multi-process devnet networking
+tokio = { version = "1", features = ["net", "io-util", "macros", "rt-multi-thread", "sync", "time", "signal"] }
 
 [dev-dependencies]
-# none needed
+tempfile = "3"
+tokio = { version = "1", features = ["full"] }
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bin]]
+name = "poseq-node"
+path = "src/bin/poseq_node.rs"
+
+[[bin]]
+name = "poseq-devnet"
+path = "src/bin/poseq_devnet.rs"
+
+[[bin]]
+name = "poseq-relayer"
+path = "src/bin/poseq_relayer.rs"
+
+[[bench]]
+name = "bench_ordering"
+harness = false
+
+[[bench]]
+name = "bench_batching"
+harness = false
+
+[[bench]]
+name = "bench_queue"
+harness = false
+
+[[bench]]
+name = "bench_validation"
+harness = false
+
+[[bench]]
+name = "bench_pipeline"
+harness = false
+
+[[bench]]
+name = "bench_intent_pipeline"
+harness = false

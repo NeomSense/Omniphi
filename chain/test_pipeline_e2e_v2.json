@@ -1,0 +1,18 @@
+{
+  "messages": [
+    {
+      "@type": "/cosmos.distribution.v1beta1.MsgUpdateParams",
+      "authority": "omni10d07y265gmmuvt4z0w9aw880jnsr700j2gz0r8",
+      "params": {
+        "community_tax": "0.050000000000000000",
+        "base_proposer_reward": "0.000000000000000000",
+        "bonus_proposer_reward": "0.000000000000000000",
+        "withdraw_addr_enabled": true
+      }
+    }
+  ],
+  "metadata": "ipfs://pipeline-e2e-v2",
+  "deposit": "10000000000omniphi",
+  "title": "Change Community Tax 2%→5% (Full Pipeline E2E v2)",
+  "summary": "End-to-end test of timelock interception and guard pipeline. Should be intercepted, risk-scored MED, gated through 4 stages, and executed with community_tax changing to 5%."
+}

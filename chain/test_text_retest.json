@@ -1,0 +1,7 @@
+{
+  "messages": [],
+  "metadata": "ipfs://text-only-retest-2",
+  "deposit": "10000000000omniphi",
+  "title": "Text-Only Retest Session 2 (Fresh)",
+  "summary": "Fresh retest: text-only proposals must stay PASSED and not be intercepted by timelock."
+}

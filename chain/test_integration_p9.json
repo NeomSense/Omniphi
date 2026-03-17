@@ -1,0 +1,18 @@
+{
+  "messages": [
+    {
+      "@type": "/cosmos.distribution.v1beta1.MsgUpdateParams",
+      "authority": "omni10d07y265gmmuvt4z0w9aw880jnsr700j2gz0r8",
+      "params": {
+        "community_tax": "0.050000000000000000",
+        "base_proposer_reward": "0.000000000000000000",
+        "bonus_proposer_reward": "0.000000000000000000",
+        "withdraw_addr_enabled": true
+      }
+    }
+  ],
+  "metadata": "ipfs://test-full-pipeline",
+  "deposit": "10000000000omniphi",
+  "title": "Increase Community Tax to 5% (Full Pipeline Test)",
+  "summary": "Tests the complete timelock→guard pipeline with timelock_integration_enabled=true."
+}

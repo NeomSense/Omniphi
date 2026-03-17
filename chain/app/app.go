@@ -51,6 +51,7 @@ import (
 	guardkeeper "pos/x/guard/keeper"
 	pockeeper "pos/x/poc/keeper"
 	porkeeper "pos/x/por/keeper"
+	poseqkeeper "pos/x/poseq/keeper"
 	repgovkeeper "pos/x/repgov/keeper"
 	rewardmultkeeper "pos/x/rewardmult/keeper"
 	royaltykeeper "pos/x/royalty/keeper"
@@ -114,6 +115,7 @@ type App struct {
 	RepgovKeeper          *repgovkeeper.Keeper
 	RoyaltyKeeper         *royaltykeeper.Keeper
 	UCIKeeper             *ucikeeper.Keeper
+	PoseqKeeper           poseqkeeper.Keeper
 
 	// ibc keepers
 	IBCKeeper           *ibckeeper.Keeper
@@ -252,6 +254,11 @@ func New(
 	// Note: Gov hooks are automatically set by depinject via GovHooksWrapper
 	// See: x/timelock/module/depinject.go:69
 	// The hooks intercept passed proposals and queue them for 24h delay
+
+	// register x/poseq (manually wired — no proto v1 depinject config)
+	if err := app.registerPoseqModule(); err != nil {
+		panic(err)
+	}
 
 	// register legacy modules
 	if err := app.registerIBCModules(appOpts); err != nil {

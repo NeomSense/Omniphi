@@ -1,0 +1,7 @@
+{
+  "messages": [],
+  "metadata": "ipfs://text-only-retest",
+  "deposit": "10000000000omniphi",
+  "title": "Text-Only Proposal Retest (P11)",
+  "summary": "Verifies text-only proposals stay PASSED and are not intercepted by timelock."
+}

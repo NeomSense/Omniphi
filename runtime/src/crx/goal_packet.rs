@@ -151,6 +151,10 @@ pub fn goal_packet_from_intent(intent: &IntentTransaction, epoch: u64) -> GoalPa
             vec![ObjectType::Balance],
             "Rebalance treasury assets between asset classes".to_string(),
         ),
+        IntentType::RouteLiquidity(_) => (
+            vec![ObjectType::Balance, ObjectType::LiquidityPool],
+            "Route liquidity between pools via multi-hop path".to_string(),
+        ),
     };
 
     let (min_output, max_slippage) = match &intent.intent {
@@ -196,5 +200,6 @@ fn intent_type_name(intent: &IntentType) -> &'static str {
         IntentType::Swap(_) => "swap",
         IntentType::YieldAllocate(_) => "yield_allocate",
         IntentType::TreasuryRebalance(_) => "treasury_rebalance",
+        IntentType::RouteLiquidity(_) => "route_liquidity",
     }
 }

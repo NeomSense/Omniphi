@@ -1,5 +1,5 @@
 use crate::errors::RuntimeError;
-use crate::intents::types::{SwapIntent, TransferIntent, TreasuryRebalanceIntent, YieldAllocateIntent};
+use crate::intents::types::{SwapIntent, TransferIntent, TreasuryRebalanceIntent, YieldAllocateIntent, RouteLiquidityIntent};
 use std::collections::BTreeMap;
 
 /// The variant of intent contained in this transaction.
@@ -9,6 +9,7 @@ pub enum IntentType {
     Swap(SwapIntent),
     YieldAllocate(YieldAllocateIntent),
     TreasuryRebalance(TreasuryRebalanceIntent),
+    RouteLiquidity(RouteLiquidityIntent),
 }
 
 /// A fully described, signed intent transaction.
@@ -104,6 +105,33 @@ impl IntentTransaction {
                 if r.from_asset == r.to_asset {
                     return Err(RuntimeError::InvalidIntent(
                         "treasury rebalance from_asset and to_asset must differ".to_string(),
+                    ));
+                }
+            }
+            IntentType::RouteLiquidity(rl) => {
+                if rl.amount == 0 {
+                    return Err(RuntimeError::InvalidIntent(
+                        "route liquidity amount must be greater than zero".to_string(),
+                    ));
+                }
+                if rl.min_received == 0 {
+                    return Err(RuntimeError::InvalidIntent(
+                        "route liquidity min_received must be greater than zero".to_string(),
+                    ));
+                }
+                if rl.source_pool == rl.target_pool {
+                    return Err(RuntimeError::InvalidIntent(
+                        "route liquidity source and target pools must differ".to_string(),
+                    ));
+                }
+                if rl.max_hops == 0 || rl.max_hops > 5 {
+                    return Err(RuntimeError::InvalidIntent(
+                        "route liquidity max_hops must be 1-5".to_string(),
+                    ));
+                }
+                if rl.max_price_impact_bps > 500 {
+                    return Err(RuntimeError::InvalidIntent(
+                        "route liquidity max_price_impact_bps must not exceed 500".to_string(),
                     ));
                 }
             }

@@ -85,6 +85,10 @@ pub struct PoSeqPolicy {
     pub class_policies: Vec<SubmissionClassPolicy>,
 }
 
+impl Default for PoSeqPolicy {
+    fn default() -> Self { Self::default_policy() }
+}
+
 impl PoSeqPolicy {
     pub fn default_policy() -> Self {
         PoSeqPolicy {

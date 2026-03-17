@@ -1,20 +1,20 @@
 use std::collections::BTreeMap;
 use crate::validation::validator::ValidatedSubmission;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum SubmissionDecision {
     Accepted,
     Rejected(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SubmissionDecisionRecord {
     pub submission_id: [u8; 32],
     pub decision: SubmissionDecision,
     pub reason: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SequencingReceipt {
     pub receipt_id: [u8; 32],
     pub batch_id: [u8; 32],

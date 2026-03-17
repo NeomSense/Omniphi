@@ -1,10 +1,11 @@
-package app
+﻿package app
 
 import (
 	_ "pos/x/feemarket/module"
 	_ "pos/x/guard/module"
 	_ "pos/x/poc/module"
 	_ "pos/x/por/module"
+	_ "pos/x/poseq/module"
 	_ "pos/x/repgov/module"
 	_ "pos/x/rewardmult/module"
 	_ "pos/x/royalty/module"
@@ -25,6 +26,7 @@ import (
 	guardmoduletypes "pos/x/guard/types"
 	pocmoduletypes "pos/x/poc/types"
 	pormoduletypes "pos/x/por/types"
+	poseqmoduletypes "pos/x/poseq/types"
 	repgovmoduletypes "pos/x/repgov/types"
 	rewardmultmoduletypes "pos/x/rewardmult/types"
 	royaltymoduletypes "pos/x/royalty/types"
@@ -160,6 +162,7 @@ var (
 						// chain modules
 						pocmoduletypes.ModuleName,
 						guardmoduletypes.ModuleName,
+						poseqmoduletypes.ModuleName,
 						// this line is used by starport scaffolding # stargate/app/beginBlockers
 					},
 					EndBlockers: []string{
@@ -180,6 +183,7 @@ var (
 						ucimoduletypes.ModuleName,          // Process DePIN contribution interface\n\t\t\t\t\t\troyaltymoduletypes.ModuleName,      // Process royalty stream distributions\n\t\t\t\t\t\tucimoduletypes.ModuleName,          // Process DePIN contribution interface
 						royaltymoduletypes.ModuleName,      // Process royalty stream distributions
 						ucimoduletypes.ModuleName,          // Process DePIN contribution interface
+						poseqmoduletypes.ModuleName,      // Process PoSeq batch ingestion events
 						// this line is used by starport scaffolding # stargate/app/endBlockers
 					},
 					// The following is mostly only needed when ModuleName != StoreKey name.
@@ -225,6 +229,7 @@ var (
 						repgovmoduletypes.ModuleName,     // Initialize after staking for reputation weights
 						royaltymoduletypes.ModuleName,    // Initialize after poc for royalty token streams
 						ucimoduletypes.ModuleName,        // Initialize after poc for DePIN contribution interface
+						poseqmoduletypes.ModuleName,      // Initialize after IBC for PoSeq accountability layer
 						// this line is used by starport scaffolding # stargate/app/initGenesis
 					},
 				}),

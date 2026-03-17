@@ -1,0 +1,49 @@
+[package]
+name = "omniphi-poseq-fuzz"
+version = "0.0.1"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+omniphi-poseq = { path = ".." }
+sha2 = "0.10"
+
+[[bin]]
+name = "fuzz_submission_validator"
+path = "fuzz_targets/fuzz_submission_validator.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_ordering_engine"
+path = "fuzz_targets/fuzz_ordering_engine.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_finalization"
+path = "fuzz_targets/fuzz_finalization.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_checkpoint_restore"
+path = "fuzz_targets/fuzz_checkpoint_restore.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_bridge_envelope"
+path = "fuzz_targets/fuzz_bridge_envelope.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_evidence_packaging"
+path = "fuzz_targets/fuzz_evidence_packaging.rs"
+test = false
+doc = false

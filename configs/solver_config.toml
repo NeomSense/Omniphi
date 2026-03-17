@@ -1,0 +1,26 @@
+# Omniphi Solver Configuration
+
+[solver]
+# Unique 32-byte hex solver ID
+solver_id = "REPLACE_WITH_SOLVER_ID"
+moniker = "solver-1"
+bond_amount = 500
+
+[keys]
+key_seed = "REPLACE_WITH_KEY_SEED"
+
+[connection]
+# PoSeq node to connect to for intent subscription
+node_addr = "localhost:26600"
+# Chain RPC for on-chain operations
+chain_rpc = "http://localhost:26657"
+
+[capabilities]
+# Intent types this solver handles (0x01=Swap, 0x02=Payment, 0x03=RouteLiquidity)
+supported_types = [1, 2, 3]
+
+[strategy]
+# Minimum tip to consider an intent (in basis points)
+min_tip = 0
+# Maximum intents to evaluate per slot
+max_evaluations_per_slot = 100

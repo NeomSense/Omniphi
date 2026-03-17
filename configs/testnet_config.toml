@@ -1,0 +1,50 @@
+# Omniphi Testnet Configuration
+# Use this as a base for multi-validator testnet deployment.
+
+[network]
+chain_id = "omniphi-testnet-1"
+min_validators = 4
+max_validators = 21
+
+[timing]
+slot_duration_ms = 6000
+commit_phase_blocks = 2
+reveal_phase_blocks = 2
+expiry_check_interval = 3
+
+[economics]
+min_validator_stake = 1000
+min_solver_bond = 100
+active_solver_bond = 500
+fast_dispute_window = 10
+extended_dispute_window = 100
+unbonding_period_blocks = 50
+
+[intent_pool]
+max_pool_size = 5000
+max_intents_per_block_per_user = 20
+max_nonce_gap = 5
+min_intent_fee_bps = 1
+min_intent_lifetime_blocks = 3
+max_pool_residence_blocks = 200
+
+[fairness]
+censorship_exclusion_threshold = 3
+forced_inclusion_after_blocks = 20
+max_leader_discretion_bps = 500
+
+[da]
+failure_threshold = 3
+timeout_ms = 10000
+archive_retention_epochs = 10
+
+[slashing]
+commit_without_reveal_bps = 100
+invalid_settlement_bps = 2500
+double_fill_bps = 10000
+max_violation_score = 10000
+auto_deactivation_threshold = 9500
+
+[metrics]
+enabled = true
+listen_addr = "0.0.0.0:9090"

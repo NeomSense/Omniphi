@@ -95,3 +95,37 @@ out/
 
 # AI assistant settings
 .claude/
+
+# ============================================
+# RUST BUILD TARGETS (local cargo check dirs)
+# ============================================
+.gas_check_target/
+.gocache/
+.integration_target/
+.intent_target/
+.poseq_check_target/
+.poseq_relayer_target/
+.poseq_target/
+.runtime_target/
+target/
+
+# ============================================
+# TEMP / LOCAL KEYS
+# ============================================
+alice_key.txt
+chain/tmp.json
+
+# ============================================
+# LOCAL BUILD/TEST SCRIPTS AND OUTPUT
+# ============================================
+run_*.bat
+run_*.ps1
+test_wsl.bat
+wsl_*.sh
+*_out.txt
+*_check.txt
+poc_cscore.csv
+path_out.txt
+poseq_*.txt
+gas_*.txt
+intent_check_out.txt

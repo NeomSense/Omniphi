@@ -1,0 +1,18 @@
+{
+  "messages": [
+    {
+      "@type": "/cosmos.distribution.v1beta1.MsgUpdateParams",
+      "authority": "omni10d07y265gmmuvt4z0w9aw880jnsr700j2gz0r8",
+      "params": {
+        "community_tax": "0.070000000000000000",
+        "base_proposer_reward": "0.000000000000000000",
+        "bonus_proposer_reward": "0.000000000000000000",
+        "withdraw_addr_enabled": true
+      }
+    }
+  ],
+  "metadata": "ipfs://pipeline-retest-session2",
+  "deposit": "10000000000omniphi",
+  "title": "Change Community Tax to 7% (Pipeline Retest)",
+  "summary": "Fresh test of full timelock→guard pipeline: proposal should be intercepted, risk-scored, gated, and executed."
+}

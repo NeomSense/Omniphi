@@ -1,0 +1,12 @@
+[package]
+name = "omniphi-integration"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+omniphi-poseq = { path = "../poseq" }
+omniphi-runtime = { path = "../runtime" }
+sha2 = "0.10"
+hex = "0.4"
+
+[dev-dependencies]

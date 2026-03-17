@@ -11,6 +11,76 @@ pub mod receipts;
 pub mod bridge;
 pub mod state;
 
+// Phase 2 modules
+pub mod identities;
+pub mod committee;
+pub mod leader_selection;
+pub mod proposals;
+pub mod attestations;
+pub mod finalization;
+pub mod conflicts;
+pub mod persistence;
+pub mod replay;
+pub mod commitment;
+pub mod node;
+pub mod networking;
+pub mod policy;
+
+// Phase 4 modules — Production Hardening + Multi-Node Simulation
+pub mod crypto;
+pub mod committee_rotation;
+pub mod slashing;
+pub mod simulation;
+
+// Phase 3 modules — Fair Sequencing + Anti-MEV
+pub mod fairness;
+pub mod inclusion;
+pub mod anti_mev;
+pub mod queue_snapshot;
+pub mod fairness_audit;
+pub mod fairness_incidents;
+pub mod fairness_validation;
+pub mod protected_flows;
+pub mod fairness_bridge;
+pub mod fairness_persistence;
+pub mod fairness_config;
+
+// Phase 5 modules — Stronger Finality, Epochs, Membership, Misbehavior, Penalties,
+//                   Bridge Recovery, Recovery, Checkpoints, Observability, Devnet,
+//                   Validation Hardening, Policy Extensions
+pub mod finality;
+pub mod epochs;
+pub mod membership;
+pub mod misbehavior;
+pub mod penalties;
+pub mod bridge_recovery;
+pub mod recovery;
+pub mod checkpoints;
+pub mod observability;
+pub mod devnet;
+pub mod validation_hardening;
+
+pub use policy::Phase5Error;
+
+// Chain bridge — PoSeq accountability outputs for Cosmos chain integration
+pub mod chain_bridge;
+
+// Resource bounds and operational limits
+pub mod resource_bounds;
+
+// HotStuff BFT consensus
+pub mod hotstuff;
+
+// Phase 6: Intent-Based Execution Architecture
+pub mod intent_pool;
+pub mod auction;
+
+// Phase 3 (Protocol): Failure path semantics
+pub mod failure;
+
+// Phase 9: PoSeq Gas Model — Fairness-aware sequencing fees
+pub mod gas;
+
 use config::policy::PoSeqPolicy;
 use types::submission::SequencingSubmission;
 use intake::receiver::SubmissionReceiver;

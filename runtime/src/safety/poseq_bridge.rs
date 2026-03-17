@@ -1,6 +1,6 @@
 use crate::crx::poseq_bridge::CRXExecutionResult;
 use crate::safety::kernel::{
-    ConstrainedStateUpdate, SafetyDecision, SafetyEvaluationContext, SafetyKernel,
+    SafetyDecision, SafetyEvaluationContext, SafetyKernel,
 };
 
 /// Context passed to the safety kernel for an entire ordered batch.
@@ -12,7 +12,7 @@ pub struct OrderedSafetyContext {
 }
 
 /// Annotated settlement result with safety decision attached.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SafetyAnnotatedSettlement {
     pub crx_result: CRXExecutionResult,
     pub safety_decision: SafetyDecision,
@@ -79,6 +79,10 @@ impl PoSeqSafetyBridge {
                     !any_quarantined
                 };
 
+            // Also block if any affected domain is currently paused
+            let final_allowed = final_allowed
+                && !ctx.affected_domains.iter().any(|d| self.kernel.is_domain_paused(d));
+
             annotated.push(SafetyAnnotatedSettlement {
                 crx_result,
                 safety_decision,
@@ -91,12 +95,15 @@ impl PoSeqSafetyBridge {
     }
 
     pub fn constrained_state(&self, epoch: u64) -> SafetyConstrainedExecutionState {
-        let quarantined_objects: Vec<[u8; 32]> =
+        let mut quarantined_objects: Vec<[u8; 32]> =
             self.kernel.quarantined_objects.iter().copied().collect();
-        let paused_domains: Vec<String> = self.kernel.paused_domains.iter().cloned().collect();
+        quarantined_objects.sort();
+
+        let mut paused_domains: Vec<String> = self.kernel.paused_domains.iter().cloned().collect();
+        paused_domains.sort();
 
         // Collect suspended solvers from controller
-        let suspended_solvers: Vec<[u8; 32]> = self
+        let mut suspended_solvers: Vec<[u8; 32]> = self
             .kernel
             .solver_controller
             .restrictions
@@ -106,6 +113,7 @@ impl PoSeqSafetyBridge {
             })
             .map(|(id, _)| *id)
             .collect();
+        suspended_solvers.sort();
 
         SafetyConstrainedExecutionState {
             quarantined_objects,
@@ -113,20 +121,6 @@ impl PoSeqSafetyBridge {
             suspended_solvers,
             emergency_mode: self.kernel.emergency_mode,
             as_of_epoch: epoch,
-        }
-    }
-}
-
-impl Clone for SafetyAnnotatedSettlement {
-    fn clone(&self) -> Self {
-        SafetyAnnotatedSettlement {
-            crx_result: CRXExecutionResult {
-                goal_packet_id: self.crx_result.goal_packet_id,
-                record: self.crx_result.record.clone(),
-                success: self.crx_result.success,
-            },
-            safety_decision: self.safety_decision.clone(),
-            final_allowed: self.final_allowed,
         }
     }
 }

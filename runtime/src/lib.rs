@@ -31,6 +31,19 @@ pub use crx::*;
 pub mod safety;
 pub use safety::*;
 
+// Phase 6: Intent-Based Execution Architecture
+pub mod verification;
+pub mod disputes;
+pub mod economics;
+pub mod receipts;
+
+// Phase 3 (Protocol): Protocol invariants
+pub mod invariants;
+
+// Phase 5: Governance and onboarding
+pub mod governance;
+pub mod validators;
+
 // Phase 2 modules
 pub mod agent_interfaces;
 pub mod attribution;
@@ -47,7 +60,7 @@ pub use capabilities::{Capability, CapabilityChecker, CapabilitySet};
 pub use errors::RuntimeError;
 pub use gas::{GasCost, GasCosts, GasMeter};
 pub use intents::{IntentTransaction, IntentType, SwapIntent, TransferIntent,
-                  TreasuryRebalanceIntent, YieldAllocateIntent};
+                  TreasuryRebalanceIntent, YieldAllocateIntent, RouteLiquidityIntent};
 pub use objects::{AccessMode, BalanceObject, BoxedObject, GovernanceProposalObject,
                   IdentityObject, LiquidityPoolObject, Object, ObjectAccess, ObjectId,
                   ObjectMeta, ObjectType, ObjectVersion, ProposalStatus, TokenObject,

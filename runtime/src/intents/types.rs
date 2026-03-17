@@ -39,3 +39,15 @@ pub struct TreasuryRebalanceIntent {
     /// Addresses of multisig authorities that must have authorised this transaction.
     pub authorized_by: Vec<[u8; 32]>,
 }
+
+/// Route liquidity between pools through multi-hop paths.
+#[derive(Debug, Clone)]
+pub struct RouteLiquidityIntent {
+    pub source_pool: ObjectId,
+    pub target_pool: ObjectId,
+    pub asset_id: [u8; 32],
+    pub amount: u128,
+    pub min_received: u128,
+    pub max_hops: u8,
+    pub max_price_impact_bps: u16,
+}

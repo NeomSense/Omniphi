@@ -1,0 +1,7 @@
+{
+  "messages": [],
+  "metadata": "ipfs://text-only-e2e-v2",
+  "deposit": "10000000000omniphi",
+  "title": "Text-Only Governance UI Test (E2E v2)",
+  "summary": "Verifies that text-only proposals (no messages) stay PASSED and are NOT intercepted by the timelock module."
+}

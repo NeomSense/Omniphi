@@ -125,6 +125,9 @@ impl IntentResolver {
             IntentType::TreasuryRebalance(r) => {
                 Self::resolve_treasury_rebalance(intent.tx_id, intent.max_fee, &intent.sender, r, store, caps)
             }
+            IntentType::RouteLiquidity(rl) => {
+                Self::resolve_route_liquidity(intent.tx_id, intent.max_fee, &intent.sender, rl, store, caps)
+            }
         }
     }
 
@@ -464,6 +467,83 @@ impl IntentResolver {
             tx_id,
             operations,
             required_capabilities: vec![Capability::ModifyGovernance],
+            object_access,
+            gas_estimate,
+            gas_limit: max_fee.saturating_mul(1_000),
+        })
+    }
+
+    // ──────────────────────────────────────────
+    // RouteLiquidity
+    // ──────────────────────────────────────────
+
+    fn resolve_route_liquidity(
+        tx_id: [u8; 32],
+        max_fee: u64,
+        sender: &[u8; 32],
+        rl: &crate::intents::types::RouteLiquidityIntent,
+        store: &ObjectStore,
+        caps: &CapabilitySet,
+    ) -> Result<ExecutionPlan, RuntimeError> {
+        CapabilityChecker::check(caps, &[Capability::ProvideLiquidity, Capability::WithdrawLiquidity])?;
+
+        // Verify source pool exists
+        let _source_pool = store.get(&rl.source_pool).ok_or_else(|| {
+            RuntimeError::ObjectNotFound(rl.source_pool)
+        })?;
+
+        // Verify target pool exists
+        let _target_pool = store.get(&rl.target_pool).ok_or_else(|| {
+            RuntimeError::ObjectNotFound(rl.target_pool)
+        })?;
+
+        // Find sender balance for the asset being routed
+        let sender_balance = store
+            .find_balance(sender, &rl.asset_id)
+            .ok_or_else(|| RuntimeError::ObjectNotFound(ObjectId::zero()))?;
+        if sender_balance.available() < rl.amount {
+            return Err(RuntimeError::InsufficientBalance {
+                required: rl.amount,
+                available: sender_balance.available(),
+            });
+        }
+        let balance_id = sender_balance.meta.id;
+
+        // For Phase 1, route liquidity is modeled as:
+        // 1. Debit from sender balance
+        // 2. Update source pool version (withdraw)
+        // 3. Update target pool version (deposit)
+        // 4. Credit to sender balance (with min_received check at verification)
+        let operations = vec![
+            ObjectOperation::DebitBalance {
+                balance_id,
+                amount: rl.amount,
+            },
+            ObjectOperation::UpdateVersion {
+                object_id: rl.source_pool,
+            },
+            ObjectOperation::UpdateVersion {
+                object_id: rl.target_pool,
+            },
+            ObjectOperation::CreditBalance {
+                balance_id,
+                amount: rl.min_received, // Optimistic: actual amount determined by solver
+            },
+        ];
+
+        let object_access = vec![
+            ObjectAccess { object_id: balance_id, mode: AccessMode::ReadWrite },
+            ObjectAccess { object_id: rl.source_pool, mode: AccessMode::ReadWrite },
+            ObjectAccess { object_id: rl.target_pool, mode: AccessMode::ReadWrite },
+        ];
+
+        let costs = GasCosts::default_costs();
+        let gas_estimate = estimate_gas(&operations, &costs);
+
+        Ok(ExecutionPlan {
+            tx_id,
+            operations,
+            required_capabilities: vec![Capability::ProvideLiquidity, Capability::WithdrawLiquidity],
             object_access,
             gas_estimate,
             gas_limit: max_fee.saturating_mul(1_000),

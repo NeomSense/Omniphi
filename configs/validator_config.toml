@@ -1,0 +1,31 @@
+# Omniphi Validator Node Configuration
+# Copy and customize for each validator.
+
+[node]
+# Unique 32-byte hex node ID (generate with: openssl rand -hex 32)
+node_id = "REPLACE_WITH_NODE_ID"
+moniker = "validator-1"
+listen_addr = "0.0.0.0:26600"
+
+[keys]
+# Ed25519 key seed (32 bytes hex). Keep secret!
+key_seed = "REPLACE_WITH_KEY_SEED"
+
+[peers]
+# List of peer addresses (other validators)
+addrs = [
+    "peer1.example.com:26600",
+    "peer2.example.com:26600",
+    "peer3.example.com:26600",
+]
+
+[consensus]
+quorum = 3
+slot_duration_ms = 6000
+
+[metrics]
+enabled = true
+listen_addr = "0.0.0.0:9090"
+
+[storage]
+data_dir = "/var/lib/omniphi/data"
