@@ -1,0 +1,10 @@
+{
+  "node_id": "0303030303030303030303030303030303030303030303030303030303030303",
+  "poc_multiplier_bps": 10000,
+  "participation_rate_bps": 4000,
+  "fault_events_recent": 3,
+  "epochs_since_activation": 10,
+  "is_bonded": true,
+  "expected_tier": "Underperforming",
+  "expected_rank_score": 4000
+}

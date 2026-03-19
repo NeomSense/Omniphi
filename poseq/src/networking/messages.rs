@@ -114,6 +114,10 @@ pub struct WirePeerStatus {
     pub is_leader: bool,
     pub in_committee: bool,
     pub role: NodeRole,
+    /// Protocol version string of the sending node (e.g. "1.0.0").
+    /// `None` means the peer is running an older version without this field.
+    #[serde(default)]
+    pub protocol_version: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -401,6 +405,7 @@ mod tests {
             is_leader: false,
             in_committee: true,
             role: NodeRole::Attestor,
+            protocol_version: None,
         });
         let encoded = msg.encode().unwrap();
         let decoded = PoSeqMessage::decode(&encoded[4..]).unwrap();

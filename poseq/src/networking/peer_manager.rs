@@ -45,6 +45,11 @@ pub struct PeerInfo {
     pub latest_finalized_batch_id: Option<[u8; 32]>,
     /// Number of consecutive delivery failures.
     pub failure_count: u32,
+    /// When we last received any message from this peer. `None` for statically
+    /// registered peers that have never checked in.
+    pub last_seen_at: Option<std::time::Instant>,
+    /// Exponential backoff for reconnect attempts, in milliseconds.
+    pub reconnect_backoff_ms: u64,
 }
 
 impl PeerInfo {
@@ -59,6 +64,8 @@ impl PeerInfo {
             is_leader: status.is_leader,
             latest_finalized_batch_id: status.latest_finalized_batch_id,
             failure_count: 0,
+            last_seen_at: Some(std::time::Instant::now()),
+            reconnect_backoff_ms: 1000,
         }
     }
 }
@@ -108,6 +115,8 @@ impl PeerManager {
         info.is_leader = status.is_leader;
         info.latest_finalized_batch_id = status.latest_finalized_batch_id;
         info.failure_count = 0;
+        info.last_seen_at = Some(std::time::Instant::now());
+        info.reconnect_backoff_ms = 1000;
     }
 
     /// Manually register a peer with a known address (bootstrap / config).
@@ -123,6 +132,8 @@ impl PeerManager {
             is_leader: false,
             latest_finalized_batch_id: None,
             failure_count: 0,
+            last_seen_at: None,
+            reconnect_backoff_ms: 1000,
         });
     }
 
@@ -132,8 +143,63 @@ impl PeerManager {
             peer.failure_count += 1;
             if peer.failure_count >= 3 {
                 peer.state = PeerConnState::Degraded;
+                // Double the backoff, capped at 60 seconds
+                peer.reconnect_backoff_ms = (peer.reconnect_backoff_ms * 2).min(60_000);
             }
         }
+    }
+
+    /// Reset a peer's backoff and mark it Connected after a successful reconnect.
+    pub fn record_reconnect_success(&mut self, node_id: &NodeId) {
+        if let Some(peer) = self.peers.get_mut(node_id) {
+            peer.failure_count = 0;
+            peer.reconnect_backoff_ms = 1000;
+            peer.state = PeerConnState::Connected;
+        }
+    }
+
+    /// Return the current reconnect backoff for a peer, or 1000ms if unknown.
+    pub fn backoff_ms(&self, node_id: &NodeId) -> u64 {
+        self.peers.get(node_id).map(|p| p.reconnect_backoff_ms).unwrap_or(1000)
+    }
+
+    /// Iterate Connected peers; if `now - last_seen_at > silence_ms`, set to Degraded.
+    /// Peers with `last_seen_at = None` (never seen) are left unchanged.
+    pub fn tick_health_check(&mut self, now: std::time::Instant, silence_ms: u64) {
+        let threshold = std::time::Duration::from_millis(silence_ms);
+        for peer in self.peers.values_mut() {
+            if peer.state == PeerConnState::Connected {
+                if let Some(last_seen) = peer.last_seen_at {
+                    if now.duration_since(last_seen) > threshold {
+                        peer.state = PeerConnState::Degraded;
+                    }
+                }
+                // peers with last_seen_at = None are skipped
+            }
+        }
+    }
+
+    /// Iterate Degraded peers; if `now - last_seen_at > max_silence_ms`, set to Disconnected.
+    /// Peers with `last_seen_at = None` are left unchanged.
+    pub fn evict_dead_peers(&mut self, now: std::time::Instant, max_silence_ms: u64) {
+        let threshold = std::time::Duration::from_millis(max_silence_ms);
+        for peer in self.peers.values_mut() {
+            if peer.state == PeerConnState::Degraded {
+                if let Some(last_seen) = peer.last_seen_at {
+                    if now.duration_since(last_seen) > threshold {
+                        peer.state = PeerConnState::Disconnected;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Return (node_id, listen_addr) pairs for all Disconnected peers.
+    pub fn reconnect_candidates(&self) -> Vec<(NodeId, String)> {
+        self.peers.values()
+            .filter(|p| p.state == PeerConnState::Disconnected)
+            .map(|p| (p.node_id, p.listen_addr.clone()))
+            .collect()
     }
 
     /// Mark a peer as disconnected (e.g., max retries exceeded).
@@ -183,6 +249,14 @@ impl PeerManager {
 
     pub fn connected_count(&self) -> usize {
         self.peers.values().filter(|p| p.state == PeerConnState::Connected).count()
+    }
+
+    pub fn degraded_count(&self) -> usize {
+        self.peers.values().filter(|p| p.state == PeerConnState::Degraded).count()
+    }
+
+    pub fn disconnected_count(&self) -> usize {
+        self.peers.values().filter(|p| p.state == PeerConnState::Disconnected).count()
     }
 
     /// All peer node IDs (parallel to `all_peer_addrs()`).
@@ -324,6 +398,7 @@ mod tests {
             is_leader: false,
             in_committee: true,
             role: NodeRole::Attestor,
+            protocol_version: None,
         }
     }
 
@@ -478,5 +553,114 @@ mod tests {
         let behind = pm.nodes_needing_sync(&current);
         // Both nodes are behind (nid(50) != nid(99), None != nid(99))
         assert_eq!(behind.len(), 2);
+    }
+
+    // ── D1: Peer lifecycle hardening tests ───────────────────────────────────
+
+    #[test]
+    fn test_tick_health_check_degrades_silent_peer() {
+        let mut pm = PeerManager::new(nid(0), 100);
+        pm.update_from_status(&make_status(nid(1), "127.0.0.1:7001", 1, 1));
+        // peer is Connected after update_from_status
+
+        // Simulate that the peer was last seen 200ms ago by travelling time via
+        // a backdated Instant — we can't move Instant::now() directly, so instead
+        // we call tick_health_check with a very short silence_ms of 0.
+        let now = std::time::Instant::now();
+        pm.tick_health_check(now, 0); // any duration > 0 triggers it
+        assert_eq!(pm.degraded_count(), 1);
+        assert_eq!(pm.connected_count(), 0);
+    }
+
+    #[test]
+    fn test_tick_health_check_ignores_never_seen_peers() {
+        let mut pm = PeerManager::new(nid(0), 100);
+        pm.register_peer(nid(1), "127.0.0.1:7001".into());
+        // last_seen_at is None, state is Disconnected — tick should not change it to Degraded
+        let now = std::time::Instant::now();
+        pm.tick_health_check(now, 0);
+        // Still Disconnected (not Degraded) because last_seen_at is None
+        assert_eq!(pm.degraded_count(), 0);
+        assert_eq!(pm.disconnected_count(), 1);
+    }
+
+    #[test]
+    fn test_evict_dead_peers() {
+        let mut pm = PeerManager::new(nid(0), 100);
+        pm.update_from_status(&make_status(nid(1), "127.0.0.1:7001", 1, 1));
+        let now = std::time::Instant::now();
+        // Degrade first with silence_ms=0
+        pm.tick_health_check(now, 0);
+        assert_eq!(pm.degraded_count(), 1);
+        // Then evict with max_silence_ms=0
+        pm.evict_dead_peers(now, 0);
+        assert_eq!(pm.degraded_count(), 0);
+        assert_eq!(pm.disconnected_count(), 1);
+    }
+
+    #[test]
+    fn test_reconnect_candidates() {
+        let mut pm = PeerManager::new(nid(0), 100);
+        pm.register_peer(nid(1), "127.0.0.1:7001".into());
+        pm.register_peer(nid(2), "127.0.0.1:7002".into());
+        pm.update_from_status(&make_status(nid(3), "127.0.0.1:7003", 1, 1)); // Connected
+
+        let candidates = pm.reconnect_candidates();
+        assert_eq!(candidates.len(), 2); // only Disconnected peers
+        // Connected peer (nid(3)) should not be in candidates
+        assert!(!candidates.iter().any(|(id, _)| *id == nid(3)));
+    }
+
+    #[test]
+    fn test_backoff_doubling_on_failure() {
+        let mut pm = PeerManager::new(nid(0), 100);
+        pm.register_peer(nid(1), "127.0.0.1:7001".into());
+        assert_eq!(pm.backoff_ms(&nid(1)), 1000);
+
+        // 3 failures trigger Degraded and double the backoff
+        for _ in 0..3 {
+            pm.record_send_failure(&nid(1));
+        }
+        assert_eq!(pm.get_peer(&nid(1)).unwrap().state, PeerConnState::Degraded);
+        // After 3rd failure: 1000 * 2 = 2000
+        assert_eq!(pm.backoff_ms(&nid(1)), 2000);
+    }
+
+    #[test]
+    fn test_backoff_caps_at_60000() {
+        let mut pm = PeerManager::new(nid(0), 100);
+        pm.register_peer(nid(1), "127.0.0.1:7001".into());
+        // Manually set a large backoff to test the cap
+        pm.peers.get_mut(&nid(1)).unwrap().reconnect_backoff_ms = 40_000;
+        pm.peers.get_mut(&nid(1)).unwrap().failure_count = 2;
+        pm.record_send_failure(&nid(1)); // would be 80_000 but capped at 60_000
+        assert_eq!(pm.backoff_ms(&nid(1)), 60_000);
+    }
+
+    #[test]
+    fn test_record_reconnect_success_resets() {
+        let mut pm = PeerManager::new(nid(0), 100);
+        pm.register_peer(nid(1), "127.0.0.1:7001".into());
+        for _ in 0..3 {
+            pm.record_send_failure(&nid(1));
+        }
+        assert_eq!(pm.get_peer(&nid(1)).unwrap().state, PeerConnState::Degraded);
+        pm.record_reconnect_success(&nid(1));
+        let peer = pm.get_peer(&nid(1)).unwrap();
+        assert_eq!(peer.state, PeerConnState::Connected);
+        assert_eq!(peer.failure_count, 0);
+        assert_eq!(peer.reconnect_backoff_ms, 1000);
+    }
+
+    #[test]
+    fn test_state_counts() {
+        let mut pm = PeerManager::new(nid(0), 100);
+        pm.update_from_status(&make_status(nid(1), "127.0.0.1:7001", 1, 1)); // Connected
+        pm.register_peer(nid(2), "127.0.0.1:7002".into());                   // Disconnected
+        pm.register_peer(nid(3), "127.0.0.1:7003".into());                   // Disconnected
+
+        assert_eq!(pm.connected_count(), 1);
+        assert_eq!(pm.degraded_count(), 0);
+        assert_eq!(pm.disconnected_count(), 2);
     }
 }

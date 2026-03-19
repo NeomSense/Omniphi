@@ -10,6 +10,17 @@ pub mod prefix {
     pub const NODE: &[u8] = b"node:";
     pub const EPOCH: &[u8] = b"epoch:";
     pub const SIMULATION: &[u8] = b"simulation:";
+    // Phase 6A: cross-layer persistence
+    pub const RUNTIME_INGESTION: &[u8] = b"runtime:last_ingested:";
+    pub const RUNTIME_DELIVERY: &[u8] = b"runtime:delivery_log:";
+    pub const SETTLEMENT_LAST: &[u8] = b"settlement:last_submitted:";
+    pub const SNAPSHOT: &[u8] = b"snapshot:";
+    pub const SNAPSHOT_META: &[u8] = b"snapshot_meta:";
+    pub const DISCOVERED_PEERS: &[u8] = b"peers:discovered:";
+    // Dual-lane operator alignment
+    pub const CHAIN_SNAPSHOT: &[u8] = b"chain_snapshot:";
+    pub const LIVENESS_TRACKER: &[u8] = b"liveness:";
+    pub const PERF_TRACKER: &[u8] = b"perf:";
 }
 
 /// Typed key builder with prefixes for each data domain.
@@ -81,6 +92,29 @@ impl PersistenceKey {
         let mut key = prefix::SLASHING.to_vec();
         key.extend_from_slice(node_id);
         key.push(b':');
+        key
+    }
+
+    /// Build a chain snapshot key: `chain_snapshot:<epoch_be(8)>`.
+    pub fn chain_snapshot(epoch: u64) -> Vec<u8> {
+        let mut key = prefix::CHAIN_SNAPSHOT.to_vec();
+        key.extend_from_slice(&epoch.to_be_bytes());
+        key
+    }
+
+    /// Build a liveness tracker key: `liveness:<node_id><epoch_be(8)>`.
+    pub fn liveness(node_id: &[u8; 32], epoch: u64) -> Vec<u8> {
+        let mut key = prefix::LIVENESS_TRACKER.to_vec();
+        key.extend_from_slice(node_id);
+        key.extend_from_slice(&epoch.to_be_bytes());
+        key
+    }
+
+    /// Build a performance tracker key: `perf:<node_id><epoch_be(8)>`.
+    pub fn performance(node_id: &[u8; 32], epoch: u64) -> Vec<u8> {
+        let mut key = prefix::PERF_TRACKER.to_vec();
+        key.extend_from_slice(node_id);
+        key.extend_from_slice(&epoch.to_be_bytes());
         key
     }
 

@@ -144,6 +144,79 @@ impl DiscoveryService {
             addr: p.listen_addr.clone(),
         }).collect()
     }
+
+    /// Run periodic peer rediscovery in the background.
+    ///
+    /// Queries all seed peers every `interval` for updated peer lists.
+    /// New peers are merged into the `PeerManager` automatically.
+    pub async fn run_periodic_discovery(
+        &self,
+        interval: Duration,
+        self_status: WirePeerStatus,
+    ) {
+        loop {
+            sleep(interval).await;
+            self.bootstrap(&self_status).await;
+        }
+    }
+
+    /// Persist currently known peers to a durable store.
+    pub async fn persist_peers(
+        &self,
+        store: &Arc<Mutex<crate::persistence::durable_store::DurableStore>>,
+    ) {
+        let pm = self.peer_manager.lock().await;
+        let peers: Vec<WirePeerInfo> = pm.all_peer_addrs()
+            .into_iter()
+            .zip(pm.all_peer_ids().into_iter())
+            .map(|(addr, node_id)| WirePeerInfo { node_id, listen_addr: addr })
+            .collect();
+        let data = match bincode::serialize(&peers) {
+            Ok(d) => d,
+            Err(e) => {
+                println!("[discovery] Failed to serialize peer list: {e}");
+                return;
+            }
+        };
+        let key = crate::persistence::keys::prefix::DISCOVERED_PEERS.to_vec();
+        let mut ds = store.lock().await;
+        ds.engine.put_raw(&key, data);
+        println!("[discovery] Persisted {} peers", peers.len());
+    }
+
+    /// Load previously persisted peers from durable store.
+    pub async fn load_persisted_peers(
+        &self,
+        store: &Arc<Mutex<crate::persistence::durable_store::DurableStore>>,
+    ) {
+        let key = crate::persistence::keys::prefix::DISCOVERED_PEERS.to_vec();
+        let ds = store.lock().await;
+        let data = match ds.engine.get_raw(&key) {
+            Some(d) => d,
+            None => return,
+        };
+        drop(ds);
+
+        let peers: Vec<WirePeerInfo> = match bincode::deserialize(&data) {
+            Ok(p) => p,
+            Err(e) => {
+                println!("[discovery] Failed to deserialize persisted peers: {e}");
+                return;
+            }
+        };
+        let mut pm = self.peer_manager.lock().await;
+        let mut added = 0usize;
+        for peer in &peers {
+            if peer.node_id == self.self_id { continue; }
+            if !pm.has_peer(&peer.node_id) {
+                pm.register_peer(peer.node_id, peer.listen_addr.clone());
+                added += 1;
+            }
+        }
+        if added > 0 {
+            println!("[discovery] Loaded {added} persisted peers");
+        }
+    }
 }
 
 #[cfg(test)]

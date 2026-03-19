@@ -21,6 +21,7 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"github.com/spf13/cobra"
 
+	"pos/x/poseq/client/cli"
 	"pos/x/poseq/keeper"
 	"pos/x/poseq/types"
 )
@@ -70,9 +71,9 @@ func (AppModule) RegisterInterfaces(_ codectypes.InterfaceRegistry) {}
 
 func (AppModule) RegisterGRPCGatewayRoutes(_ client.Context, _ *runtime.ServeMux) {}
 
-func (AppModule) GetTxCmd() *cobra.Command { return nil }
+func (AppModule) GetTxCmd() *cobra.Command { return cli.GetTxCmd() }
 
-func (AppModule) GetQueryCmd() *cobra.Command { return nil }
+func (AppModule) GetQueryCmd() *cobra.Command { return cli.GetQueryCmd() }
 
 // ─── appmodule.AppModule interface ───────────────────────────────────────────
 

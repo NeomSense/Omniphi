@@ -2,9 +2,61 @@ package types
 
 import (
 	"encoding/hex"
+	"fmt"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
+
+// ─── SequencerStatus ──────────────────────────────────────────────────────────
+
+// SequencerStatus represents the full lifecycle state of a PoSeq sequencer.
+type SequencerStatus string
+
+const (
+	// SequencerStatusPending: registered, awaiting governance activation.
+	SequencerStatusPending SequencerStatus = "Pending"
+	// SequencerStatusActive: eligible to participate in PoSeq committee.
+	SequencerStatusActive SequencerStatus = "Active"
+	// SequencerStatusSuspended: temporarily barred; can recover via governance.
+	SequencerStatusSuspended SequencerStatus = "Suspended"
+	// SequencerStatusJailed: evidence-based bar; requires governance to unjail.
+	SequencerStatusJailed SequencerStatus = "Jailed"
+	// SequencerStatusRetired: voluntary exit; terminal state.
+	SequencerStatusRetired SequencerStatus = "Retired"
+)
+
+// ValidateSequencerTransition returns nil if transitioning from → to is permitted.
+//
+// Permitted transitions:
+//
+//	Pending   → Active
+//	Active    → Suspended, Jailed, Retired
+//	Suspended → Active, Jailed, Retired
+//	Jailed    → Active, Retired
+//	Retired   → (none — terminal)
+func ValidateSequencerTransition(from, to SequencerStatus) error {
+	switch from {
+	case SequencerStatusPending:
+		if to == SequencerStatusActive {
+			return nil
+		}
+	case SequencerStatusActive:
+		if to == SequencerStatusSuspended || to == SequencerStatusJailed || to == SequencerStatusRetired {
+			return nil
+		}
+	case SequencerStatusSuspended:
+		if to == SequencerStatusActive || to == SequencerStatusJailed || to == SequencerStatusRetired {
+			return nil
+		}
+	case SequencerStatusJailed:
+		if to == SequencerStatusActive || to == SequencerStatusRetired {
+			return nil
+		}
+	case SequencerStatusRetired:
+		// terminal — no transitions allowed
+	}
+	return ErrInvalidLifecycleTransition.Wrapf("cannot transition from %s to %s", from, to)
+}
 
 // ─── SequencerRecord ──────────────────────────────────────────────────────────
 
@@ -23,12 +75,29 @@ type SequencerRecord struct {
 	// OperatorAddress is the Cosmos bech32 address of the operator.
 	OperatorAddress string `json:"operator_address"`
 
+	// CosmosValidatorAddress is the optional bech32 valoper address if the
+	// operator also runs a Cosmos PoS validator (slow lane linkage).
+	// Empty string means no explicit linkage declared.
+	CosmosValidatorAddress string `json:"cosmos_validator_address,omitempty"`
+
 	// RegisteredEpoch is the PoSeq epoch at time of registration.
 	RegisteredEpoch uint64 `json:"registered_epoch"`
 
-	// IsActive indicates the sequencer is eligible to participate in consensus.
-	// Set to true by governance after bonding requirements are met.
-	IsActive bool `json:"is_active"`
+	// Status is the current lifecycle state of this sequencer.
+	Status SequencerStatus `json:"status"`
+
+	// StatusSince is the PoSeq epoch at which the current Status was set.
+	StatusSince uint64 `json:"status_since"`
+
+	// LastLivenessEpoch is the last epoch for which a liveness event was
+	// received from the PoSeq network. Zero if never observed.
+	LastLivenessEpoch uint64 `json:"last_liveness_epoch"`
+}
+
+// IsActive returns true only when Status == Active.
+// This replaces the old IsActive bool field for backward compatibility.
+func (r SequencerRecord) IsActive() bool {
+	return r.Status == SequencerStatusActive
 }
 
 // NodeIDBytes decodes the hex NodeID into raw bytes.
@@ -124,6 +193,41 @@ func (m *MsgDeactivateSequencer) ValidateBasic() error {
 	nodeIDBytes, err := hex.DecodeString(m.NodeID)
 	if err != nil || len(nodeIDBytes) != 32 {
 		return ErrInvalidNodeID.Wrap("node_id must be 64 hex chars (32 bytes)")
+	}
+	return nil
+}
+
+// ─── MsgTransitionSequencer ───────────────────────────────────────────────────
+
+// MsgTransitionSequencer performs an explicit FSM lifecycle transition on a
+// registered sequencer. Only the governance authority may execute this.
+// Use this for Jailed, Retired, or governance-ordered status changes.
+type MsgTransitionSequencer struct {
+	// Authority is the governance module address.
+	Authority string `json:"authority"`
+	// NodeID identifies the sequencer (64 hex chars).
+	NodeID string `json:"node_id"`
+	// ToStatus is the target lifecycle state.
+	ToStatus SequencerStatus `json:"to_status"`
+	// Reason is a human-readable explanation for audit logging.
+	Reason string `json:"reason"`
+	// Epoch is the current PoSeq epoch (stored as StatusSince).
+	Epoch uint64 `json:"epoch"`
+}
+
+func (m *MsgTransitionSequencer) ValidateBasic() error {
+	if _, err := sdk.AccAddressFromBech32(m.Authority); err != nil {
+		return ErrUnauthorized.Wrapf("invalid authority address: %s", err)
+	}
+	nodeIDBytes, err := hex.DecodeString(m.NodeID)
+	if err != nil || len(nodeIDBytes) != 32 {
+		return ErrInvalidNodeID.Wrap("node_id must be 64 hex chars (32 bytes)")
+	}
+	switch m.ToStatus {
+	case SequencerStatusActive, SequencerStatusSuspended, SequencerStatusJailed, SequencerStatusRetired:
+		// valid targets
+	default:
+		return fmt.Errorf("invalid to_status %q: must be Active, Suspended, Jailed, or Retired", m.ToStatus)
 	}
 	return nil
 }

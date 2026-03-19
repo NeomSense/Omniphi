@@ -1,0 +1,10 @@
+{
+  "bond_amount": 1000000,
+  "available_bond": 1000000,
+  "slash_bps": 300,
+  "epoch": 5,
+  "expected_slash_amount": 30000,
+  "expected_available_after": 970000,
+  "expected_slashed_total": 30000,
+  "expected_state_after": "PartiallySlashed"
+}

@@ -25,6 +25,7 @@ fn attestor_config(id: u8) -> NodeConfig {
         slot_duration_ms: 100,
         data_dir: format!("/tmp/poseq_devnet_{id}"),
         role: NodeRole::Attestor,
+        slots_per_epoch: 10,
     }
 }
 
@@ -288,6 +289,7 @@ async fn test_scenario_duplicate_messages_dropped() {
         is_leader: false,
         in_committee: false,
         role: NodeRole::Observer,
+        protocol_version: None,
     });
     for _ in 0..5 {
         sender.send_to(&node2_addr, &status_msg).await.ok();

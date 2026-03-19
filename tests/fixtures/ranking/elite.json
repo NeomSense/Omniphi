@@ -1,0 +1,10 @@
+{
+  "node_id": "0101010101010101010101010101010101010101010101010101010101010101",
+  "poc_multiplier_bps": 11500,
+  "participation_rate_bps": 9500,
+  "fault_events_recent": 0,
+  "epochs_since_activation": 10,
+  "is_bonded": true,
+  "expected_tier": "Elite",
+  "expected_rank_score": 10925
+}

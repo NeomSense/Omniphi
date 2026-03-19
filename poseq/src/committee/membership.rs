@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 use sha2::{Sha256, Digest};
-use crate::identities::node::{NodeIdentity, NodeRole};
+use crate::identities::node::{NodeIdentity, NodeRole, NodeStatus};
+use crate::identities::registry::{ChainSequencerStatus, SequencerRegistry};
+use crate::membership::MembershipStore;
+use crate::chain_bridge::snapshot::ChainCommitteeSnapshot;
 
 /// A snapshot of committee membership for a given epoch.
 #[derive(Debug, Clone)]
@@ -72,6 +75,88 @@ impl PoSeqCommittee {
         self.eligible_attestors().len()
     }
 
+    /// Build a committee from a chain-imported snapshot.
+    ///
+    /// Excludes nodes whose `chain_status` is not `Active` or whose
+    /// `MembershipStore` status is `Suspended`, `Banned`, or `Removed`.
+    ///
+    /// Returns `Err` if:
+    /// - The snapshot hash fails verification
+    /// - The snapshot epoch does not match `epoch`
+    /// - Fewer than `min_members` eligible nodes remain after filtering
+    pub fn from_chain_snapshot(
+        snapshot: &ChainCommitteeSnapshot,
+        registry: &SequencerRegistry,
+        membership: &MembershipStore,
+        epoch: u64,
+        min_members: usize,
+    ) -> Result<Self, CommitteeFormationError> {
+        if snapshot.epoch != epoch {
+            return Err(CommitteeFormationError::EpochMismatch {
+                snapshot_epoch: snapshot.epoch,
+                requested_epoch: epoch,
+            });
+        }
+        if !snapshot.verify_hash() {
+            return Err(CommitteeFormationError::SnapshotVerificationFailed);
+        }
+
+        let mut committee = PoSeqCommittee::new(epoch);
+
+        for member in &snapshot.members {
+            // Decode node_id
+            let Ok(id_bytes) = hex::decode(&member.node_id) else {
+                continue;
+            };
+            if id_bytes.len() != 32 {
+                continue;
+            }
+            let mut node_id = [0u8; 32];
+            node_id.copy_from_slice(&id_bytes);
+
+            // Check chain-authoritative status
+            if !registry.is_chain_eligible(&node_id) {
+                continue;
+            }
+
+            // Check internal MembershipStore status
+            if !membership.is_eligible_for_committee(&node_id) {
+                continue;
+            }
+
+            // Resolve public key from registry (or decode from snapshot)
+            let public_key = if let Some(rec) = registry.get(&node_id) {
+                rec.public_key
+            } else {
+                let Ok(pk_bytes) = hex::decode(&member.public_key) else { continue };
+                if pk_bytes.len() != 32 { continue; }
+                let mut pk = [0u8; 32];
+                pk.copy_from_slice(&pk_bytes);
+                pk
+            };
+
+            let role = match member.role.as_str() {
+                "Sequencer" => NodeRole::Sequencer,
+                "Validator" => NodeRole::Validator,
+                _ => NodeRole::Sequencer,
+            };
+
+            let mut identity = NodeIdentity::new(node_id, public_key, role, epoch);
+            identity.activate();
+            committee.add_node(identity);
+        }
+
+        let total = committee.sequencers.len() + committee.attestors.len();
+        if total < min_members {
+            return Err(CommitteeFormationError::InsufficientActiveMembers {
+                required: min_members,
+                available: total,
+            });
+        }
+
+        Ok(committee)
+    }
+
     /// Compute the committee root: SHA256 over sorted node_ids of all members.
     pub fn compute_committee_root(&self) -> [u8; 32] {
         let mut hasher = Sha256::new();
@@ -130,6 +215,60 @@ impl CommitteeMembershipRecord {
             attestor_ids,
             committee_root: committee.compute_committee_root(),
             quorum_size: committee.quorum_size(),
+        }
+    }
+}
+
+// ─── CommitteeFormationError ─────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CommitteeFormationError {
+    /// The `snapshot_hash` field does not match the recomputed hash.
+    SnapshotVerificationFailed,
+    /// Fewer than `required` nodes remain after filtering inactive/suspended nodes.
+    InsufficientActiveMembers { required: usize, available: usize },
+    /// The snapshot's epoch does not match the requested epoch.
+    EpochMismatch { snapshot_epoch: u64, requested_epoch: u64 },
+}
+
+impl std::fmt::Display for CommitteeFormationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::SnapshotVerificationFailed => write!(f, "snapshot hash verification failed"),
+            Self::InsufficientActiveMembers { required, available } => {
+                write!(f, "insufficient active members: need {required}, have {available}")
+            }
+            Self::EpochMismatch { snapshot_epoch, requested_epoch } => {
+                write!(f, "epoch mismatch: snapshot={snapshot_epoch}, requested={requested_epoch}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for CommitteeFormationError {}
+
+// ─── sync_membership_from_chain ──────────────────────────────────────────────
+
+/// Sync the local `MembershipStore` to reflect chain-authoritative status changes.
+///
+/// Iterates over all records in `registry` and, for each node whose
+/// `chain_status` is not `Active`, transitions the `MembershipStore` entry
+/// to `Suspended` (if it isn't already terminal).
+///
+/// Called after importing a snapshot or ingesting an `ExportBatch` with
+/// `status_recommendations`.
+pub fn sync_membership_from_chain(
+    membership: &mut MembershipStore,
+    registry: &SequencerRegistry,
+    epoch: u64,
+) {
+    for node_id in registry.all_node_ids() {
+        if let Some(rec) = registry.get(&node_id) {
+            if !rec.chain_status.is_committee_eligible() {
+                // Drive the local membership store to Suspended so it
+                // reflects the chain-authoritative view.
+                membership.suspend_node(&node_id, epoch);
+            }
         }
     }
 }

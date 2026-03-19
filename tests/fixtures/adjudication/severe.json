@@ -1,0 +1,10 @@
+{
+  "packet_hash": "0505050505050505050505050505050505050505050505050505050505050505",
+  "node_id":     "0606060606060606060606060606060606060606060606060606060606060606",
+  "misbehavior_type": "Equivocation",
+  "severity": "Severe",
+  "epoch": 5,
+  "expected_path": "GovernanceReview",
+  "expected_decision": "Escalated",
+  "expected_slash_bps": 1000
+}

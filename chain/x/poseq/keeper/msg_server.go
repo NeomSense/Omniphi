@@ -75,3 +75,88 @@ func (m MsgServer) UpdateParams(ctx context.Context, msg *types.MsgUpdateParams)
 	}
 	return m.Keeper.SetParams(ctx, msg.Params)
 }
+
+// ─── Phase 5: Bond message handlers ──────────────────────────────────────────
+
+// DeclareOperatorBond processes MsgDeclareOperatorBond.
+// Permissionless — any operator may declare a bond for a registered sequencer.
+// The sender's address is used as the OperatorAddress; it must match the
+// OperatorAddress on the registered SequencerRecord.
+func (m MsgServer) DeclareOperatorBond(ctx context.Context, msg *types.MsgDeclareOperatorBond) error {
+	if msg.BondAmount == 0 {
+		return types.ErrInvalidBondAmount
+	}
+	if msg.NodeID == "" {
+		return types.ErrInvalidNodeID.Wrap("node_id must not be empty")
+	}
+
+	// Verify sender is the registered operator for this node
+	seq, err := m.Keeper.GetSequencer(ctx, msg.NodeID)
+	if err != nil {
+		return fmt.Errorf("fetching sequencer: %w", err)
+	}
+	if seq == nil {
+		return types.ErrSequencerNotFound
+	}
+	if seq.OperatorAddress != msg.OperatorAddress {
+		return types.ErrOperatorMismatch.Wrapf(
+			"sender %s is not the registered operator %s for node %s",
+			msg.OperatorAddress, seq.OperatorAddress, msg.NodeID,
+		)
+	}
+
+	bond := types.OperatorBond{
+		OperatorAddress:  msg.OperatorAddress,
+		NodeID:           msg.NodeID,
+		BondAmount:       msg.BondAmount,
+		BondDenom:        msg.BondDenom,
+		BondedSinceEpoch: msg.Epoch,
+		IsActive:         true,
+	}
+	if err := m.Keeper.DeclareOperatorBond(ctx, bond); err != nil {
+		return fmt.Errorf("declaring operator bond: %w", err)
+	}
+
+	m.Keeper.Logger().Info("operator bond declared",
+		"operator", msg.OperatorAddress,
+		"node_id", msg.NodeID,
+		"amount", msg.BondAmount,
+		"denom", msg.BondDenom,
+		"epoch", msg.Epoch,
+	)
+	return nil
+}
+
+// WithdrawOperatorBond processes MsgWithdrawOperatorBond.
+// Only the registered operator may withdraw their bond declaration.
+func (m MsgServer) WithdrawOperatorBond(ctx context.Context, msg *types.MsgWithdrawOperatorBond) error {
+	if msg.NodeID == "" {
+		return types.ErrInvalidNodeID.Wrap("node_id must not be empty")
+	}
+
+	// Verify sender is the registered operator
+	seq, err := m.Keeper.GetSequencer(ctx, msg.NodeID)
+	if err != nil {
+		return fmt.Errorf("fetching sequencer: %w", err)
+	}
+	if seq == nil {
+		return types.ErrSequencerNotFound
+	}
+	if seq.OperatorAddress != msg.OperatorAddress {
+		return types.ErrOperatorMismatch.Wrapf(
+			"sender %s is not the registered operator %s for node %s",
+			msg.OperatorAddress, seq.OperatorAddress, msg.NodeID,
+		)
+	}
+
+	if err := m.Keeper.WithdrawOperatorBond(ctx, msg.OperatorAddress, msg.NodeID, msg.Epoch); err != nil {
+		return fmt.Errorf("withdrawing operator bond: %w", err)
+	}
+
+	m.Keeper.Logger().Info("operator bond withdrawn",
+		"operator", msg.OperatorAddress,
+		"node_id", msg.NodeID,
+		"epoch", msg.Epoch,
+	)
+	return nil
+}

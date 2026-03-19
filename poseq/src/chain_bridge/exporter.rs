@@ -22,6 +22,12 @@ use crate::chain_bridge::escalation::{
 use crate::chain_bridge::anchor::{
     CheckpointAnchorRecord, BatchFinalityReference, EpochStateReference,
 };
+use crate::liveness::events::{LivenessEventExport, InactivityEvent};
+use crate::performance::record::NodePerformanceRecord;
+use crate::enforcement::rules::{evaluate_epoch, EnforcementConfig};
+use crate::reward::score::{build_reward_score, EpochRewardScore};
+use crate::reward::poc::PoCMultiplierStore;
+use crate::bonding::store::BondingStore;
 
 // ─── Raw misbehavior input (from PoSeq internal modules) ─────────────────────
 
@@ -41,8 +47,19 @@ pub struct MisbehaviorIncidentInput {
 
 // ─── ExportBatch ─────────────────────────────────────────────────────────────
 
+/// A status recommendation from PoSeq to the chain.
+/// If `AutoApplySuspensions` is enabled on-chain, the chain will apply these automatically.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct StatusRecommendation {
+    pub node_id: [u8; 32],
+    /// Recommended status string: "Suspended" or "Jailed".
+    pub recommended_status: String,
+    pub reason: String,
+    pub epoch: u64,
+}
+
 /// A complete epoch export — all records ready for chain submission.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ExportBatch {
     pub epoch: u64,
 
@@ -60,6 +77,21 @@ pub struct ExportBatch {
 
     /// Epoch state summary for operator visibility.
     pub epoch_state: EpochStateReference,
+
+    /// Liveness events for this epoch — active observations and inactivity alerts.
+    pub liveness_events: Vec<LivenessEventExport>,
+
+    /// Per-node performance records for this epoch.
+    pub performance_records: Vec<NodePerformanceRecord>,
+
+    /// Inactivity events extracted from liveness exports for convenience.
+    pub inactivity_events: Vec<InactivityEvent>,
+
+    /// Status change recommendations for the chain registry.
+    pub status_recommendations: Vec<StatusRecommendation>,
+
+    /// Per-node reward scores for this epoch, ready for distribution hooks.
+    pub reward_scores: Vec<EpochRewardScore>,
 }
 
 impl ExportBatch {
@@ -68,6 +100,8 @@ impl ExportBatch {
             && self.escalations.is_empty()
             && self.suspensions.is_empty()
             && self.checkpoint_anchor.is_none()
+            && self.liveness_events.is_empty()
+            && self.performance_records.is_empty()
     }
 }
 
@@ -210,6 +244,11 @@ impl ChainBridgeExporter {
             suspensions,
             checkpoint_anchor,
             epoch_state,
+            liveness_events: Vec::new(),
+            performance_records: Vec::new(),
+            inactivity_events: Vec::new(),
+            status_recommendations: Vec::new(),
+            reward_scores: Vec::new(),
         };
 
         let result = ExportResult {
@@ -221,6 +260,121 @@ impl ChainBridgeExporter {
             has_checkpoint,
         };
 
+        (batch, result)
+    }
+
+    /// Extended export that includes liveness, performance, and status recommendation data.
+    ///
+    /// Calls the base `export()` and appends the accountability fields.
+    /// Existing callers using `export()` continue to receive empty slices for those fields.
+    pub fn export_with_accountability(
+        &mut self,
+        epoch: u64,
+        incidents: Vec<MisbehaviorIncidentInput>,
+        committee_hash: [u8; 32],
+        finalized_batch_count: u64,
+        checkpoint_anchor: Option<CheckpointAnchorRecord>,
+        liveness_events: Vec<LivenessEventExport>,
+        performance_records: Vec<NodePerformanceRecord>,
+        status_recommendations: Vec<StatusRecommendation>,
+    ) -> (ExportBatch, ExportResult) {
+        let (mut batch, result) = self.export(
+            epoch,
+            incidents,
+            committee_hash,
+            finalized_batch_count,
+            checkpoint_anchor,
+        );
+
+        // Flatten inactivity events from all liveness exports.
+        let inactivity_events: Vec<InactivityEvent> = liveness_events
+            .iter()
+            .flat_map(|le| le.inactivity_events.iter().cloned())
+            .collect();
+
+        batch.liveness_events = liveness_events;
+        batch.performance_records = performance_records;
+        batch.inactivity_events = inactivity_events;
+        batch.status_recommendations = status_recommendations;
+
+        (batch, result)
+    }
+
+    /// Fully integrated epoch export with automatic enforcement evaluation and
+    /// reward score computation.
+    ///
+    /// This is the top-level method for production epoch-end processing.
+    /// It:
+    /// 1. Packages misbehavior evidence via `export_with_accountability`
+    /// 2. Runs the enforcement engine to generate `StatusRecommendation`s
+    ///    from inactivity events and performance records (merging with any
+    ///    explicit recommendations passed in)
+    /// 3. Computes per-node `EpochRewardScore`s
+    ///
+    /// The `enforcement_config` controls inactivity and fault thresholds.
+    /// Set thresholds to 0 to disable automatic enforcement.
+    #[allow(clippy::too_many_arguments)]
+    pub fn export_epoch(
+        &mut self,
+        epoch: u64,
+        incidents: Vec<MisbehaviorIncidentInput>,
+        committee_hash: [u8; 32],
+        finalized_batch_count: u64,
+        checkpoint_anchor: Option<CheckpointAnchorRecord>,
+        liveness_events: Vec<LivenessEventExport>,
+        performance_records: Vec<NodePerformanceRecord>,
+        explicit_status_recommendations: Vec<StatusRecommendation>,
+        enforcement_config: &EnforcementConfig,
+        poc_store: &PoCMultiplierStore,
+        bonding_store: &BondingStore,
+    ) -> (ExportBatch, ExportResult) {
+        // Collect all inactivity events across liveness exports.
+        let inactivity_events: Vec<InactivityEvent> = liveness_events
+            .iter()
+            .flat_map(|le| le.inactivity_events.iter().cloned())
+            .collect();
+
+        // Run enforcement engine — merge with explicit recommendations.
+        let mut auto_recs = evaluate_epoch(&inactivity_events, &performance_records, enforcement_config, epoch);
+        auto_recs.extend(explicit_status_recommendations);
+        // Deduplicate: Jailed wins over Suspended for same node.
+        let mut deduped: std::collections::BTreeMap<[u8; 32], StatusRecommendation> =
+            std::collections::BTreeMap::new();
+        for rec in auto_recs {
+            let entry = deduped.entry(rec.node_id).or_insert_with(|| rec.clone());
+            if rec.recommended_status == "Jailed" && entry.recommended_status == "Suspended" {
+                *entry = rec;
+            }
+        }
+        let status_recommendations: Vec<StatusRecommendation> = deduped.into_values().collect();
+
+        // Compute reward scores for each node with performance data.
+        let liveness_by_epoch: Option<&LivenessEventExport> = liveness_events.first();
+        let reward_scores: Vec<EpochRewardScore> = performance_records
+            .iter()
+            .map(|pr| {
+                let operator = bonding_store.operator_for_node(&pr.node_id).map(str::to_string);
+                let is_bonded = bonding_store.has_active_bond(&pr.node_id);
+                let poc_mult = operator
+                    .as_deref()
+                    .map(|op| poc_store.get(epoch, op))
+                    .unwrap_or(10_000);
+                build_reward_score(pr, liveness_by_epoch, poc_mult, operator, is_bonded)
+            })
+            .collect();
+
+        let (mut batch, result) = self.export_with_accountability(
+            epoch,
+            incidents,
+            committee_hash,
+            finalized_batch_count,
+            checkpoint_anchor,
+            liveness_events,
+            performance_records,
+            status_recommendations,
+        );
+
+        batch.reward_scores = reward_scores;
         (batch, result)
     }
 }

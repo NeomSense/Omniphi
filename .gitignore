@@ -122,6 +122,8 @@ run_*.bat
 run_*.ps1
 test_wsl.bat
 wsl_*.sh
+deploy-*.sh
+fix-genesis-*.sh
 *_out.txt
 *_check.txt
 poc_cscore.csv
@@ -129,3 +131,13 @@ path_out.txt
 poseq_*.txt
 gas_*.txt
 intent_check_out.txt
+chain/*.log
+
+# ============================================
+# POSEQ DEVNET DATA (generated at runtime)
+# ============================================
+poseq_data_node*/
+poseq/poseq_data_node*/
+poseq/export_dir/
+poseq/snapshot_dir/
+.phase6a_target/

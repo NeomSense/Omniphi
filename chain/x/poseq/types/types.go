@@ -196,4 +196,58 @@ type ExportBatch struct {
 	Suspensions      []CommitteeSuspensionRecommendation `json:"suspensions"`
 	CheckpointAnchor *CheckpointAnchorRecord             `json:"checkpoint_anchor,omitempty"`
 	EpochState       EpochStateReference                 `json:"epoch_state"`
+	// LivenessEvents contains per-node liveness observations for this epoch.
+	LivenessEvents []LivenessEvent `json:"liveness_events,omitempty"`
+	// PerformanceRecords contains per-node performance attribution for this epoch.
+	PerformanceRecords []NodePerformanceRecord `json:"performance_records,omitempty"`
+	// StatusRecommendations are lifecycle changes recommended by PoSeq.
+	// Applied if AutoApplySuspensions is true; else stored for governance review.
+	StatusRecommendations []StatusRecommendation `json:"status_recommendations,omitempty"`
+	// InactivityEvents contains per-node inactivity observations for this epoch.
+	// Each entry records the number of consecutive missed epochs for a node.
+	// Used by Phase 5 auto-enforcement to trigger suspension.
+	InactivityEvents []InactivityEvent `json:"inactivity_events,omitempty"`
+}
+
+// ─── ExportBatchAck ──────────────────────────────────────────────────────────
+
+// AckStatus describes the result of ingesting an ExportBatch on the Go chain.
+type AckStatus string
+
+const (
+	AckStatusAccepted  AckStatus = "accepted"
+	AckStatusDuplicate AckStatus = "duplicate"
+	AckStatusRejected  AckStatus = "rejected"
+)
+
+// ExportBatchAck is the acknowledgment artifact written back to the bridge
+// directory for PoSeq to consume. It tells PoSeq whether the chain accepted,
+// duplicated, or rejected the export for a given epoch.
+type ExportBatchAck struct {
+	// SchemaVersion allows forward-compatible evolution of the ACK format.
+	SchemaVersion uint32 `json:"schema_version"`
+	// Epoch identifies which ExportBatch this ACK is for.
+	Epoch uint64 `json:"epoch"`
+	// BatchID is SHA256("bridge:epoch:" | epoch_be) — matches the Rust bridge batch_id.
+	BatchID []byte `json:"batch_id"`
+	// AckHash is SHA256("ack" | epoch_be | status_bytes) — used by PoSeq to
+	// validate the ACK and transition the bridge lifecycle state.
+	AckHash []byte `json:"ack_hash"`
+	// Status indicates the ingestion outcome.
+	Status AckStatus `json:"status"`
+	// Reason provides human-readable context for rejected ACKs.
+	Reason string `json:"reason,omitempty"`
+	// BlockHeight is the Cosmos block at which the ingestion occurred.
+	BlockHeight int64 `json:"block_height,omitempty"`
+}
+
+// ─── ExportBatchDedupRecord ──────────────────────────────────────────────────
+
+// ExportBatchDedupRecord is persisted in the KV store to prevent double-ingestion
+// of the same epoch's ExportBatch. Keyed by epoch.
+type ExportBatchDedupRecord struct {
+	Epoch     uint64    `json:"epoch"`
+	Status    AckStatus `json:"status"`
+	AckHash   []byte    `json:"ack_hash"`
+	IngestedAt int64    `json:"ingested_at"` // block height
 }

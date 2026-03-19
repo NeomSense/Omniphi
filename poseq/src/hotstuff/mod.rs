@@ -17,7 +17,7 @@
 //! `node_runner.rs`.  The engine is polled on each inbound message and returns
 //! an `HotStuffOutput` that the node runner dispatches:
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! // In node_runner::handle_message():
 //! let output = self.hotstuff.on_block(block);
 //! match output {

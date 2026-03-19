@@ -1,0 +1,10 @@
+{
+  "node_id": "0202020202020202020202020202020202020202020202020202020202020202",
+  "poc_multiplier_bps": 12000,
+  "participation_rate_bps": 9000,
+  "fault_events_recent": 0,
+  "epochs_since_activation": 2,
+  "is_bonded": true,
+  "expected_tier": "Probationary",
+  "expected_rank_score": 10800
+}

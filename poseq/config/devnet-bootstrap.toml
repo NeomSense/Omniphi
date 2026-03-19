@@ -1,0 +1,54 @@
+# PoSeq local devnet bootstrap config
+#
+# This file describes the local 3-node devnet genesis state.
+# Used by integration tests and the poseq-devnet binary.
+#
+# Nodes:
+#   Node 1: 127.0.0.1:7001  id=0101...0101  metrics=9091
+#   Node 2: 127.0.0.1:7002  id=0202...0202  metrics=9092
+#   Node 3: 127.0.0.1:7003  id=0303...0303  metrics=9093
+#
+# Quorum: 2-of-3 (BFT safe for 1 fault)
+# Slot: 2000ms (2s)
+# Data: ./poseq_data_node{1,2,3}/
+#
+# To start the full devnet (3 separate terminals):
+#   cd poseq
+#   cargo build --bin poseq-node
+#   ./../.poseq_target/debug/poseq-node --config config/node1.toml
+#   ./../.poseq_target/debug/poseq-node --config config/node2.toml
+#   ./../.poseq_target/debug/poseq-node --config config/node3.toml
+#
+# Or use the single-process devnet:
+#   cargo run --bin poseq-devnet -- --nodes 3 --quorum 2 --slots 10
+#
+# Chain relayer (after nodes are running):
+#   cargo run --bin poseq-relayer -- \
+#     --data-dir ./poseq_data_node1 \
+#     --chain-id omniphi-testnet-2 \
+#     --from validator \
+#     --keyring-backend test
+
+[cluster]
+num_nodes = 3
+quorum_threshold = 2
+slot_duration_ms = 2000
+epoch_slots = 10          # slots per epoch (for testing)
+
+[[cluster.nodes]]
+id = "0101010101010101010101010101010101010101010101010101010101010101"
+addr = "127.0.0.1:7001"
+metrics_addr = "127.0.0.1:9091"
+data_dir = "./poseq_data_node1"
+
+[[cluster.nodes]]
+id = "0202020202020202020202020202020202020202020202020202020202020202"
+addr = "127.0.0.1:7002"
+metrics_addr = "127.0.0.1:9092"
+data_dir = "./poseq_data_node2"
+
+[[cluster.nodes]]
+id = "0303030303030303030303030303030303030303030303030303030303030303"
+addr = "127.0.0.1:7003"
+metrics_addr = "127.0.0.1:9093"
+data_dir = "./poseq_data_node3"

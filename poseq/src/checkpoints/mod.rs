@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+pub mod persistence;
+
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 

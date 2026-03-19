@@ -53,9 +53,10 @@ func (k Keeper) GetSequencer(ctx context.Context, nodeIDHex string) (*types.Sequ
 	return &rec, nil
 }
 
-// SetSequencerActive sets IsActive for a sequencer record.
-// Returns ErrSequencerNotFound if the node is not registered.
-func (k Keeper) SetSequencerActive(ctx context.Context, nodeIDHex string, active bool) error {
+// SetSequencerStatus validates the FSM transition and updates Status + StatusSince.
+// Returns ErrSequencerNotFound if not registered, ErrInvalidLifecycleTransition
+// if the transition is not permitted by the FSM.
+func (k Keeper) SetSequencerStatus(ctx context.Context, nodeIDHex string, status types.SequencerStatus, sinceEpoch uint64) error {
 	nodeIDBytes, err := hex.DecodeString(nodeIDHex)
 	if err != nil || len(nodeIDBytes) != 32 {
 		return types.ErrInvalidNodeID
@@ -73,7 +74,11 @@ func (k Keeper) SetSequencerActive(ctx context.Context, nodeIDHex string, active
 	if err := json.Unmarshal(bz, &rec); err != nil {
 		return err
 	}
-	rec.IsActive = active
+	if err := types.ValidateSequencerTransition(rec.Status, status); err != nil {
+		return err
+	}
+	rec.Status = status
+	rec.StatusSince = sinceEpoch
 	updated, err := json.Marshal(rec)
 	if err != nil {
 		return err
@@ -81,7 +86,20 @@ func (k Keeper) SetSequencerActive(ctx context.Context, nodeIDHex string, active
 	return kvStore.Set(key, updated)
 }
 
-// IsSequencerActive returns true if the node_id is registered and IsActive == true.
+// SetSequencerActive is a backward-compatibility shim over SetSequencerStatus.
+// active=true transitions to Active, active=false transitions to Suspended.
+// Used by slash.go and legacy callers.
+func (k Keeper) SetSequencerActive(ctx context.Context, nodeIDHex string, active bool) error {
+	var target types.SequencerStatus
+	if active {
+		target = types.SequencerStatusActive
+	} else {
+		target = types.SequencerStatusSuspended
+	}
+	return k.SetSequencerStatus(ctx, nodeIDHex, target, 0)
+}
+
+// IsSequencerActive returns true if the node_id is registered and Status == Active.
 func (k Keeper) IsSequencerActive(ctx context.Context, nodeIDHex string) (bool, error) {
 	rec, err := k.GetSequencer(ctx, nodeIDHex)
 	if err != nil {
@@ -90,7 +108,7 @@ func (k Keeper) IsSequencerActive(ctx context.Context, nodeIDHex string) (bool, 
 	if rec == nil {
 		return false, nil
 	}
-	return rec.IsActive, nil
+	return rec.IsActive(), nil
 }
 
 // ─── Message handlers ─────────────────────────────────────────────────────────
@@ -109,7 +127,8 @@ func (m MsgServer) RegisterSequencer(ctx context.Context, msg *types.MsgRegister
 		Moniker:         msg.Moniker,
 		OperatorAddress: msg.Sender,
 		RegisteredEpoch: msg.Epoch,
-		IsActive:        false, // activation requires governance
+		Status:          types.SequencerStatusPending, // activation requires governance
+		StatusSince:     msg.Epoch,
 	}
 
 	if err := m.Keeper.RegisterSequencer(ctx, rec); err != nil {
@@ -138,7 +157,7 @@ func (m MsgServer) ActivateSequencer(ctx context.Context, msg *types.MsgActivate
 			m.Keeper.Authority(), msg.Authority,
 		)
 	}
-	if err := m.Keeper.SetSequencerActive(ctx, msg.NodeID, true); err != nil {
+	if err := m.Keeper.SetSequencerStatus(ctx, msg.NodeID, types.SequencerStatusActive, 0); err != nil {
 		return fmt.Errorf("activating sequencer: %w", err)
 	}
 	m.Keeper.Logger().Info("sequencer activated", "node_id", msg.NodeID)
@@ -169,12 +188,36 @@ func (m MsgServer) DeactivateSequencer(ctx context.Context, msg *types.MsgDeacti
 		)
 	}
 
-	if err := m.Keeper.SetSequencerActive(ctx, msg.NodeID, false); err != nil {
+	if err := m.Keeper.SetSequencerStatus(ctx, msg.NodeID, types.SequencerStatusSuspended, 0); err != nil {
 		return fmt.Errorf("deactivating sequencer: %w", err)
 	}
 	m.Keeper.Logger().Info("sequencer deactivated",
 		"node_id", msg.NodeID,
 		"reason", msg.Reason,
+	)
+	return nil
+}
+
+// TransitionSequencer processes MsgTransitionSequencer.
+// Governance authority only. Validates FSM transition before applying.
+func (m MsgServer) TransitionSequencer(ctx context.Context, msg *types.MsgTransitionSequencer) error {
+	if err := msg.ValidateBasic(); err != nil {
+		return err
+	}
+	if msg.Authority != m.Keeper.Authority() {
+		return types.ErrUnauthorized.Wrapf(
+			"expected authority %s, got %s",
+			m.Keeper.Authority(), msg.Authority,
+		)
+	}
+	if err := m.Keeper.SetSequencerStatus(ctx, msg.NodeID, msg.ToStatus, msg.Epoch); err != nil {
+		return fmt.Errorf("transitioning sequencer: %w", err)
+	}
+	m.Keeper.Logger().Info("sequencer status transitioned",
+		"node_id", msg.NodeID,
+		"to_status", msg.ToStatus,
+		"reason", msg.Reason,
+		"epoch", msg.Epoch,
 	)
 	return nil
 }

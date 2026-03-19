@@ -81,6 +81,40 @@ pub mod failure;
 // Phase 9: PoSeq Gas Model — Fairness-aware sequencing fees
 pub mod gas;
 
+// Phase 6B: Tier 2 credible testnet
+pub mod versioning;
+pub mod genesis;
+
+// Dual-lane operator alignment — liveness and performance tracking
+pub mod liveness;
+pub mod performance;
+
+// Phase 5: Economic enforcement layer
+pub mod bonding;
+pub mod reward;
+pub mod enforcement;
+
+// Phase 6C: Tier 3 mainnet foundations
+pub mod proofs;
+
+// Phase 6: Slashing enforcement
+pub mod adjudication;
+pub mod settlement;
+pub mod ranking;
+#[cfg(test)]
+pub mod fuzz;
+
+// Phase 7: Audit — cross-language conformance tests
+#[cfg(test)]
+pub mod audit_conformance;
+
+// Phase 7A: Fixture-driven cross-language parity tests
+#[cfg(test)]
+pub mod fixture_tests;
+
+// Phase 8: State Sync, Catch-Up, and Long-Run Reliability
+pub mod sync;
+
 use config::policy::PoSeqPolicy;
 use types::submission::SequencingSubmission;
 use intake::receiver::SubmissionReceiver;

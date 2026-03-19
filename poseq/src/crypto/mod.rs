@@ -3,6 +3,7 @@ pub mod registry;
 pub mod payloads;
 pub mod node_keys;
 pub mod verifier;
+pub mod keystore;
 
 pub use signer::*;
 pub use registry::*;

@@ -1,0 +1,10 @@
+{
+  "packet_hash": "0303030303030303030303030303030303030303030303030303030303030303",
+  "node_id":     "0404040404040404040404040404040404040404040404040404040404040404",
+  "misbehavior_type": "UnfairSequencing",
+  "severity": "Moderate",
+  "epoch": 5,
+  "expected_path": "Automatic",
+  "expected_decision": "Penalized",
+  "expected_slash_bps": 300
+}

@@ -18,14 +18,70 @@ type Params struct {
 
 	// MaxEscalationsPerEpoch caps governance escalation records per epoch.
 	MaxEscalationsPerEpoch uint32 `json:"max_escalations_per_epoch"`
+
+	// InactivitySuspendEpochs is the number of consecutive missed epochs before
+	// a node is automatically suspended. Triggers when missed > threshold.
+	// 0 = disabled. Default: 4.
+	InactivitySuspendEpochs uint32 `json:"inactivity_suspend_epochs"`
+
+	// FaultJailThreshold is the number of fault events in an epoch that trigger
+	// automatic jailing. 0 = disabled. Default: 5.
+	FaultJailThreshold uint32 `json:"fault_jail_threshold"`
+
+	// MinBondAmount is the minimum declared bond for committee eligibility.
+	// 0 = bonding not required. Default: 0 (not required in Phase 5).
+	MinBondAmount uint64 `json:"min_bond_amount"`
+
+	// MaxSlashQueueDepth is the maximum number of pending slash entries before
+	// oldest are evicted. Default: 1000.
+	MaxSlashQueueDepth uint32 `json:"max_slash_queue_depth"`
+
+	// RewardBaseMultiplierBps is the base reward multiplier for bonded nodes
+	// in basis points (10000 = 1.0x). Default: 10000.
+	RewardBaseMultiplierBps uint32 `json:"reward_base_multiplier_bps"`
+
+	// ── Phase 6: Committee quality and slashing enforcement ──────────────────
+
+	// MinBondForCommittee is the minimum AvailableBond required to be included
+	// in a committee snapshot. 0 = disabled. Default: 0.
+	MinBondForCommittee uint64 `json:"min_bond_for_committee"`
+
+	// MinParticipationBps is the minimum participation rate (in basis points)
+	// over the trailing window required for committee inclusion. 0 = disabled.
+	// Default: 0.
+	MinParticipationBps uint32 `json:"min_participation_bps"`
+
+	// MaxFaultHistoryEpochs is the number of trailing epochs used to evaluate
+	// fault history for committee admission. Default: 5.
+	MaxFaultHistoryEpochs uint32 `json:"max_fault_history_epochs"`
+
+	// SlashExecutionEnabled controls whether ExecuteSlash actually reduces the
+	// AvailableBond. When false, slash records are stored but bond is untouched.
+	// Default: false (Phase 5 behavior). Set true to enable Phase 6.
+	SlashExecutionEnabled bool `json:"slash_execution_enabled"`
+
+	// MaxEvidenceAgEpochs is the maximum age (in epochs) of evidence that can
+	// be used in a slash. Evidence older than this is rejected as stale.
+	// 0 = no limit. Default: 10.
+	MaxEvidenceAgeEpochs uint32 `json:"max_evidence_age_epochs"`
 }
 
 func DefaultParams() Params {
 	return Params{
-		AuthorizedSubmitter:    "",
-		AutoApplySuspensions:   false,
-		MaxEvidencePerEpoch:    256,
-		MaxEscalationsPerEpoch: 32,
+		AuthorizedSubmitter:     "",
+		AutoApplySuspensions:    false,
+		MaxEvidencePerEpoch:     256,
+		MaxEscalationsPerEpoch:  32,
+		InactivitySuspendEpochs: 4,
+		FaultJailThreshold:      5,
+		MinBondAmount:           0,
+		MaxSlashQueueDepth:      1000,
+		RewardBaseMultiplierBps: 10000,
+		MinBondForCommittee:     0,
+		MinParticipationBps:     0,
+		MaxFaultHistoryEpochs:   5,
+		SlashExecutionEnabled:   false,
+		MaxEvidenceAgeEpochs:    10,
 	}
 }
 

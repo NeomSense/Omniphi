@@ -205,6 +205,52 @@ impl MembershipStore {
             .map(|m| m.status.can_participate())
             .unwrap_or(false)
     }
+
+    /// Returns true if the node is eligible for committee participation.
+    /// Only `Active` nodes are committee-eligible (not Recovering or Observer).
+    pub fn is_eligible_for_committee(&self, node_id: &[u8; 32]) -> bool {
+        self.members
+            .get(node_id)
+            .map(|m| matches!(m.status, MembershipStatus::Active))
+            .unwrap_or(true) // unknown nodes are not blocked at this layer
+    }
+
+    /// Transition a node to Suspended if it isn't already terminal.
+    /// Idempotent: if the node is already Suspended, does nothing.
+    /// If the node is not registered, registers it as Suspended.
+    pub fn suspend_node(&mut self, node_id: &[u8; 32], epoch: u64) {
+        if let Some(member) = self.members.get(node_id) {
+            if member.status.is_terminal() {
+                return;
+            }
+            if matches!(member.status, MembershipStatus::Suspended { .. }) {
+                return;
+            }
+        } else {
+            // Not registered locally — register directly as Suspended.
+            let membership = NodeMembership {
+                node_id: *node_id,
+                status: MembershipStatus::Suspended {
+                    reason: "chain-authoritative suspension".into(),
+                    since_epoch: epoch,
+                },
+                joined_epoch: epoch,
+                history: Vec::new(),
+            };
+            self.members.insert(*node_id, membership);
+            return;
+        }
+
+        let _ = self.transition(RoleTransitionRequest {
+            node_id: *node_id,
+            requested_status: MembershipStatus::Suspended {
+                reason: "chain-authoritative suspension".into(),
+                since_epoch: epoch,
+            },
+            reason: "chain-authoritative suspension".into(),
+            epoch,
+        });
+    }
 }
 
 impl Default for MembershipStore {

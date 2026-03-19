@@ -2,6 +2,9 @@ package keeper
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
+	"sort"
 
 	"pos/x/poseq/types"
 )
@@ -97,6 +100,57 @@ func uint64BE(v uint64) []byte {
 	b[6] = byte(v >> 8)
 	b[7] = byte(v)
 	return b
+}
+
+// ─── Committee Snapshot Hash ──────────────────────────────────────────────────
+
+// computeCommitteeSnapshotHash recomputes the canonical snapshot hash.
+//
+// hash = SHA256("committee_snapshot" | epoch_be(8) | member_count_be(4) | sorted_node_id_bytes...)
+//
+// Node IDs are sorted lexicographically over their raw 32-byte form,
+// matching the Rust SnapshotImporter::compute_hash() function.
+func computeCommitteeSnapshotHash(snap types.CommitteeSnapshot) ([]byte, error) {
+	// Decode and sort member node IDs
+	nodeIDs := make([][]byte, 0, len(snap.Members))
+	for _, m := range snap.Members {
+		b, err := hex.DecodeString(m.NodeID)
+		if err != nil || len(b) != 32 {
+			return nil, types.ErrInvalidNodeID.Wrapf("member node_id %q is invalid", m.NodeID)
+		}
+		nodeIDs = append(nodeIDs, b)
+	}
+	sort.Slice(nodeIDs, func(i, j int) bool {
+		return lessBytes(nodeIDs[i], nodeIDs[j])
+	})
+
+	h := sha256.New()
+	h.Write([]byte("committee_snapshot"))
+	h.Write(uint64BE(snap.Epoch))
+	countBuf := make([]byte, 4)
+	binary.BigEndian.PutUint32(countBuf, uint32(len(nodeIDs)))
+	h.Write(countBuf)
+	for _, id := range nodeIDs {
+		h.Write(id)
+	}
+	return h.Sum(nil), nil
+}
+
+// verifyCommitteeSnapshotHash checks that snap.SnapshotHash matches the recomputed hash.
+func verifyCommitteeSnapshotHash(snap types.CommitteeSnapshot) bool {
+	computed, err := computeCommitteeSnapshotHash(snap)
+	if err != nil {
+		return false
+	}
+	if len(computed) != len(snap.SnapshotHash) {
+		return false
+	}
+	for i := range computed {
+		if computed[i] != snap.SnapshotHash[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // sortedHashes returns a lexicographically sorted copy of the hash slice.

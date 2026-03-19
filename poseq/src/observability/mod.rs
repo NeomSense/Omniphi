@@ -2,6 +2,9 @@
 
 pub mod metrics;
 pub mod exporter;
+pub mod node_log;
+
+pub use node_log::{NodeEventLog, NodeLogEntry, LogLevel};
 
 // ---------------------------------------------------------------------------
 // PoSeqEventKind

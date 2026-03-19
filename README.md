@@ -1,125 +1,142 @@
-# Omniphi Blockchain
+# Omniphi
 
-A production-grade, multi-consensus blockchain ecosystem featuring Proof of Stake (PoS), Proof of Contribution (PoC), and advanced tokenomics.
+A dual-lane blockchain combining a Cosmos SDK control plane with a high-throughput Proof of Sequencing (PoSeq) fast lane for intent-based execution.
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go)](https://go.dev/)
+[![Rust Version](https://img.shields.io/badge/Rust-1.75+-orange?logo=rust)](https://www.rust-lang.org/)
 
 ## Architecture
 
+Omniphi operates as two coordinated consensus lanes:
+
+- **Slow Lane** (Go/Cosmos SDK) — authoritative registry, governance, staking, economics, and settlement
+- **Fast Lane** (Rust/PoSeq) — BFT committee consensus, leader election, proposal finalization, and intent sequencing
+
+The lanes communicate through a file-based bridge: PoSeq exports finalized epoch data, the Go chain ingests it and emits acknowledgments back.
+
 ```
 omniphi/
-├── chain/              # Core blockchain (Cosmos SDK)
-│   ├── app/            # Application wiring
-│   ├── cmd/            # Binary (posd)
-│   ├── x/              # Custom modules
-│   │   ├── poc/        # Proof of Contribution
-│   │   ├── pos/        # Proof of Stake extensions
-│   │   ├── tokenomics/ # Emission & burn mechanics
-│   │   ├── feemarket/  # Dynamic fee system
-│   │   └── treasury/   # Multi-sig treasury
-│   ├── proto/          # Protobuf definitions
-│   └── scripts/        # Setup & deployment
+├── chain/                # Cosmos SDK blockchain (Go)
+│   ├── app/              # Application wiring
+│   ├── cmd/              # Binary (posd)
+│   └── x/                # Custom modules
+│       ├── poseq/        #   PoSeq bridge — export ingestion, ACK, committee snapshots
+│       ├── poc/           #   Proof of Contribution
+│       ├── por/           #   Proof of Request
+│       ├── guard/         #   Governance firewall (4-gate execution pipeline)
+│       ├── rewardmult/    #   Reward multiplier (budget-neutral, EMA-smoothed)
+│       ├── timelock/      #   Timelock governance enforcement
+│       ├── feemarket/     #   Dynamic fee system
+│       ├── tokenomics/    #   Emission & burn mechanics
+│       └── ...            #   repgov, royalty, uci
 │
-├── orchestrator/       # Validator automation system
-│   ├── backend/        # FastAPI orchestration API
-│   ├── frontend/       # Admin dashboard
-│   ├── agent/          # Local validator agent (Electron)
-│   └── docker/         # Container configurations
+├── poseq/                # Proof of Sequencing node (Rust)
+│   ├── src/
+│   │   ├── hotstuff/     #   HotStuff BFT consensus engine
+│   │   ├── networking/   #   TCP transport, peer management, signed messaging
+│   │   ├── chain_bridge/ #   Export/snapshot/ACK bridge to Go chain
+│   │   ├── committee/    #   Committee membership and leader election
+│   │   ├── sync/         #   State sync, checkpoints, catch-up detection
+│   │   ├── crypto/       #   Ed25519 signing, keystore
+│   │   ├── observability/#   Prometheus metrics, HTTP status exporter
+│   │   └── ...           #   finality, misbehavior, penalties, fairness, recovery
+│   ├── tests/            #   Integration tests (23 test files)
+│   └── config/           #   Node TOML configs (devnet)
 │
-├── wallet/             # Omniphi Wallet (React)
-│   └── src/            # Wallet application
+├── runtime/              # Intent execution runtime (Rust)
+│   └── src/              #   CRX engine, solver market, settlement, safety kernel
 │
-├── validator-portal/   # Validator management portal
+├── solver/               # Reference solver SDK (Rust)
+│   └── src/              #   Client, strategy framework, metrics
 │
-├── dashboards/         # Analytics & monitoring
-│   └── tokenomics/     # Tokenomics dashboard
-│
-├── docs/               # Documentation
-│   ├── whitepaper/     # Technical whitepaper
-│   ├── architecture/   # System architecture
-│   └── guides/         # Developer guides
-│
-└── contracts/          # Smart contracts (future)
-    ├── wasm/           # CosmWasm contracts
-    └── evm/            # Solidity contracts
+├── integration/          # Cross-crate integration layer (Rust)
+├── tests/                # Shared test fixtures (JSON)
+├── scripts/              # Devnet/testnet launch scripts
+├── docs/                 # Architecture and operations documentation
+├── orchestrator/         # Validator automation (Python/Docker)
+├── wallet/               # Wallet application (React)
+└── Makefile              # Build, test, and devnet targets
 ```
 
-## Features
+## Building
 
-### Consensus Mechanisms
-- **Proof of Stake (PoS)**: Tendermint BFT consensus with delegated staking
-- **Proof of Contribution (PoC)**: Reward system for network contributions
-- **Hybrid Model**: Combined PoS + PoC for security and fairness
+### Go Chain
 
-### Tokenomics
-- **Decaying Inflation**: Adaptive emission schedule
-- **Fee Burn**: Deflationary mechanism with 3-layer fee structure
-- **Treasury**: Multi-sig governance-controlled treasury
-- **Staking Rewards**: Dynamic APR based on network participation
-
-### Infrastructure
-- **Validator Orchestrator**: Automated validator deployment & management
-- **Multi-Region Support**: Geographic distribution for resilience
-- **Snapshot Server**: Fast node synchronization
-- **Real-time Monitoring**: WebSocket-based status updates
-
-## Quick Start
-
-### Prerequisites
-- Go 1.22+
-- Node.js 18+
-- Python 3.11+
-- Docker (optional)
-
-### Build the Chain
 ```bash
 cd chain
-make install
-posd version
+go build ./...
 ```
 
-### Start a Local Node
+### PoSeq Node
+
 ```bash
-cd chain
-./scripts/setup_and_start.sh
+cd poseq
+cargo build --bin poseq-node
 ```
 
-### Run the Wallet
+### Full Build
+
 ```bash
-cd wallet
-npm install
-npm run dev
+make build-all
 ```
 
-### Run the Orchestrator
+## Testing
+
 ```bash
-cd orchestrator/backend
-python -m venv venv
-source venv/bin/activate  # or venv\Scripts\activate on Windows
-pip install -r requirements.txt
-uvicorn app.main:app --reload
+# Go chain tests
+make test-chain
+
+# PoSeq unit + integration tests
+make test-poseq
+
+# All tests
+make test-all
 ```
 
-## Testnet
+## Running a Devnet
 
-| Property | Value |
-|----------|-------|
-| Chain ID | `omniphi-testnet-1` |
-| RPC | `http://46.202.179.182:26657` |
-| REST API | `http://46.202.179.182:1317` |
-| Explorer | Coming soon |
+Start a 3-node PoSeq cluster:
+
+```bash
+make run-devnet
+```
+
+Or manually:
+
+```bash
+# Terminal 1
+.poseq_target/debug/poseq-node --config poseq/config/node1.toml \
+  --export-dir poseq/export_dir --snapshot-dir poseq/snapshot_dir --ack-dir poseq/ack_dir
+
+# Terminal 2-3: same with node2.toml, node3.toml
+```
+
+Activate the committee by generating and dropping a snapshot:
+
+```bash
+.poseq_target/debug/gen-snapshot --epoch 1 --output poseq/snapshot_dir/snap_e1.json
+```
+
+## Cross-Lane Bridge
+
+The dual-lane bridge operates through shared directories:
+
+| Direction | Path | Format |
+|-----------|------|--------|
+| PoSeq -> Chain | `export_dir/<epoch>.json` | `ExportBatch` JSON |
+| Chain -> PoSeq | `snapshot_dir/*.json` | `ChainCommitteeSnapshot` JSON |
+| Chain -> PoSeq | `ack_dir/<epoch>.ack.json` | `ExportBatchAck` JSON |
+
+The Go chain ingests exports via `IngestFromDirectory()`, which handles validation, deduplication, and ACK emission.
 
 ## Documentation
 
-- [Chain Documentation](chain/docs/)
-- [Orchestrator Guide](orchestrator/docs/)
-- [Wallet Setup](wallet/README.md)
-- [Tokenomics](docs/whitepaper/)
-
-## Contributing
-
-We welcome contributions! Please see our contributing guidelines.
+- [Dual-Chain Architecture](docs/DUAL_CHAIN_ARCHITECTURE.md)
+- [PoSeq-Chain Integration](docs/POSEQ_CHAIN_INTEGRATION.md)
+- [Bridge Lifecycle](docs/BRIDGE_LIFECYCLE.md)
+- [Intent Execution Architecture](docs/INTENT_EXECUTION_ARCHITECTURE.md)
+- [Devnet Runbook](docs/DEVNET_RUNBOOK.md)
+- [Testnet Runbook](docs/TESTNET_RUNBOOK.md)
 
 ## Security
 
@@ -127,5 +144,4 @@ For security vulnerabilities, please email security@omniphichain.org rather than
 
 ## License
 
-This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENSE) file for details.
-
+Apache 2.0 — see [LICENSE](LICENSE) for details.

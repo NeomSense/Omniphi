@@ -2,6 +2,9 @@ package keeper
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 
@@ -351,11 +354,176 @@ func (k Keeper) IngestExportBatch(ctx context.Context, sender string, batch type
 		// Non-fatal: individual records already stored above
 	}
 
+	// 7. Liveness events (non-fatal; update LastLivenessEpoch on sequencer record)
+	for _, le := range batch.LivenessEvents {
+		if err := k.StoreLivenessEvent(ctx, le); err != nil {
+			k.logger.Error("failed to store liveness event",
+				"epoch", batch.Epoch,
+				"node_id", fmt.Sprintf("%x", le.NodeID),
+				"error", err,
+			)
+			continue
+		}
+		// Update LastLivenessEpoch on the sequencer record if newer
+		nodeIDHex := fmt.Sprintf("%x", le.NodeID)
+		rec, err := k.GetSequencer(ctx, nodeIDHex)
+		if err == nil && rec != nil && le.Epoch > rec.LastLivenessEpoch {
+			rec.LastLivenessEpoch = le.Epoch
+			bz, err := json.Marshal(rec)
+			if err == nil {
+				nodeIDBytes, _ := hex.DecodeString(rec.NodeID)
+				kvStore := k.storeService.OpenKVStore(ctx)
+				_ = kvStore.Set(types.GetSequencerKey(nodeIDBytes), bz)
+			}
+		}
+	}
+
+	// 8. Performance records (non-fatal)
+	for _, pr := range batch.PerformanceRecords {
+		if err := k.StorePerformanceRecord(ctx, pr); err != nil {
+			k.logger.Error("failed to store performance record",
+				"epoch", batch.Epoch,
+				"node_id", fmt.Sprintf("%x", pr.NodeID),
+				"error", err,
+			)
+		}
+	}
+
+	// 9. Status recommendations (conditional on AutoApplySuspensions)
+	if params.AutoApplySuspensions {
+		for _, rec := range batch.StatusRecommendations {
+			var targetStatus types.SequencerStatus
+			switch rec.RecommendedStatus {
+			case "Suspended":
+				targetStatus = types.SequencerStatusSuspended
+			case "Jailed":
+				targetStatus = types.SequencerStatusJailed
+			default:
+				k.logger.Error("ignoring unknown status recommendation",
+					"status", rec.RecommendedStatus,
+					"node_id", fmt.Sprintf("%x", rec.NodeID),
+				)
+				continue
+			}
+			nodeIDHex := fmt.Sprintf("%x", rec.NodeID)
+			if err := k.SetSequencerStatus(ctx, nodeIDHex, targetStatus, rec.Epoch); err != nil {
+				k.logger.Error("failed to apply status recommendation",
+					"node_id", nodeIDHex,
+					"target_status", targetStatus,
+					"error", err,
+				)
+			} else {
+				k.logger.Info("auto-applied status recommendation",
+					"node_id", nodeIDHex,
+					"status", targetStatus,
+					"epoch", rec.Epoch,
+					"reason", rec.Reason,
+				)
+			}
+		}
+	}
+
+	// 10. Compute reward scores for all nodes with performance data (non-fatal)
+	for _, pr := range batch.PerformanceRecords {
+		nodeIDHex := fmt.Sprintf("%x", pr.NodeID)
+		if _, err := k.ComputeAndStoreRewardScore(ctx, pr.Epoch, nodeIDHex); err != nil {
+			k.logger.Error("failed to compute reward score",
+				"node_id", nodeIDHex,
+				"epoch", pr.Epoch,
+				"error", err,
+			)
+		}
+	}
+
+	// 11. Auto-enforcement: inactivity → auto-suspend
+	if params.InactivitySuspendEpochs > 0 && params.AutoApplySuspensions {
+		for _, ie := range batch.InactivityEvents {
+			if ie.MissedEpochs <= uint64(params.InactivitySuspendEpochs) {
+				continue
+			}
+			nodeIDHex := fmt.Sprintf("%x", ie.NodeID)
+			rec, err := k.GetSequencer(ctx, nodeIDHex)
+			if err != nil || rec == nil || rec.Status != types.SequencerStatusActive {
+				continue
+			}
+			if err := k.SetSequencerStatus(ctx, nodeIDHex, types.SequencerStatusSuspended, batch.Epoch); err != nil {
+				k.logger.Error("auto-suspend failed", "node_id", nodeIDHex, "error", err)
+			} else {
+				k.logger.Info("auto-suspended inactive node",
+					"node_id", nodeIDHex, "missed_epochs", ie.MissedEpochs)
+			}
+		}
+	}
+
+	// 12. Auto-enforcement: fault threshold → auto-jail
+	if params.FaultJailThreshold > 0 && params.AutoApplySuspensions {
+		for _, pr := range batch.PerformanceRecords {
+			if pr.FaultEvents < uint64(params.FaultJailThreshold) {
+				continue
+			}
+			nodeIDHex := fmt.Sprintf("%x", pr.NodeID)
+			rec, err := k.GetSequencer(ctx, nodeIDHex)
+			if err != nil || rec == nil {
+				continue
+			}
+			if rec.Status == types.SequencerStatusJailed || rec.Status == types.SequencerStatusRetired {
+				continue
+			}
+			if err := k.SetSequencerStatus(ctx, nodeIDHex, types.SequencerStatusJailed, batch.Epoch); err != nil {
+				k.logger.Error("auto-jail failed", "node_id", nodeIDHex, "error", err)
+			} else {
+				k.logger.Info("auto-jailed node for fault threshold",
+					"node_id", nodeIDHex, "fault_events", pr.FaultEvents)
+			}
+		}
+	}
+
+	// 13. Slash queue: enqueue Critical evidence packets
+	for _, pkt := range batch.EvidenceSet.Packets {
+		if pkt.Severity != types.SeverityCritical {
+			continue
+		}
+		if pkt.ProposedSlashBps == 0 {
+			continue
+		}
+		nodeIDHex := fmt.Sprintf("%x", pkt.OffenderNodeID)
+
+		// Look up operator address from bond index (best-effort)
+		operatorAddr := ""
+		if bond, bondErr := k.GetActiveBondForNode(ctx, nodeIDHex); bondErr == nil && bond != nil {
+			operatorAddr = bond.OperatorAddress
+		}
+
+		entryID := computeSlashEntryID(operatorAddr, nodeIDHex, batch.Epoch)
+		entry := types.SlashQueueEntry{
+			EntryID:         entryID,
+			OperatorAddress: operatorAddr,
+			NodeID:          nodeIDHex,
+			EvidenceRef:     pkt.PacketHash,
+			Severity:        string(pkt.Severity),
+			SlashBps:        pkt.ProposedSlashBps,
+			Epoch:           batch.Epoch,
+			Reason:          fmt.Sprintf("Critical misbehavior: %s", pkt.Kind),
+			Executed:        false,
+		}
+		if err := k.EnqueueSlashEntry(ctx, entry); err != nil {
+			k.logger.Error("failed to enqueue slash entry",
+				"node_id", nodeIDHex,
+				"epoch", batch.Epoch,
+				"error", err,
+			)
+		}
+	}
+
 	k.logger.Info("ingested PoSeq export batch",
 		"epoch", batch.Epoch,
 		"evidence_count", len(batch.EvidenceSet.Packets),
 		"escalation_count", len(batch.Escalations),
 		"suspension_count", len(batch.Suspensions),
+		"liveness_events", len(batch.LivenessEvents),
+		"performance_records", len(batch.PerformanceRecords),
+		"status_recommendations", len(batch.StatusRecommendations),
+		"inactivity_events", len(batch.InactivityEvents),
 	)
 	return nil
 }
@@ -382,4 +550,131 @@ func (k Keeper) GetExportBatch(ctx context.Context, epoch uint64) (*types.Export
 		return nil, err
 	}
 	return &b, nil
+}
+
+// ─── Export Batch Dedup ───────────────────────────────────────────────────────
+
+// getExportBatchDedup returns the dedup record for an epoch, or nil if unseen.
+func (k Keeper) getExportBatchDedup(ctx context.Context, epoch uint64) (*types.ExportBatchDedupRecord, error) {
+	kvStore := k.storeService.OpenKVStore(ctx)
+	bz, err := kvStore.Get(types.GetExportBatchDedupKey(epoch))
+	if err != nil || bz == nil {
+		return nil, err
+	}
+	var rec types.ExportBatchDedupRecord
+	if err := json.Unmarshal(bz, &rec); err != nil {
+		return nil, err
+	}
+	return &rec, nil
+}
+
+// setExportBatchDedup persists a dedup record for an epoch.
+func (k Keeper) setExportBatchDedup(ctx context.Context, rec types.ExportBatchDedupRecord) error {
+	bz, err := json.Marshal(rec)
+	if err != nil {
+		return err
+	}
+	kvStore := k.storeService.OpenKVStore(ctx)
+	return kvStore.Set(types.GetExportBatchDedupKey(rec.Epoch), bz)
+}
+
+// ─── ACK Computation ──────────────────────────────────────────────────────────
+
+// ComputeBridgeBatchID returns SHA256("bridge:epoch:" | epoch_be).
+// This matches the Rust-side batch_id derivation in node_runner.rs.
+func ComputeBridgeBatchID(epoch uint64) []byte {
+	h := sha256.New()
+	h.Write([]byte("bridge:epoch:"))
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], epoch)
+	h.Write(buf[:])
+	return h.Sum(nil)
+}
+
+// computeAckHash returns SHA256("ack" | epoch_be | status_bytes).
+func computeAckHash(epoch uint64, status types.AckStatus) []byte {
+	h := sha256.New()
+	h.Write([]byte("ack"))
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], epoch)
+	h.Write(buf[:])
+	h.Write([]byte(status))
+	return h.Sum(nil)
+}
+
+// BuildExportBatchAck constructs a fully populated ACK artifact.
+func BuildExportBatchAck(epoch uint64, status types.AckStatus, reason string, blockHeight int64) types.ExportBatchAck {
+	return types.ExportBatchAck{
+		SchemaVersion: 1,
+		Epoch:         epoch,
+		BatchID:       ComputeBridgeBatchID(epoch),
+		AckHash:       computeAckHash(epoch, status),
+		Status:        status,
+		Reason:        reason,
+		BlockHeight:   blockHeight,
+	}
+}
+
+// ─── Idempotent Ingestion with ACK ────────────────────────────────────────────
+
+// IngestExportBatchWithAck wraps IngestExportBatch with dedup and ACK generation.
+//
+// Returns the ACK to be written to the bridge return path. If the epoch was
+// already ingested, returns a "duplicate" ACK without re-processing. If ingestion
+// fails validation, returns a "rejected" ACK. Otherwise processes the batch and
+// returns an "accepted" ACK.
+func (k Keeper) IngestExportBatchWithAck(ctx context.Context, sender string, batch types.ExportBatch, blockHeight int64) (types.ExportBatchAck, error) {
+	// Epoch validation
+	if batch.Epoch == 0 {
+		ack := BuildExportBatchAck(0, types.AckStatusRejected, "epoch must be > 0", blockHeight)
+		k.logger.Error("bridge.export.rejected", "epoch", batch.Epoch, "reason", "invalid epoch")
+		return ack, types.ErrInvalidEpoch
+	}
+
+	// Dedup check
+	existing, err := k.getExportBatchDedup(ctx, batch.Epoch)
+	if err != nil {
+		return types.ExportBatchAck{}, fmt.Errorf("checking dedup: %w", err)
+	}
+	if existing != nil {
+		ack := BuildExportBatchAck(batch.Epoch, types.AckStatusDuplicate, "already ingested", blockHeight)
+		k.logger.Info("bridge.export.duplicate",
+			"epoch", batch.Epoch,
+			"original_status", existing.Status,
+		)
+		return ack, nil
+	}
+
+	// Ingest
+	if err := k.IngestExportBatch(ctx, sender, batch); err != nil {
+		ack := BuildExportBatchAck(batch.Epoch, types.AckStatusRejected, err.Error(), blockHeight)
+
+		// Persist rejected dedup record so we don't retry a bad batch
+		_ = k.setExportBatchDedup(ctx, types.ExportBatchDedupRecord{
+			Epoch:      batch.Epoch,
+			Status:     types.AckStatusRejected,
+			AckHash:    ack.AckHash,
+			IngestedAt: blockHeight,
+		})
+
+		k.logger.Error("bridge.export.rejected",
+			"epoch", batch.Epoch,
+			"error", err,
+		)
+		return ack, err
+	}
+
+	// Success — persist accepted dedup record
+	ack := BuildExportBatchAck(batch.Epoch, types.AckStatusAccepted, "", blockHeight)
+	if err := k.setExportBatchDedup(ctx, types.ExportBatchDedupRecord{
+		Epoch:      batch.Epoch,
+		Status:     types.AckStatusAccepted,
+		AckHash:    ack.AckHash,
+		IngestedAt: blockHeight,
+	}); err != nil {
+		k.logger.Error("bridge.dedup.persist_failed", "epoch", batch.Epoch, "error", err)
+	}
+
+	k.logger.Info("bridge.export.accepted", "epoch", batch.Epoch)
+	return ack, nil
 }

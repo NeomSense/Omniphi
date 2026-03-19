@@ -1,0 +1,12 @@
+{
+  "node_id": "0303030303030303030303030303030303030303030303030303030303030303",
+  "operator_address": "omni1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqtfmhhu",
+  "epoch": 10,
+  "gross_reward_score_bps": 2000,
+  "poc_multiplier_bps": 10000,
+  "fault_penalty_bps": 500,
+  "slash_penalty_bps": 5000,
+  "is_bonded": true,
+  "slash_count": 2,
+  "expected_net": 0
+}

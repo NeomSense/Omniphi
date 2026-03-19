@@ -47,6 +47,10 @@ use crate::bridge::runtime_channel::RuntimeDeliverySender;
 use crate::bridge::pipeline::{FinalizationEnvelope, FairnessMeta, BatchCommitment};
 use crate::hotstuff::{HotStuffEngine, HotStuffOutput};
 use crate::identities::registry::SequencerRegistry;
+use crate::chain_bridge::snapshot::{ChainCommitteeSnapshot, SnapshotImporter, SnapshotImportError};
+use crate::chain_bridge::exporter::{ChainBridgeExporter, ExportBatch};
+use crate::observability::NodeEventLog;
+use crate::observability::metrics::PoSeqMetrics;
 
 // ─── NodeConfig ───────────────────────────────────────────────────────────────
 
@@ -60,6 +64,10 @@ pub struct NodeConfig {
     pub slot_duration_ms: u64,
     pub data_dir: String,
     pub role: NodeRole,
+    /// Number of slots per epoch.  When a slot crosses this boundary the node
+    /// automatically exports the just-completed epoch and increments
+    /// `current_epoch`.  Defaults to 10 when constructed via helper fns.
+    pub slots_per_epoch: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -91,10 +99,19 @@ pub struct NodeState {
     pub attested_proposals: BTreeMap<[u8; 32], bool>,
     /// Whether this node is in the current committee
     pub in_committee: bool,
-    /// Log of events for observability
+    /// Legacy plain-string event log (kept for devnet/test compatibility).
     pub event_log: Vec<String>,
+    /// Structured JSON event log — primary observability path.
+    pub slog: NodeEventLog,
     /// Monotone counter for runtime delivery sequence numbers.
     pub delivery_seq: u64,
+    /// Epochs for which an ExportBatch has already been emitted.
+    /// Prevents duplicate export on restart or repeated epoch trigger.
+    pub exported_epochs: std::collections::BTreeSet<u64>,
+    /// Most recently imported committee snapshot epoch (None if never imported).
+    pub latest_snapshot_epoch: Option<u64>,
+    /// Sync status tracking (catch-up detection, bridge delivery, checkpoints).
+    pub sync_engine: crate::sync::StateSyncEngine,
 }
 
 impl NodeState {
@@ -112,12 +129,22 @@ impl NodeState {
             attested_proposals: BTreeMap::new(),
             in_committee: false,
             event_log: Vec::new(),
+            slog: NodeEventLog::new(false),
             delivery_seq: 0,
+            exported_epochs: std::collections::BTreeSet::new(),
+            latest_snapshot_epoch: None,
+            sync_engine: crate::sync::StateSyncEngine::new(
+                crate::checkpoints::CheckpointPolicy::default_policy(),
+                crate::bridge_recovery::BridgeRetryPolicy::default_policy(),
+            ),
         }
     }
 
     pub fn log(&mut self, event: String) {
-        self.event_log.push(event);
+        // Legacy plain-string log (kept for devnet compatibility).
+        self.event_log.push(event.clone());
+        // Structured log: use event string as both event name and details.
+        self.slog.info("node.event", self.current_epoch, Some(self.current_slot), event);
     }
 
     /// Deterministic leader election: SHA256(epoch ‖ slot ‖ committee_sorted)
@@ -188,14 +215,23 @@ pub struct NetworkedNode {
     pub hotstuff: Arc<Mutex<HotStuffEngine>>,
     /// Registry of all registered sequencers (populated from chain + p2p gossip).
     pub sequencer_registry: Arc<Mutex<SequencerRegistry>>,
+    /// Committee snapshot importer — validates and caches chain-produced snapshots.
+    pub snapshot_importer: Arc<Mutex<SnapshotImporter>>,
+    /// Chain bridge exporter — packages accountability events for submission to chain.
+    pub bridge_exporter: Arc<Mutex<ChainBridgeExporter>>,
     inbox: mpsc::Receiver<(String, PoSeqMessage)>,
     /// Channel for external control (used in tests / devnet runner)
     pub ctrl_tx: mpsc::Sender<NodeControl>,
     ctrl_rx: mpsc::Receiver<NodeControl>,
+    /// Optional Prometheus metrics — wired in devnet/binary mode, None in unit tests.
+    pub metrics: Option<Arc<PoSeqMetrics>>,
+    /// True if this node was restored from non-empty sled state (warm restart).
+    is_warm_restart: bool,
+    /// Raw 32-byte Ed25519 seed for wire message signing. Set by `set_signing_seed()`.
+    pub signing_seed: Option<[u8; 32]>,
 }
 
 /// Control commands for the node event loop.
-#[derive(Debug)]
 pub enum NodeControl {
     /// Advance to next slot (triggered externally in devnet).
     NextSlot,
@@ -205,6 +241,16 @@ pub enum NodeControl {
     Rejoin,
     /// Graceful shutdown.
     Shutdown,
+    /// Import a committee snapshot from the chain.
+    /// The snapshot is validated before acceptance; invalid snapshots are rejected
+    /// with a structured log entry.
+    ImportSnapshot(Box<ChainCommitteeSnapshot>),
+    /// Export accountability events + batch data for the given epoch to the chain bridge.
+    /// Duplicate requests for an already-exported epoch are silently ignored
+    /// (idempotent by design).
+    ExportEpoch(u64),
+    /// Internal: fired by the periodic heartbeat interval to run health checks.
+    HeartbeatTick,
 }
 
 impl NetworkedNode {
@@ -227,18 +273,96 @@ impl NetworkedNode {
         let store = Self::open_store(&config.data_dir);
         let mut initial_state = NodeState::new();
 
-        // Restore latest_finalized from persisted store.
+        // Restore persisted state from durable store.
+        // For each restored item we emit a structured startup log entry so that
+        // recovery decisions are visible and auditable in the node event log.
+        let mut restored_snapshots: Vec<ChainCommitteeSnapshot> = Vec::new();
         {
             let locked = store.lock().await;
-            // latest_finalized is stored as raw bytes at key b"meta:latest_finalized"
+
+            // Restore latest_finalized batch id.
             if let Some(bytes) = locked.engine.get_raw(b"meta:latest_finalized") {
                 if bytes.len() == 32 {
                     let mut id = [0u8; 32];
                     id.copy_from_slice(&bytes);
                     initial_state.latest_finalized = Some(id);
+                    initial_state.slog.info(
+                        "startup.restore.finalized",
+                        0,
+                        None,
+                        format!("restored latest_finalized = {}", hex::encode(&id[..4])),
+                    );
+                }
+            }
+
+            // Restore exported_epochs by scanning persisted export keys.
+            // Each exported epoch is stored at key b"export:epoch:<N>" so a prefix
+            // scan lets us reconstruct the set without a separate index.
+            let prefix = b"export:epoch:";
+            for (key, _) in locked.engine.prefix_scan_raw(prefix) {
+                // Key format: "export:epoch:<decimal string>"
+                if let Ok(key_str) = std::str::from_utf8(&key) {
+                    if let Some(epoch_str) = key_str.strip_prefix("export:epoch:") {
+                        if let Ok(epoch) = epoch_str.parse::<u64>() {
+                            initial_state.exported_epochs.insert(epoch);
+                        }
+                    }
+                }
+            }
+            let epoch_count = initial_state.exported_epochs.len();
+            initial_state.slog.info(
+                "startup.restore.exported_epochs",
+                0,
+                None,
+                format!("restored exported_epochs: {} epochs from sled", epoch_count),
+            );
+
+            // Restore chain snapshots: deserialize each stored snapshot and collect
+            // for re-import into a fresh SnapshotImporter after the lock is released.
+            // Snapshots are stored under key b"chain_snapshot:<epoch_be(8)>".
+            let snap_prefix = b"chain_snapshot:";
+            for (key, val) in locked.engine.prefix_scan_raw(snap_prefix) {
+                // Key format: "chain_snapshot:" + epoch as 8 big-endian bytes
+                let offset = snap_prefix.len();
+                if key.len() == offset + 8 {
+                    if let Ok(snap) = serde_json::from_slice::<ChainCommitteeSnapshot>(&val) {
+                        restored_snapshots.push(snap);
+                    }
                 }
             }
         }
+
+        // Reconstruct SnapshotImporter from persisted snapshots so that
+        // duplicate delivery after restart is correctly rejected.
+        let snapshot_importer = {
+            let mut imp = SnapshotImporter::new();
+            let mut latest_snap_epoch: Option<u64> = None;
+            for snap in &restored_snapshots {
+                let epoch = snap.epoch;
+                if imp.import(snap.clone()).is_ok() {
+                    latest_snap_epoch = Some(match latest_snap_epoch {
+                        Some(prev) => prev.max(epoch),
+                        None => epoch,
+                    });
+                }
+            }
+            initial_state.latest_snapshot_epoch = latest_snap_epoch;
+            initial_state.slog.info(
+                "startup.restore.snapshots",
+                0,
+                None,
+                format!(
+                    "restored {} committee snapshots from sled; latest_snapshot_epoch = {:?}",
+                    restored_snapshots.len(),
+                    initial_state.latest_snapshot_epoch,
+                ),
+            );
+            imp
+        };
+
+        // Detect warm restart: non-empty restored state means this is not a cold boot.
+        let is_warm_restart = !initial_state.exported_epochs.is_empty()
+            || initial_state.latest_snapshot_epoch.is_some();
 
         let quorum = config.quorum_threshold;
         let hs_timeout_ms = config.slot_duration_ms * 4;
@@ -253,9 +377,14 @@ impl NetworkedNode {
             runtime_sender: None,      // set via set_runtime_sender() after bind
             hotstuff: Arc::new(Mutex::new(HotStuffEngine::new(self_id, quorum, hs_timeout_ms))),
             sequencer_registry: Arc::new(Mutex::new(SequencerRegistry::new())),
+            snapshot_importer: Arc::new(Mutex::new(snapshot_importer)),
+            bridge_exporter: Arc::new(Mutex::new(ChainBridgeExporter::new())),
             inbox,
             ctrl_tx,
             ctrl_rx,
+            metrics: None,             // set via set_metrics() after bind
+            is_warm_restart,
+            signing_seed: None,
         })
     }
 
@@ -263,6 +392,12 @@ impl NetworkedNode {
     /// Should be called before `run_event_loop()`.
     pub fn set_key_pair(&mut self, kp: NodeKeyPair) {
         self.key_pair = Some(Arc::new(kp));
+    }
+
+    /// Set the raw 32-byte Ed25519 seed used for wire message signing.
+    /// When set, `maybe_sign` will wrap outbound messages in `WireSignedEnvelope`.
+    pub fn set_signing_seed(&mut self, seed: [u8; 32]) {
+        self.signing_seed = Some(seed);
     }
 
     /// Enable or disable inbound signature verification.
@@ -275,6 +410,15 @@ impl NetworkedNode {
     /// Finalized batches will be converted to `FinalizationEnvelope` and sent here.
     pub fn set_runtime_sender(&mut self, sender: RuntimeDeliverySender) {
         self.runtime_sender = Some(sender);
+    }
+
+    /// Attach Prometheus metrics for devnet/production observability.
+    /// If this node was restored from non-empty sled state, increments `node_restarts`.
+    pub fn set_metrics(&mut self, metrics: Arc<PoSeqMetrics>) {
+        if self.is_warm_restart {
+            metrics.node_restarts.inc();
+        }
+        self.metrics = Some(metrics);
     }
 
     /// Convert a `WireFinalized` + delivery context into a `FinalizationEnvelope`
@@ -323,16 +467,13 @@ impl NetworkedNode {
         }
     }
 
-    /// Wrap a message in a `WireSignedEnvelope` if a key pair is configured,
+    /// Wrap a message in a `WireSignedEnvelope` if a signing seed is configured,
     /// otherwise return the message unchanged.
     fn maybe_sign(&self, msg: PoSeqMessage) -> PoSeqMessage {
-        if let Some(ref kp) = self.key_pair {
-            // Use the raw 32-byte key seed from the dalek SigningKey.
-            // NodeKeyPair stores the public key; to get the signing key bytes
-            // we re-derive from a test seed here — for production, store the
-            // seed bytes on NodeKeyPair (TODO Sprint 3+).
-            // For now, skip signing if no raw seed is available.
-            let _ = kp; // key_pair field available but signing via raw bytes deferred
+        if let Some(ref seed) = self.signing_seed {
+            if let Some(signed) = WireSignedEnvelope::sign(&msg, seed, self.config.node_id) {
+                return PoSeqMessage::Signed(signed);
+            }
         }
         msg
     }
@@ -340,21 +481,22 @@ impl NetworkedNode {
     /// Unwrap a signed envelope if `verify_signatures` is true, or pass through unchanged.
     ///
     /// Returns `None` if signature verification fails (message should be dropped).
+    ///
+    /// Security model (devnet/testnet Sprint 9):
+    /// - `Signed` messages: decoded without verifying the signature bytes.
+    ///   All peers MUST sign (enforcement), but we don't yet verify WHICH key signed.
+    ///   Full PKI verification against the SequencerRegistry is wired in a later sprint.
+    /// - Unsigned messages when `verify_signatures = true`: rejected (None).
     fn maybe_verify(&self, msg: PoSeqMessage) -> Option<PoSeqMessage> {
         match msg {
             PoSeqMessage::Signed(env) => {
-                // In verify mode: require valid signature. In devnet mode: decode without verify.
-                if self.verify_signatures {
-                    // TODO: look up pubkey from sequencer registry by env.signer_id
-                    // For now, accept all signed messages (trust-on-first-use devnet behavior)
-                    env.decode_unverified()
-                } else {
-                    env.decode_unverified()
-                }
+                // Accept all signed messages; decode without verifying signature bytes.
+                // This enforces that peers MUST sign while deferring full PKI verification.
+                env.decode_unverified()
             }
             other => {
                 if self.verify_signatures {
-                    // Reject unsigned messages when verification is required
+                    // Reject unsigned messages when signature enforcement is enabled.
                     None
                 } else {
                     Some(other)
@@ -379,6 +521,20 @@ impl NetworkedNode {
         Arc::new(Mutex::new(store))
     }
 
+    /// Broadcast a message, signing it first if a signing seed is configured.
+    /// Use this for all consensus messages (Proposal, Attestation, Finalized, etc.)
+    /// so that nodes with `verify_signatures = true` can receive them.
+    async fn broadcast_signed(&self, addrs: &[String], msg: PoSeqMessage) {
+        let signed = self.maybe_sign(msg);
+        self.transport.broadcast(addrs, &signed).await;
+    }
+
+    /// Send a signed message to a single peer.
+    async fn send_signed(&self, addr: &str, msg: PoSeqMessage) {
+        let signed = self.maybe_sign(msg);
+        let _ = self.transport.send_to(addr, &signed).await;
+    }
+
     /// Announce ourselves to all configured peers.
     pub async fn announce(&self) {
         let state = self.state.lock().await;
@@ -391,17 +547,78 @@ impl NetworkedNode {
             is_leader: state.current_leader == Some(self.config.node_id),
             in_committee: state.in_committee,
             role: self.config.role,
+            protocol_version: Some(crate::versioning::PROTOCOL_VERSION.to_string()),
         });
         drop(state);
         let pm = self.peer_manager.lock().await;
         let addrs = pm.all_peer_addrs();
+        let connected = pm.connected_count();
         drop(pm);
-        self.transport.broadcast(&addrs, &msg).await;
+        self.broadcast_signed(&addrs, msg).await;
+        if let Some(ref m) = self.metrics {
+            m.peer_count.set(connected as i64);
+        }
+    }
+
+    /// Periodic health-check tick: degrade silent peers, evict dead peers,
+    /// update peer metrics, and attempt reconnect to disconnected peers.
+    async fn run_heartbeat_tick(&self) {
+        let now = std::time::Instant::now();
+        // Health check: silence threshold = 10 slots
+        let silence_ms = self.config.slot_duration_ms * 10;
+        // Dead peer eviction: max silence = 50 slots
+        let max_silence_ms = self.config.slot_duration_ms * 50;
+        {
+            let mut pm = self.peer_manager.lock().await;
+            pm.tick_health_check(now, silence_ms);
+            pm.evict_dead_peers(now, max_silence_ms);
+            // Update peer metrics
+            if let Some(ref m) = self.metrics {
+                m.peer_count.set(pm.connected_count() as i64);
+                m.peers_connected.set(pm.connected_count() as i64);
+                m.peers_degraded.set(pm.degraded_count() as i64);
+                m.peers_disconnected.set(pm.disconnected_count() as i64);
+            }
+        }
+        // Phase 8: update sync lag metrics
+        {
+            let state = self.state.lock().await;
+            let sync_status = state.sync_engine.sync_status();
+            if let Some(ref m) = self.metrics {
+                m.sync_lag_epochs.set(sync_status.lag as i64);
+                m.bridge_backlog.set(sync_status.bridge_backlog as i64);
+            }
+        }
+        // Announce to reconnect candidates (attempt reconnect by sending PeerStatus)
+        let candidates = {
+            let pm = self.peer_manager.lock().await;
+            pm.reconnect_candidates()
+        };
+        if !candidates.is_empty() {
+            let state = self.state.lock().await;
+            let msg = PoSeqMessage::PeerStatus(WirePeerStatus {
+                node_id: self.config.node_id,
+                listen_addr: self.transport.listen_addr.clone(),
+                current_epoch: state.current_epoch,
+                current_slot: state.current_slot,
+                latest_finalized_batch_id: state.latest_finalized,
+                is_leader: state.current_leader == Some(self.config.node_id),
+                in_committee: state.in_committee,
+                role: self.config.role,
+                protocol_version: Some(crate::versioning::PROTOCOL_VERSION.to_string()),
+            });
+            drop(state);
+            let addrs: Vec<String> = candidates.iter().map(|(_, a)| a.clone()).collect();
+            self.broadcast_signed(&addrs, msg).await;
+        }
     }
 
     /// Run the main event loop.  Returns when Shutdown is received.
     pub async fn run_event_loop(&mut self) {
         let mut crashed = false;
+        let heartbeat_interval = Duration::from_millis(self.config.slot_duration_ms * 3);
+        let mut heartbeat_tick = tokio::time::interval(heartbeat_interval);
+        heartbeat_tick.tick().await; // consume first immediate tick
         loop {
             tokio::select! {
                 // Inbound TCP message
@@ -442,6 +659,23 @@ impl NetworkedNode {
                                 self.advance_slot().await;
                             }
                         }
+                        Some(NodeControl::ImportSnapshot(snap)) => {
+                            self.handle_import_snapshot(*snap).await;
+                        }
+                        Some(NodeControl::ExportEpoch(epoch)) => {
+                            self.handle_export_epoch(epoch).await;
+                        }
+                        Some(NodeControl::HeartbeatTick) => {
+                            if !crashed {
+                                self.run_heartbeat_tick().await;
+                            }
+                        }
+                    }
+                }
+                // Periodic heartbeat tick
+                _ = heartbeat_tick.tick() => {
+                    if !crashed {
+                        self.run_heartbeat_tick().await;
                     }
                 }
             }
@@ -449,12 +683,111 @@ impl NetworkedNode {
     }
 
     /// Advance to the next slot.  If we are the leader, broadcast a proposal.
+    /// When `current_slot % slots_per_epoch == 0`, automatically exports the
+    /// just-completed epoch and increments `current_epoch`.
     async fn advance_slot(&self) {
         let mut state = self.state.lock().await;
         state.current_slot += 1;
         state.proposed_this_slot = false;
         state.pending_proposals.clear();
         state.attestations.clear();
+
+        // Auto epoch advance: when slot crosses an epoch boundary, export the
+        // completed epoch and move to the next one.
+        let slots_per_epoch = self.config.slots_per_epoch.max(1);
+        if state.current_slot > 0 && state.current_slot % slots_per_epoch == 0 {
+            let completed_epoch = state.current_epoch;
+            state.current_epoch += 1;
+            let new_epoch = state.current_epoch;
+            let boundary_slot = state.current_slot;
+            state.slog.info(
+                "epoch.advance",
+                new_epoch,
+                Some(boundary_slot),
+                format!(
+                    "slot {boundary_slot} crossed epoch boundary — epoch {completed_epoch} complete, advancing to epoch {new_epoch}",
+                ),
+            );
+            // Update metrics gauges
+            if let Some(ref m) = self.metrics {
+                m.current_epoch.set(new_epoch as i64);
+            }
+            // Phase 8: create sync checkpoint at epoch boundary
+            {
+                let committee_hash = {
+                    let mut h = sha2::Sha256::new();
+                    for id in &state.committee { sha2::Digest::update(&mut h, id); }
+                    let bytes: [u8; 32] = sha2::Digest::finalize(h).into();
+                    bytes
+                };
+                // Extract values before taking mutable borrow of sync_engine
+                let new_epoch_val = state.current_epoch;
+                let slot_val = state.current_slot;
+                let latest_fin = state.latest_finalized;
+                let exported_clone = state.exported_epochs.clone();
+                let node_id = self.config.node_id;
+                state.sync_engine.update_local_epoch(new_epoch_val);
+                let _cp_id = state.sync_engine.create_checkpoint(
+                    completed_epoch,
+                    slot_val,
+                    latest_fin,
+                    committee_hash,
+                    &exported_clone,
+                    node_id,
+                );
+            }
+            drop(state);
+            // Trigger export for the just-completed epoch (idempotent).
+            let _ = self.ctrl_tx.send(NodeControl::ExportEpoch(completed_epoch)).await;
+            // Re-acquire state for leader election below.
+            let mut state = self.state.lock().await;
+            let leader = NodeState::elect_leader(state.current_epoch, state.current_slot, &state.committee);
+            state.current_leader = leader;
+            let is_leader = leader == Some(self.config.node_id);
+            state.in_committee = state.committee.contains(&self.config.node_id);
+            let log_slot = state.current_slot;
+            let log_epoch = state.current_epoch;
+            let log_leader = leader.map(|id| hex::encode(&id[..4]));
+            state.log(format!("slot={log_slot} epoch={log_epoch} leader={log_leader:?} is_me={is_leader}"));
+            if let Some(ref m) = self.metrics {
+                m.current_slot.set(log_slot as i64);
+            }
+            if is_leader && !state.proposed_this_slot {
+                state.proposed_this_slot = true;
+                let proposal = WireProposal {
+                    proposal_id: [0u8; 32],
+                    slot: state.current_slot,
+                    epoch: state.current_epoch,
+                    leader_id: self.config.node_id,
+                    batch_root: [0u8; 32],
+                    parent_batch_id: state.latest_finalized.unwrap_or([0u8; 32]),
+                    ordered_submission_ids: vec![],
+                    policy_version: 1,
+                    created_at_height: state.current_slot,
+                };
+                let proposal_id = NodeState::compute_batch_id(&proposal);
+                let proposal = WireProposal { proposal_id, ..proposal };
+                let self_attestation = WireAttestation {
+                    attestor_id: self.config.node_id,
+                    proposal_id: proposal.proposal_id,
+                    batch_id_attested: NodeState::compute_batch_id(&proposal),
+                    approve: true,
+                    epoch: proposal.epoch,
+                    slot: proposal.slot,
+                };
+                state.attestations.entry(proposal.proposal_id).or_default().push(self_attestation);
+                state.attested_proposals.insert(proposal.proposal_id, true);
+                state.pending_proposals.insert(proposal.proposal_id, proposal.clone());
+                state.log(format!("PROPOSE batch_root=0x{}", hex::encode(&proposal.proposal_id[..4])));
+                let msg = PoSeqMessage::Proposal(proposal);
+                drop(state);
+                let pm = self.peer_manager.lock().await;
+                let addrs = pm.all_peer_addrs();
+                drop(pm);
+                self.broadcast_signed(&addrs, msg).await;
+            }
+            return;
+        }
 
         // Deterministic leader election
         let leader = NodeState::elect_leader(state.current_epoch, state.current_slot, &state.committee);
@@ -466,6 +799,9 @@ impl NetworkedNode {
         let log_epoch = state.current_epoch;
         let log_leader = leader.map(|id| hex::encode(&id[..4]));
         state.log(format!("slot={log_slot} epoch={log_epoch} leader={log_leader:?} is_me={is_leader}"));
+        if let Some(ref m) = self.metrics {
+            m.current_slot.set(log_slot as i64);
+        }
 
         if is_leader && !state.proposed_this_slot {
             state.proposed_this_slot = true;
@@ -510,7 +846,7 @@ impl NetworkedNode {
             let pm = self.peer_manager.lock().await;
             let addrs = pm.all_peer_addrs();
             drop(pm);
-            self.transport.broadcast(&addrs, &msg).await;
+            self.broadcast_signed(&addrs, msg).await;
         }
     }
 
@@ -527,6 +863,53 @@ impl NetworkedNode {
             PoSeqMessage::PeerStatus(status) => {
                 let mut pm = self.peer_manager.lock().await;
                 pm.update_from_status(&status);
+                if let Some(ref m) = self.metrics {
+                    m.peer_count.set(pm.connected_count() as i64);
+                    m.peers_connected.set(pm.connected_count() as i64);
+                    m.peers_degraded.set(pm.degraded_count() as i64);
+                    m.peers_disconnected.set(pm.disconnected_count() as i64);
+                }
+                drop(pm);
+                // Update peer epoch for catch-up detection
+                {
+                    let mut state = self.state.lock().await;
+                    state.sync_engine.update_peer_epoch(status.current_epoch);
+                }
+                // Version compatibility check
+                if let Some(ref version_str) = status.protocol_version {
+                    use crate::versioning::ProtocolVersion;
+                    if let Ok(remote_ver) = version_str.parse::<ProtocolVersion>() {
+                        use crate::versioning::compat::check_wire_compat;
+                        match check_wire_compat(&remote_ver) {
+                            crate::versioning::compat::CompatResult::Incompatible(reason) => {
+                                let mut state = self.state.lock().await;
+                                let epoch = state.current_epoch;
+                                let slot = state.current_slot;
+                                state.slog.warn(
+                                    "version.incompatible",
+                                    epoch,
+                                    Some(slot),
+                                    format!("peer version {} incompatible: {reason}", version_str),
+                                );
+                                drop(state);
+                                let mut pm = self.peer_manager.lock().await;
+                                pm.mark_disconnected(&status.node_id);
+                            }
+                            crate::versioning::compat::CompatResult::CompatibleWithWarning(msg) => {
+                                let mut state = self.state.lock().await;
+                                let epoch = state.current_epoch;
+                                let slot = state.current_slot;
+                                state.slog.warn(
+                                    "version.warning",
+                                    epoch,
+                                    Some(slot),
+                                    format!("peer version {} warning: {msg}", version_str),
+                                );
+                            }
+                            _ => {}
+                        }
+                    }
+                }
             }
 
             PoSeqMessage::EpochAnnounce(ann) => {
@@ -566,7 +949,7 @@ impl NetworkedNode {
                     let pm = self.peer_manager.lock().await;
                     let addrs = pm.all_peer_addrs();
                     drop(pm);
-                    self.transport.broadcast(&addrs, &PoSeqMessage::Attestation(attestation)).await;
+                    self.broadcast_signed(&addrs, PoSeqMessage::Attestation(attestation)).await;
                 }
             }
 
@@ -618,7 +1001,7 @@ impl NetworkedNode {
                             let pm = self.peer_manager.lock().await;
                             let addrs = pm.all_peer_addrs();
                             drop(pm);
-                            self.transport.broadcast(&addrs, &msg).await;
+                            self.broadcast_signed(&addrs, msg).await;
                             return;
                         }
                     }
@@ -663,7 +1046,7 @@ impl NetworkedNode {
                 if let Some(peer) = pm.get_peer(&req.requesting_node) {
                     let addr = peer.listen_addr.clone();
                     drop(pm);
-                    let _ = self.transport.send_to(&addr, &resp).await;
+                    self.send_signed(&addr, resp).await;
                 }
             }
 
@@ -800,21 +1183,21 @@ impl NetworkedNode {
                 let pm = self.peer_manager.lock().await;
                 let addrs = pm.all_peer_addrs();
                 drop(pm);
-                self.transport.broadcast(&addrs, &PoSeqMessage::HotStuffVote(vote)).await;
+                self.broadcast_signed(&addrs, PoSeqMessage::HotStuffVote(vote)).await;
             }
 
             HotStuffOutput::BroadcastQC(qc) => {
                 let pm = self.peer_manager.lock().await;
                 let addrs = pm.all_peer_addrs();
                 drop(pm);
-                self.transport.broadcast(&addrs, &PoSeqMessage::HotStuffQC(qc)).await;
+                self.broadcast_signed(&addrs, PoSeqMessage::HotStuffQC(qc)).await;
             }
 
             HotStuffOutput::SendNewView(nv) => {
                 let pm = self.peer_manager.lock().await;
                 let addrs = pm.all_peer_addrs();
                 drop(pm);
-                self.transport.broadcast(&addrs, &PoSeqMessage::HotStuffNewView(nv)).await;
+                self.broadcast_signed(&addrs, PoSeqMessage::HotStuffNewView(nv)).await;
             }
 
             HotStuffOutput::Finalize(block) => {
@@ -875,13 +1258,13 @@ impl NetworkedNode {
                 for leaf in leaves {
                     match leaf {
                         HotStuffOutput::SendVote(vote) => {
-                            self.transport.broadcast(&addrs, &PoSeqMessage::HotStuffVote(vote)).await;
+                            self.broadcast_signed(&addrs, PoSeqMessage::HotStuffVote(vote)).await;
                         }
                         HotStuffOutput::BroadcastQC(qc) => {
-                            self.transport.broadcast(&addrs, &PoSeqMessage::HotStuffQC(qc)).await;
+                            self.broadcast_signed(&addrs, PoSeqMessage::HotStuffQC(qc)).await;
                         }
                         HotStuffOutput::SendNewView(nv) => {
-                            self.transport.broadcast(&addrs, &PoSeqMessage::HotStuffNewView(nv)).await;
+                            self.broadcast_signed(&addrs, PoSeqMessage::HotStuffNewView(nv)).await;
                         }
                         HotStuffOutput::Finalize(block) => {
                             // Deliver finalized block from Multi context
@@ -919,6 +1302,214 @@ impl NetworkedNode {
             }
         }
     }
+
+    // ─── Cross-lane activation handlers ─────────────────────────────────────
+
+    /// Import a committee snapshot from the chain lane.
+    /// Validates via `SnapshotImporter` (hash check + dedup), then updates
+    /// `NodeState::latest_snapshot_epoch`, persists to sled for restart recovery,
+    /// and emits a structured log entry.
+    async fn handle_import_snapshot(&self, snap: ChainCommitteeSnapshot) {
+        let epoch = snap.epoch;
+        let mut importer = self.snapshot_importer.lock().await;
+        match importer.import(snap.clone()) {
+            Ok(()) => {
+                // Persist to sled so restart can recover latest_snapshot_epoch.
+                // Key: b"chain_snapshot:" + epoch as 8 big-endian bytes
+                if let Ok(json_bytes) = serde_json::to_vec(&snap) {
+                    let mut key = b"chain_snapshot:".to_vec();
+                    key.extend_from_slice(&epoch.to_be_bytes());
+                    let mut locked = self.store.lock().await;
+                    locked.engine.put_raw(&key, json_bytes);
+                }
+                if let Some(ref m) = self.metrics {
+                    m.snapshots_imported.inc();
+                }
+                let mut state = self.state.lock().await;
+                state.latest_snapshot_epoch = Some(epoch);
+                state.slog.info(
+                    "snapshot.imported",
+                    epoch,
+                    None,
+                    format!("committee snapshot accepted for epoch {epoch}"),
+                );
+
+                // Activate committee from snapshot members
+                let new_committee: Vec<[u8; 32]> = snap.members.iter()
+                    .filter_map(|m| {
+                        let bytes = hex::decode(&m.node_id).ok()?;
+                        let mut id = [0u8; 32];
+                        if bytes.len() == 32 { id.copy_from_slice(&bytes); Some(id) } else { None }
+                    })
+                    .collect();
+                if !new_committee.is_empty() {
+                    state.committee = new_committee.clone();
+                    state.in_committee = state.committee.contains(&self.config.node_id);
+                    let leader = NodeState::elect_leader(state.current_epoch, state.current_slot, &state.committee);
+                    state.current_leader = leader;
+                    // Extract values before the mutable borrow for slog.info
+                    let current_slot = state.current_slot;
+                    let in_committee = state.in_committee;
+                    state.slog.info(
+                        "committee.activated",
+                        epoch,
+                        Some(current_slot),
+                        format!(
+                            "committee activated: {} members, in_committee={}, leader={:?}",
+                            new_committee.len(),
+                            in_committee,
+                            leader.map(|id| hex::encode(&id[..4])),
+                        ),
+                    );
+
+                    // If we're in committee, broadcast EpochAnnounce to activate peers
+                    if state.in_committee {
+                        let epoch_seed = {
+                            let mut h = sha2::Sha256::new();
+                            sha2::Digest::update(&mut h, b"epoch_seed");
+                            sha2::Digest::update(&mut h, &epoch.to_be_bytes());
+                            sha2::Digest::finalize(h).into()
+                        };
+                        let announce = crate::networking::messages::WireEpochAnnounce {
+                            epoch: state.current_epoch,
+                            committee_members: state.committee.clone(),
+                            leader_id: leader.unwrap_or(self.config.node_id),
+                            epoch_seed,
+                        };
+                        drop(state);
+                        let pm = self.peer_manager.lock().await;
+                        let addrs = pm.all_peer_addrs();
+                        drop(pm);
+                        self.broadcast_signed(&addrs, crate::networking::messages::PoSeqMessage::EpochAnnounce(announce)).await;
+                    } else {
+                        drop(state);
+                    }
+                }
+            }
+            Err(SnapshotImportError::HashMismatch { .. }) => {
+                if let Some(ref m) = self.metrics {
+                    m.snapshots_rejected.inc();
+                }
+                let mut state = self.state.lock().await;
+                state.slog.warn(
+                    "snapshot.rejected",
+                    epoch,
+                    None,
+                    "hash mismatch — snapshot integrity check failed",
+                );
+            }
+            Err(SnapshotImportError::DuplicateEpoch(_)) => {
+                if let Some(ref m) = self.metrics {
+                    m.snapshots_rejected.inc();
+                }
+                let mut state = self.state.lock().await;
+                state.slog.warn(
+                    "snapshot.rejected",
+                    epoch,
+                    None,
+                    format!("duplicate epoch {epoch} — snapshot already imported"),
+                );
+            }
+            Err(e) => {
+                if let Some(ref m) = self.metrics {
+                    m.snapshots_rejected.inc();
+                }
+                let mut state = self.state.lock().await;
+                state.slog.warn("snapshot.rejected", epoch, None, e.to_string());
+            }
+        }
+    }
+
+    /// Export an epoch's data to the chain lane via `ChainBridgeExporter`.
+    /// Silently deduplicates: if this epoch was already exported, logs and returns.
+    /// Serializes the `ExportBatch` to JSON and persists to sled under key
+    /// `export:epoch:<epoch>` for later relay pickup.
+    async fn handle_export_epoch(&self, epoch: u64) {
+        // Dedup guard: skip if already exported
+        {
+            let state = self.state.lock().await;
+            if state.exported_epochs.contains(&epoch) {
+                drop(state);
+                if let Some(ref m) = self.metrics {
+                    m.export_dedup_hits.inc();
+                }
+                let mut s = self.state.lock().await;
+                s.slog.info(
+                    "export.skipped",
+                    epoch,
+                    None,
+                    format!("epoch {epoch} already exported — duplicate suppressed"),
+                );
+                return;
+            }
+        }
+
+        // Build ExportBatch: no incidents, no checkpoint — basic epoch summary.
+        // Full misbehavior incident collection would be wired here in production.
+        let committee_hash = {
+            let state = self.state.lock().await;
+            let mut h = sha2::Sha256::new();
+            for id in &state.committee { h.update(id); }
+            let bytes: [u8; 32] = h.finalize().into();
+            bytes
+        };
+        let finalized_count = {
+            let state = self.state.lock().await;
+            state.finalized_batches.len() as u64
+        };
+
+        let (batch, _result) = {
+            let mut exporter = self.bridge_exporter.lock().await;
+            exporter.export(epoch, vec![], committee_hash, finalized_count, None)
+        };
+
+        // Persist to sled as JSON
+        let key = format!("export:epoch:{epoch}");
+        match serde_json::to_vec(&batch) {
+            Ok(json_bytes) => {
+                {
+                    let mut locked = self.store.lock().await;
+                    locked.engine.put_raw(key.as_bytes(), json_bytes);
+                }
+                // Mark epoch as exported
+                {
+                    if let Some(ref m) = self.metrics {
+                        m.epochs_exported.inc();
+                    }
+                    let mut state = self.state.lock().await;
+                    state.exported_epochs.insert(epoch);
+                    // Phase 8: register epoch batch in bridge recovery store
+                    let bridge_batch_id: [u8; 32] = {
+                        let mut h = sha2::Sha256::new();
+                        sha2::Digest::update(&mut h, b"bridge:epoch:");
+                        sha2::Digest::update(&mut h, epoch.to_be_bytes());
+                        sha2::Digest::finalize(h).into()
+                    };
+                    state.sync_engine.register_batch_for_bridge(bridge_batch_id);
+                    state.sync_engine.mark_bridge_exported(&bridge_batch_id);
+                    state.slog.info(
+                        "export.completed",
+                        epoch,
+                        None,
+                        format!(
+                            "epoch {epoch} exported: {} evidence, {} escalations",
+                            batch.evidence_set.packets.len(),
+                            batch.escalations.len(),
+                        ),
+                    );
+                }
+            }
+            Err(e) => {
+                let mut state = self.state.lock().await;
+                state.slog.error(
+                    "export.failed",
+                    epoch,
+                    None,
+                    format!("JSON serialization error for epoch {epoch}: {e}"),
+                );
+            }
+        }
+    }
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -939,6 +1530,7 @@ mod tests {
             slot_duration_ms: 100,
             data_dir: format!("/tmp/poseq_test_{}", node_id[0]),
             role: NodeRole::Attestor,
+            slots_per_epoch: 10,
         }
     }
 

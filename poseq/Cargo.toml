@@ -17,6 +17,8 @@ sled = "0.34"
 tempfile = "3"
 # Multi-process devnet networking
 tokio = { version = "1", features = ["net", "io-util", "macros", "rt-multi-thread", "sync", "time", "signal"] }
+# Runtime integration for unified node
+omniphi-runtime = { path = "../runtime" }
 
 [dev-dependencies]
 tempfile = "3"
@@ -34,6 +36,10 @@ path = "src/bin/poseq_devnet.rs"
 [[bin]]
 name = "poseq-relayer"
 path = "src/bin/poseq_relayer.rs"
+
+[[bin]]
+name = "gen-snapshot"
+path = "src/bin/gen_snapshot.rs"
 
 [[bench]]
 name = "bench_ordering"

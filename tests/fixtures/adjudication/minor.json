@@ -1,0 +1,10 @@
+{
+  "packet_hash": "0101010101010101010101010101010101010101010101010101010101010101",
+  "node_id":     "0202020202020202020202020202020202020202020202020202020202020202",
+  "misbehavior_type": "UnfairSequencing",
+  "severity": "Minor",
+  "epoch": 5,
+  "expected_path": "Automatic",
+  "expected_decision": "Dismissed",
+  "expected_slash_bps": 0
+}

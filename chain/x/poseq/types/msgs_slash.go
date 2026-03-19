@@ -61,6 +61,11 @@ type MsgExecuteSlash struct {
 
 	// Reason is a human-readable audit trail entry (≤ 256 chars).
 	Reason string `json:"reason"`
+
+	// CurrentEpoch is the PoSeq epoch at time of execution.
+	// Used for staleness checks and AdjudicationRecord stamping.
+	// Zero means unknown (staleness check is skipped).
+	CurrentEpoch uint64 `json:"current_epoch,omitempty"`
 }
 
 func (m *MsgExecuteSlash) ValidateBasic() error {

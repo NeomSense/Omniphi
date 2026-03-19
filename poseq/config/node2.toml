@@ -1,0 +1,16 @@
+# PoSeq local devnet — Node 2
+# Run: poseq-node --config config/node2.toml
+
+[node]
+id = "0202020202020202020202020202020202020202020202020202020202020202"
+listen_addr = "127.0.0.1:7002"
+peers = [
+    "127.0.0.1:7001",
+    "127.0.0.1:7003",
+]
+quorum_threshold = 2
+slot_duration_ms = 2000
+data_dir = "./poseq_data_node2"
+role = "attestor"
+key_seed = "0202020202020202020202020202020202020202020202020202020202020202"
+metrics_addr = "127.0.0.1:9092"

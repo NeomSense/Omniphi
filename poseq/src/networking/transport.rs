@@ -203,6 +203,7 @@ mod tests {
             is_leader: false,
             in_committee: true,
             role: NodeRole::Attestor,
+            protocol_version: None,
         });
 
         transport_a.send_to(&addr_b, &msg).await.unwrap();
