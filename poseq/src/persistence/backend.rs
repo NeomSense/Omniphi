@@ -14,6 +14,10 @@ pub trait PersistenceBackend: Send {
     fn contains(&self, key: &[u8]) -> bool {
         self.get(key).is_some()
     }
+    /// Flush writes to durable storage. No-op for in-memory backends.
+    /// Implementations should ensure all prior put/delete calls are persisted
+    /// to disk before returning.
+    fn flush(&self) {}
 }
 
 /// BTreeMap-backed in-memory implementation of PersistenceBackend.

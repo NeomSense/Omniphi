@@ -209,7 +209,7 @@ pub struct NewViewMessage {
 /// It only votes for a new block `b` if:
 /// - `b.parent_id == locked_qc.block_id` (extending locked block), OR
 /// - `b.justify_qc.view > locked_qc.view` (higher-view QC overrides old lock).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SafetyRule {
     /// The last QC this node locked on (starts as genesis QC at view=0).
     pub locked_qc: QuorumCertificate,
@@ -217,6 +217,9 @@ pub struct SafetyRule {
     pub high_qc: QuorumCertificate,
     /// The current view this node is in.
     pub current_view: View,
+    /// The last view this node voted in (monotone — never votes for a lower view).
+    /// Persisted to prevent equivocation after restart.
+    pub last_voted_view: View,
 }
 
 impl SafetyRule {
@@ -226,11 +229,30 @@ impl SafetyRule {
             locked_qc: genesis.clone(),
             high_qc: genesis,
             current_view: 0,
+            last_voted_view: 0,
         }
     }
 
+    /// Serialize to bytes for durable persistence.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        bincode::serialize(self).expect("SafetyRule serialize")
+    }
+
+    /// Deserialize from bytes (e.g., from sled on startup).
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        bincode::deserialize(bytes).ok()
+    }
+
     /// Returns `true` if voting for `block` is safe given current locked state.
+    ///
+    /// Enforces monotone voting: never votes for a view ≤ `last_voted_view`.
+    /// This prevents equivocation even after restarts (if `last_voted_view` is
+    /// persisted and restored).
     pub fn safe_to_vote(&self, block: &HotStuffBlock) -> bool {
+        // Monotone voting: reject views we've already voted in
+        if block.view <= self.last_voted_view {
+            return false;
+        }
         // Case 1: block extends the locked block directly (chain extension rule)
         if block.extends_direct(&self.locked_qc.block_id) {
             return true;
@@ -243,6 +265,13 @@ impl SafetyRule {
         }
         // Genesis block is always safe
         block.parent_id == [0u8; 32]
+    }
+
+    /// Record that we voted in `view`. Must be called after casting a vote.
+    pub fn record_vote(&mut self, view: View) {
+        if view > self.last_voted_view {
+            self.last_voted_view = view;
+        }
     }
 
     /// Update `HighQC` if `qc` is for a higher view.

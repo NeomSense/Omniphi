@@ -64,12 +64,18 @@ type Params struct {
 	// be used in a slash. Evidence older than this is rejected as stale.
 	// 0 = no limit. Default: 10.
 	MaxEvidenceAgeEpochs uint32 `json:"max_evidence_age_epochs"`
+
+	// RequireQCSignatures controls whether CommitExecution requires non-empty
+	// QCSignatures. When false (default), empty QC is accepted with a warning
+	// log (suitable for devnet/bootstrap). When true, empty QC is rejected
+	// — this is the mainnet enforcement flag.
+	RequireQCSignatures bool `json:"require_qc_signatures"`
 }
 
 func DefaultParams() Params {
 	return Params{
 		AuthorizedSubmitter:     "",
-		AutoApplySuspensions:    false,
+		AutoApplySuspensions:    true,
 		MaxEvidencePerEpoch:     256,
 		MaxEscalationsPerEpoch:  32,
 		InactivitySuspendEpochs: 4,
@@ -80,8 +86,9 @@ func DefaultParams() Params {
 		MinBondForCommittee:     0,
 		MinParticipationBps:     0,
 		MaxFaultHistoryEpochs:   5,
-		SlashExecutionEnabled:   false,
+		SlashExecutionEnabled:   true,
 		MaxEvidenceAgeEpochs:    10,
+		RequireQCSignatures:     false,
 	}
 }
 
@@ -95,5 +102,5 @@ func (p Params) Validate() error {
 	return nil
 }
 
-func (p Params) Marshal() ([]byte, error)       { return json.Marshal(p) }
-func (p *Params) Unmarshal(bz []byte) error     { return json.Unmarshal(bz, p) }
+func (p Params) Marshal() ([]byte, error)   { return json.Marshal(p) }
+func (p *Params) Unmarshal(bz []byte) error { return json.Unmarshal(bz, p) }

@@ -119,6 +119,31 @@ impl PeerManager {
         info.reconnect_backoff_ms = 1000;
     }
 
+    /// Update only liveness/connectivity fields from an UNVERIFIED PeerStatus.
+    ///
+    /// Used when the sender proved key ownership (valid signature) but is NOT
+    /// in the SequencerRegistry. We allow the peer table to track connectivity
+    /// for this node but do NOT trust consensus-relevant claims (is_leader,
+    /// in_committee) which could poison leader/committee state.
+    pub fn update_liveness_only(&mut self, status: &WirePeerStatus) {
+        if status.node_id == self.self_id {
+            return;
+        }
+        let info = self.peers
+            .entry(status.node_id)
+            .or_insert_with(|| PeerInfo::from_status(status));
+        info.listen_addr = status.listen_addr.clone();
+        info.state = PeerConnState::Connected;
+        info.last_epoch = status.current_epoch;
+        info.last_slot = status.current_slot;
+        // Do NOT update consensus fields from untrusted source:
+        // info.in_committee = status.in_committee;  // OMITTED
+        // info.is_leader = status.is_leader;        // OMITTED
+        info.failure_count = 0;
+        info.last_seen_at = Some(std::time::Instant::now());
+        info.reconnect_backoff_ms = 1000;
+    }
+
     /// Manually register a peer with a known address (bootstrap / config).
     pub fn register_peer(&mut self, node_id: NodeId, listen_addr: String) {
         if node_id == self.self_id { return; }

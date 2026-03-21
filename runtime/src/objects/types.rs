@@ -564,6 +564,90 @@ impl Object for ExecutionReceiptObject {
 }
 
 // ──────────────────────────────────────────────
+// ContractObject — Intent Contract state container
+// ──────────────────────────────────────────────
+
+/// An Intent Contract object. Stores opaque contract state that is validated
+/// by the contract's Wasm constraint validator and mutated by solver plans.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContractObject {
+    pub meta: ObjectMeta,
+    /// Schema ID linking to the on-chain contract schema and constraint validator.
+    #[serde(with = "hex_bytes32")]
+    pub schema_id: [u8; 32],
+    /// Opaque contract state (bincode-serialized, schema-specific).
+    pub state: Vec<u8>,
+    /// SHA256 hash of `state` for quick equality checks.
+    #[serde(with = "hex_bytes32")]
+    pub state_hash: [u8; 32],
+    /// Address that instantiated this contract object.
+    #[serde(with = "hex_bytes32")]
+    pub created_by: [u8; 32],
+    /// Optional admin address for contract migration.
+    #[serde(with = "hex_bytes32_opt")]
+    pub admin: Option<[u8; 32]>,
+    /// Maximum allowed state size in bytes (from schema).
+    pub max_state_bytes: u64,
+}
+
+impl ContractObject {
+    pub fn new(
+        id: ObjectId,
+        owner: [u8; 32],
+        schema_id: [u8; 32],
+        initial_state: Vec<u8>,
+        max_state_bytes: u64,
+        now: u64,
+    ) -> Self {
+        use sha2::{Digest, Sha256};
+        let state_hash = {
+            let mut hasher = Sha256::new();
+            hasher.update(&initial_state);
+            let h = hasher.finalize();
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(&h);
+            arr
+        };
+        ContractObject {
+            meta: ObjectMeta::new(id, ObjectType::Contract(schema_id), owner, now),
+            schema_id,
+            state: initial_state,
+            state_hash,
+            created_by: owner,
+            admin: Some(owner),
+            max_state_bytes,
+        }
+    }
+
+    /// Update the contract state. Recomputes state_hash.
+    pub fn set_state(&mut self, new_state: Vec<u8>) {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(&new_state);
+        let h = hasher.finalize();
+        self.state_hash.copy_from_slice(&h);
+        self.state = new_state;
+    }
+
+    /// Returns the current state size in bytes.
+    pub fn state_size(&self) -> u64 {
+        self.state.len() as u64
+    }
+}
+
+impl Object for ContractObject {
+    fn meta(&self) -> &ObjectMeta { &self.meta }
+    fn meta_mut(&mut self) -> &mut ObjectMeta { &mut self.meta }
+    fn object_type(&self) -> ObjectType { ObjectType::Contract(self.schema_id) }
+    fn required_capabilities_for_write(&self) -> Vec<Capability> {
+        vec![Capability::WriteObject, Capability::ContractCall(self.schema_id)]
+    }
+    fn encode(&self) -> Vec<u8> {
+        bincode::serialize(self).expect("ContractObject bincode serialization is infallible")
+    }
+}
+
+// ──────────────────────────────────────────────
 // Re-export ObjectAccess helper constructors
 // ──────────────────────────────────────────────
 impl ObjectAccess {

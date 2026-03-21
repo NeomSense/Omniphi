@@ -13,7 +13,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { getValidators, Validator } from '@/lib/api';
 import { formatAmount, parseAmount, truncateAddress } from '@/lib/utils';
-import { DISPLAY_DENOM, DENOM, GAS_PRICE, UNBONDING_DAYS } from '@/lib/constants';
+import { DISPLAY_DENOM, DENOM, UNBONDING_DAYS } from '@/lib/constants';
 import toast from 'react-hot-toast';
 
 const Staking: React.FC = () => {

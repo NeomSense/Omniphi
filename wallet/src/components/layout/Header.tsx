@@ -11,7 +11,7 @@ import { DISPLAY_DENOM } from '@/lib/constants';
 import toast from 'react-hot-toast';
 
 export const Header: React.FC = () => {
-  const { wallet, lockWallet, refreshAll, isLoading } = useWalletStore();
+  const { wallet, lockWallet, refreshAll } = useWalletStore();
   const totalBalance = useWalletStore(selectTotalBalance);
   const [isRefreshing, setIsRefreshing] = useState(false);
 

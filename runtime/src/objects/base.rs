@@ -50,6 +50,9 @@ impl<'de> serde::Deserialize<'de> for ObjectId {
     }
 }
 
+/// A 32-byte schema identifier for Intent Contracts.
+pub type SchemaId = [u8; 32];
+
 /// The type of a blockchain object.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ObjectType {
@@ -61,6 +64,9 @@ pub enum ObjectType {
     GovernanceProposal,
     Identity,
     ExecutionReceipt,
+    /// A user-deployed Intent Contract object. The SchemaId links to the
+    /// contract's on-chain schema declaration and constraint validator.
+    Contract(SchemaId),
 }
 
 /// Describes how an intent accesses a particular object.

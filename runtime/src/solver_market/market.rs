@@ -167,6 +167,9 @@ fn capability_tag(cap: &Capability) -> u8 {
         Capability::BurnAsset => 7,
         Capability::ModifyGovernance => 8,
         Capability::UpdateIdentity => 9,
+        Capability::ContractCall(_) => 10,
+        Capability::ContractAdmin(_) => 11,
+        Capability::ContractDeploy => 12,
     }
 }
 

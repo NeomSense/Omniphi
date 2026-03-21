@@ -23,12 +23,12 @@ type IBCRewardPacket struct {
 // IBCBurnReportPacket represents a burn report sent from other chains to Core
 // This allows Core to track global burns and update supply
 type IBCBurnReportPacket struct {
-	Amount      string              `json:"amount"`
-	Source      types.BurnSource    `json:"source"`
-	ChainID     string              `json:"chain_id"`
-	BlockHeight int64               `json:"block_height"`
-	TxHash      string              `json:"tx_hash"`
-	Proof       []byte              `json:"proof"` // Merkle proof
+	Amount      string           `json:"amount"`
+	Source      types.BurnSource `json:"source"`
+	ChainID     string           `json:"chain_id"`
+	BlockHeight int64            `json:"block_height"`
+	TxHash      string           `json:"tx_hash"`
+	Proof       []byte           `json:"proof"` // Merkle proof
 }
 
 // DistributeRewardsViaIBC distributes rewards to other chains via IBC
@@ -76,7 +76,25 @@ func (k Keeper) DistributeRewardsViaIBC(
 			}
 
 			if channelID == "" {
-				k.Logger(ctx).Warn("IBC channel not configured, skipping IBC distribution",
+				// Channel not configured = companion chain not live.
+				// Redirect emission to the authority (governance) account
+				// instead of silently losing the allocation.
+				if k.authority != "" {
+					authorityAcc, addrErr := sdk.AccAddressFromBech32(k.authority)
+					if addrErr == nil {
+						coins := sdk.NewCoins(sdk.NewCoin(types.BondDenom, recipient.Amount))
+						if sendErr := k.bankKeeper.SendCoinsFromModuleToAccount(ctx, types.ModuleName, authorityAcc, coins); sendErr == nil {
+							localDist = localDist.Add(recipient.Amount)
+							k.Logger(ctx).Info("IBC channel not configured — redirected to governance treasury",
+								"destination", recipient.DestinationChain,
+								"amount", recipient.Amount.String(),
+								"treasury", k.authority,
+							)
+							continue
+						}
+					}
+				}
+				k.Logger(ctx).Warn("IBC channel not configured, no treasury fallback, skipping",
 					"destination", recipient.DestinationChain,
 					"amount", recipient.Amount.String(),
 				)
@@ -96,9 +114,7 @@ func (k Keeper) DistributeRewardsViaIBC(
 				return math.ZeroInt(), math.ZeroInt(), 0, fmt.Errorf("failed to marshal IBC packet: %w", err)
 			}
 
-			// P0-IBC-005: Ordering preserved - use ordered channel
-			// Note: In full implementation, would use IBC keeper to send packet
-			// For now, we'll emit an event that will be processed by IBC relayer
+			// P0-IBC-005: Emit event for IBC relayer pickup.
 			sdkCtx.EventManager().EmitEvent(
 				sdk.NewEvent(
 					"ibc_reward_packet",
@@ -151,27 +167,55 @@ func (k Keeper) OnRecvBurnReport(
 		return fmt.Errorf("invalid amount in burn report: %s", packet.Amount)
 	}
 
+	// P0-BURN-IBC-001: Source chain whitelist.
+	// Only accept burn reports from known companion chains.
+	params := k.GetParams(ctx)
+	allowedChains := map[string]bool{
+		"omniphi-continuity-1": params.ContinuityIbcChannel != "",
+		"omniphi-sequencer-1":  params.SequencerIbcChannel != "",
+	}
+	if !allowedChains[packet.ChainID] {
+		return fmt.Errorf("burn report from unknown/unconfigured chain: %s", packet.ChainID)
+	}
+
 	// P0-BURN-IBC-002: Validate merkle proof
-	// In production, this would verify the merkle proof from the source chain
-	// For now, we'll do basic validation
 	if len(packet.Proof) == 0 {
-		k.Logger(ctx).Warn("burn report received without proof",
-			"chain_id", packet.ChainID,
-			"amount", amount.String(),
-		)
-		// In strict mode, would return error here
-		// For development, we'll allow it but log warning
+		return fmt.Errorf("burn report rejected: missing merkle proof from chain %s", packet.ChainID)
 	}
 
 	// P0-BURN-IBC-003: Check for duplicate report (idempotency)
-	// Use combination of chain_id + tx_hash as unique identifier
-	duplicateKey := fmt.Sprintf("%s:%s", packet.ChainID, packet.TxHash)
+	// Use combination of chain_id + tx_hash as unique identifier in KV store.
+	dedupKey := types.GetBurnReportDedupKey(packet.ChainID, packet.TxHash)
+	kvStore := k.storeService.OpenKVStore(ctx)
+	existing, err := kvStore.Get(dedupKey)
+	if err != nil {
+		return fmt.Errorf("failed to check burn report dedup key: %w", err)
+	}
+	if existing != nil {
+		k.Logger(ctx).Warn("duplicate burn report rejected",
+			"chain_id", packet.ChainID,
+			"tx_hash", packet.TxHash,
+			"amount", amount.String(),
+		)
+		return fmt.Errorf("duplicate burn report: chain_id=%s tx_hash=%s already processed", packet.ChainID, packet.TxHash)
+	}
+	// Mark this burn report as processed (store block height as value for auditability)
+	heightBytes := make([]byte, 8)
+	heightBytes[0] = byte(sdkCtx.BlockHeight() >> 56)
+	heightBytes[1] = byte(sdkCtx.BlockHeight() >> 48)
+	heightBytes[2] = byte(sdkCtx.BlockHeight() >> 40)
+	heightBytes[3] = byte(sdkCtx.BlockHeight() >> 32)
+	heightBytes[4] = byte(sdkCtx.BlockHeight() >> 24)
+	heightBytes[5] = byte(sdkCtx.BlockHeight() >> 16)
+	heightBytes[6] = byte(sdkCtx.BlockHeight() >> 8)
+	heightBytes[7] = byte(sdkCtx.BlockHeight())
+	if err := kvStore.Set(dedupKey, heightBytes); err != nil {
+		return fmt.Errorf("failed to set burn report dedup key: %w", err)
+	}
 
-	// In production, would check duplicate tracker
-	// For now, we'll proceed and rely on event deduplication
 	k.Logger(ctx).Debug("processing burn report",
-		"duplicate_key", duplicateKey,
 		"chain_id", packet.ChainID,
+		"tx_hash", packet.TxHash,
 		"amount", amount.String(),
 	)
 
@@ -290,6 +334,62 @@ func (k Keeper) ProcessIBCAcknowledgements(ctx context.Context) error {
 	return nil
 }
 
+// OnTimeoutIBCReward handles an IBC reward packet that timed out.
+// Instead of letting the tokens vanish, the timed-out amount is redirected
+// to the governance (authority) account, which acts as a treasury fallback.
+// This ensures no emission is lost due to IBC transport failures.
+func (k Keeper) OnTimeoutIBCReward(ctx context.Context, packet IBCRewardPacket) error {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	amount, ok := math.NewIntFromString(packet.Amount)
+	if !ok {
+		return fmt.Errorf("invalid amount in timed-out IBC reward packet: %s", packet.Amount)
+	}
+	if !amount.IsPositive() {
+		return fmt.Errorf("timed-out IBC reward packet has non-positive amount: %s", packet.Amount)
+	}
+
+	// Redirect to governance treasury
+	if k.authority == "" {
+		k.Logger(ctx).Error("IBC reward timeout: no authority address configured, tokens lost",
+			"amount", amount.String(),
+			"recipient_module", packet.RecipientModule,
+			"epoch", packet.Epoch,
+		)
+		return fmt.Errorf("no authority address configured for timeout recovery")
+	}
+
+	authorityAcc, err := sdk.AccAddressFromBech32(k.authority)
+	if err != nil {
+		return fmt.Errorf("invalid authority address %s: %w", k.authority, err)
+	}
+
+	coins := sdk.NewCoins(sdk.NewCoin(types.BondDenom, amount))
+	if err := k.bankKeeper.SendCoinsFromModuleToAccount(ctx, types.ModuleName, authorityAcc, coins); err != nil {
+		return fmt.Errorf("failed to redirect timed-out IBC reward to treasury: %w", err)
+	}
+
+	sdkCtx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			"ibc_reward_timeout_recovery",
+			sdk.NewAttribute("amount", amount.String()),
+			sdk.NewAttribute("recipient_module", packet.RecipientModule),
+			sdk.NewAttribute("source_chain", packet.SourceChain),
+			sdk.NewAttribute("epoch", fmt.Sprintf("%d", packet.Epoch)),
+			sdk.NewAttribute("treasury", k.authority),
+			sdk.NewAttribute("block_height", fmt.Sprintf("%d", sdkCtx.BlockHeight())),
+		),
+	)
+
+	k.Logger(ctx).Info("timed-out IBC reward redirected to governance treasury",
+		"amount", amount.String(),
+		"recipient_module", packet.RecipientModule,
+		"treasury", k.authority,
+	)
+
+	return nil
+}
+
 // QueueRewardDistribution queues a reward for IBC distribution in next epoch
 // P0-IBC-001: Epoch-based distribution
 func (k Keeper) QueueRewardDistribution(
@@ -348,26 +448,51 @@ func (k Keeper) CalculateRewardSplits(ctx context.Context, totalRewards math.Int
 		})
 	}
 
-	// PoC rewards (30%) - send to Continuity chain via IBC
+	// PoC rewards (30%) - send to Continuity chain via IBC if channel is configured,
+	// otherwise redirect to treasury until the Continuity chain is deployed.
 	pocRewards := params.EmissionSplitPoc.MulInt(totalRewards).TruncateInt()
 	if pocRewards.IsPositive() {
-		recipients = append(recipients, types.RewardRecipient{
-			Address:          "poc", // PoC module on Continuity
-			Amount:           pocRewards,
-			DestinationChain: "omniphi-continuity-1",
-			IbcChannel:       params.ContinuityIbcChannel,
-		})
+		if params.ContinuityIbcChannel != "" && k.ibcKeeper != nil {
+			recipients = append(recipients, types.RewardRecipient{
+				Address:          "poc",
+				Amount:           pocRewards,
+				DestinationChain: "omniphi-continuity-1",
+				IbcChannel:       params.ContinuityIbcChannel,
+			})
+		} else {
+			// Continuity chain not yet deployed — hold in treasury
+			treasuryAddr := k.GetTreasuryAddress(ctx)
+			recipients = append(recipients, types.RewardRecipient{
+				Address:          treasuryAddr.String(),
+				Amount:           pocRewards,
+				DestinationChain: "",
+				IbcChannel:       "",
+			})
+		}
 	}
 
-	// Sequencer rewards (20%) - send to Sequencer chain via IBC
+	// Sequencer rewards (20%) - send to Sequencer chain via IBC if channel is configured,
+	// otherwise redirect to treasury until the Sequencer chain is deployed.
+	// SECURITY: Do NOT send to a non-existent IBC channel — tokens would be lost.
 	sequencerRewards := params.EmissionSplitSequencer.MulInt(totalRewards).TruncateInt()
 	if sequencerRewards.IsPositive() {
-		recipients = append(recipients, types.RewardRecipient{
-			Address:          "sequencer", // Sequencer module
-			Amount:           sequencerRewards,
-			DestinationChain: "omniphi-sequencer-1",
-			IbcChannel:       params.SequencerIbcChannel,
-		})
+		if params.SequencerIbcChannel != "" && k.ibcKeeper != nil {
+			recipients = append(recipients, types.RewardRecipient{
+				Address:          "sequencer",
+				Amount:           sequencerRewards,
+				DestinationChain: "omniphi-sequencer-1",
+				IbcChannel:       params.SequencerIbcChannel,
+			})
+		} else {
+			// Sequencer chain not yet deployed — hold in treasury
+			treasuryAddr := k.GetTreasuryAddress(ctx)
+			recipients = append(recipients, types.RewardRecipient{
+				Address:          treasuryAddr.String(),
+				Amount:           sequencerRewards,
+				DestinationChain: "",
+				IbcChannel:       "",
+			})
+		}
 	}
 
 	// Treasury (10%) - local

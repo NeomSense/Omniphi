@@ -128,6 +128,15 @@ impl IntentResolver {
             IntentType::RouteLiquidity(rl) => {
                 Self::resolve_route_liquidity(intent.tx_id, intent.max_fee, &intent.sender, rl, store, caps)
             }
+            IntentType::ContractCall(_) => {
+                // Contract calls are resolved by the solver market, not the
+                // internal resolver. This path is only reached as a fallback
+                // when no solver candidates exist. Return an empty plan that
+                // will be settled as a no-op.
+                Err(RuntimeError::ResolutionFailure(
+                    "contract calls require solver market resolution".to_string(),
+                ))
+            }
         }
     }
 

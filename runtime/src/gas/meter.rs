@@ -15,6 +15,14 @@ pub struct GasCosts {
     pub capability_check: u64,
     /// Gas per byte of net new state created (storage growth fee).
     pub storage_growth_per_byte: u64,
+    /// Gas for reading a contract object's state.
+    pub contract_state_read: u64,
+    /// Gas for writing a contract object's state.
+    pub contract_state_write: u64,
+    /// Base gas for invoking a contract's Wasm constraint validator.
+    pub constraint_validation_base: u64,
+    /// Per-byte gas for data passed to/from the constraint validator.
+    pub constraint_validation_per_byte: u64,
 }
 
 impl GasCosts {
@@ -31,6 +39,10 @@ impl GasCosts {
             update_version: 50,
             capability_check: 50,
             storage_growth_per_byte: 20,
+            contract_state_read: 200,
+            contract_state_write: 1_000,
+            constraint_validation_base: 5_000,
+            constraint_validation_per_byte: 5,
         }
     }
 }

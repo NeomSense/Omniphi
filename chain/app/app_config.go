@@ -1,17 +1,6 @@
 ﻿package app
 
 import (
-	_ "pos/x/feemarket/module"
-	_ "pos/x/guard/module"
-	_ "pos/x/poc/module"
-	_ "pos/x/por/module"
-	_ "pos/x/poseq/module"
-	_ "pos/x/repgov/module"
-	_ "pos/x/rewardmult/module"
-	_ "pos/x/royalty/module"
-	_ "pos/x/timelock/module"
-	_ "pos/x/tokenomics/module"
-	_ "pos/x/uci/module"
 	feemarketmodulev1 "pos/proto/pos/feemarket/module/v1"
 	guardmodulev1 "pos/proto/pos/guard/module/v1"
 	pocmodulev1 "pos/proto/pos/poc/module/v1"
@@ -22,16 +11,27 @@ import (
 	timelockmodulev1 "pos/proto/pos/timelock/module/v1"
 	tokenomicsmodulev1 "pos/proto/pos/tokenomics/module/v1"
 	ucimodulev1 "pos/proto/pos/uci/module/v1"
+	_ "pos/x/feemarket/module"
 	feemarketmoduletypes "pos/x/feemarket/types"
+	_ "pos/x/guard/module"
 	guardmoduletypes "pos/x/guard/types"
+	_ "pos/x/poc/module"
 	pocmoduletypes "pos/x/poc/types"
+	_ "pos/x/por/module"
 	pormoduletypes "pos/x/por/types"
+	_ "pos/x/poseq/module"
 	poseqmoduletypes "pos/x/poseq/types"
+	_ "pos/x/repgov/module"
 	repgovmoduletypes "pos/x/repgov/types"
+	_ "pos/x/rewardmult/module"
 	rewardmultmoduletypes "pos/x/rewardmult/types"
+	_ "pos/x/royalty/module"
 	royaltymoduletypes "pos/x/royalty/types"
+	_ "pos/x/timelock/module"
 	timelockmoduletypes "pos/x/timelock/types"
+	_ "pos/x/tokenomics/module"
 	tokenomicsmoduletypes "pos/x/tokenomics/types"
+	_ "pos/x/uci/module"
 	ucimoduletypes "pos/x/uci/types"
 	"time"
 
@@ -110,7 +110,7 @@ var (
 		{Account: nft.ModuleName},
 		{Account: ibctransfertypes.ModuleName, Permissions: []string{authtypes.Minter, authtypes.Burner}},
 		{Account: icatypes.ModuleName},
-		
+
 		{Account: feemarketmoduletypes.ModuleName, Permissions: []string{authtypes.Burner}},
 		{Account: pocmoduletypes.ModuleName, Permissions: []string{authtypes.Minter, authtypes.Burner}},
 		{Account: pormoduletypes.ModuleName, Permissions: []string{authtypes.Burner}},
@@ -166,24 +166,22 @@ var (
 						// this line is used by starport scaffolding # stargate/app/beginBlockers
 					},
 					EndBlockers: []string{
-						feemarketmoduletypes.ModuleName,  // Process fees first (burn + distribute)
-						timelockmoduletypes.ModuleName,   // MUST run before gov to intercept proposals
-						guardmoduletypes.ModuleName,      // Guard runs after timelock, before gov to queue passed proposals
+						feemarketmoduletypes.ModuleName, // Process fees first (burn + distribute)
+						timelockmoduletypes.ModuleName,  // MUST run before gov to intercept proposals
+						guardmoduletypes.ModuleName,     // Guard runs after timelock, before gov to queue passed proposals
 						govtypes.ModuleName,
 						stakingtypes.ModuleName,
 						feegrant.ModuleName,
 						group.ModuleName,
 						// chain modules
-						tokenomicsmoduletypes.ModuleName,   // Process IBC acknowledgements
-						rewardmultmoduletypes.ModuleName,   // Compute PoS reward multipliers at epoch boundaries
-						repgovmoduletypes.ModuleName,       // Recompute reputation-weighted governance scores
+						tokenomicsmoduletypes.ModuleName, // Process IBC acknowledgements
+						rewardmultmoduletypes.ModuleName, // Compute PoS reward multipliers at epoch boundaries
+						repgovmoduletypes.ModuleName,     // Recompute reputation-weighted governance scores
 						pocmoduletypes.ModuleName,
-						pormoduletypes.ModuleName,          // Finalize expired batches
-						royaltymoduletypes.ModuleName,      // Process royalty stream distributions
-						ucimoduletypes.ModuleName,          // Process DePIN contribution interface\n\t\t\t\t\t\troyaltymoduletypes.ModuleName,      // Process royalty stream distributions\n\t\t\t\t\t\tucimoduletypes.ModuleName,          // Process DePIN contribution interface
-						royaltymoduletypes.ModuleName,      // Process royalty stream distributions
-						ucimoduletypes.ModuleName,          // Process DePIN contribution interface
-						poseqmoduletypes.ModuleName,      // Process PoSeq batch ingestion events
+						pormoduletypes.ModuleName,     // Finalize expired batches
+						royaltymoduletypes.ModuleName, // Process royalty stream distributions
+						ucimoduletypes.ModuleName,     // Process DePIN contribution interface
+						poseqmoduletypes.ModuleName,   // Process PoSeq batch ingestion events
 						// this line is used by starport scaffolding # stargate/app/endBlockers
 					},
 					// The following is mostly only needed when ModuleName != StoreKey name.
@@ -206,8 +204,8 @@ var (
 						stakingtypes.ModuleName,
 						slashingtypes.ModuleName,
 						govtypes.ModuleName,
-						guardmoduletypes.ModuleName,      // Initialize after gov for guard integration
-						timelockmoduletypes.ModuleName,   // Initialize after gov for timelock integration
+						guardmoduletypes.ModuleName,    // Initialize after gov for guard integration
+						timelockmoduletypes.ModuleName, // Initialize after gov for timelock integration
 						minttypes.ModuleName,
 						genutiltypes.ModuleName,
 						evidencetypes.ModuleName,

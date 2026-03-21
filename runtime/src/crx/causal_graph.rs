@@ -53,6 +53,12 @@ pub enum NodeExecutionClass {
     FinalizeSettlement,
     /// Conditional node: downstream executes only if condition met.
     BranchGate,
+    /// Intent Contract state transition. The constraint validator must approve
+    /// the proposed state change before this node can execute.
+    ContractStateTransition {
+        schema_id: [u8; 32],
+        method: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

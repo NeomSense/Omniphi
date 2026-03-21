@@ -23,16 +23,17 @@
 //! - Execution results (state root, receipts) are summarised into opaque hashes that
 //!   PoSeq stores without inspecting.
 
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use sha2::{Sha256, Digest};
 
-use std::collections::BTreeMap;
-use crate::settlement::engine::SettlementResult;
-use crate::poseq::interface::{OrderedBatch, PoSeqRuntime};
-use crate::intents::base::IntentTransaction;
-use crate::intents::types::TransferIntent;
-use crate::intents::base::IntentType;
+use crate::capabilities::registry::CapabilityRegistry;
 use crate::errors::RuntimeError;
+use crate::intents::base::{IntentTransaction, IntentType};
+use crate::intents::types::TransferIntent;
+use crate::poseq::interface::{OrderedBatch, PoSeqRuntime};
+use crate::poseq::mempool::IntentMempool;
+use crate::settlement::engine::SettlementResult;
 
 // ─── Bridge contract types ────────────────────────────────────────────────────
 //
@@ -288,12 +289,26 @@ impl IngestionRejection {
 ///
 /// Owns the `PoSeqRuntime` execution engine and tracks applied delivery_ids
 /// for idempotent duplicate handling.
+///
+/// When `mempool` is set, submission IDs are resolved to real `IntentTransaction`
+/// payloads from the mempool. When `None`, falls back to scaffold mode (devnet only).
 pub struct RuntimeBatchIngester {
     pub runtime: PoSeqRuntime,
     /// Set of delivery_ids already applied.  Prevents double-execution.
     applied_deliveries: BTreeSet<[u8; 32]>,
     /// Set of batch_ids already applied (for cross-delivery-id dedup).
     applied_batches: BTreeSet<[u8; 32]>,
+    /// Intent mempool for looking up real transaction payloads by submission ID.
+    /// When set, the ingester resolves transactions from here instead of
+    /// synthesizing scaffolds.
+    pub mempool: Option<IntentMempool>,
+    /// Capability registry for per-sender capability resolution.
+    /// When set, used by process_batch (via interface.rs) for capability gating.
+    /// When None, falls back to CapabilitySet::all() (scaffold mode).
+    pub capability_registry: Option<CapabilityRegistry>,
+    /// When true and mempool is set, use the mempool path for transaction resolution.
+    /// When false, always use the scaffold path (devnet compatibility).
+    pub use_mempool: bool,
 }
 
 impl RuntimeBatchIngester {
@@ -302,6 +317,21 @@ impl RuntimeBatchIngester {
             runtime: PoSeqRuntime::new(),
             applied_deliveries: BTreeSet::new(),
             applied_batches: BTreeSet::new(),
+            mempool: None,
+            capability_registry: None,
+            use_mempool: false,
+        }
+    }
+
+    /// Create a new ingester with mempool and capability registry enabled.
+    pub fn with_mempool(mempool: IntentMempool, registry: CapabilityRegistry) -> Self {
+        RuntimeBatchIngester {
+            runtime: PoSeqRuntime::new(),
+            applied_deliveries: BTreeSet::new(),
+            applied_batches: BTreeSet::new(),
+            mempool: Some(mempool),
+            capability_registry: Some(registry),
+            use_mempool: true,
         }
     }
 
@@ -336,40 +366,86 @@ impl RuntimeBatchIngester {
         }
 
         // ── Step 3: build OrderedBatch for runtime ────────────────────────────
-        // Each submission ID is treated as an opaque intent transaction.
-        // In a real system, the runtime would have the actual payload indexed by
-        // submission_id.  Here we synthesize placeholder IntentTransactions that
-        // preserve ordering and carry the submission_id as tx_id.
-        // Build synthetic intent transactions from submission IDs.
-        // In production, the runtime would look up actual payloads indexed by submission_id.
-        // Here each submission_id is used as both tx_id and asset_id in a placeholder Transfer,
-        // ensuring structural validity so they pass validate() and are not silently skipped.
-        let transactions: Vec<IntentTransaction> = envelope
-            .ordered_submission_ids
-            .iter()
-            .enumerate()
-            .map(|(i, sid)| {
-                // Derive a non-zero recipient from the submission_id
-                let mut recipient = *sid;
-                recipient[31] ^= 0x01; // ensure recipient != sid
-                if recipient == [0u8; 32] { recipient[0] = 0x01; }
-                IntentTransaction {
-                    tx_id: *sid,
-                    sender: envelope.leader_id,
-                    nonce: envelope.slot * 1000 + i as u64,
-                    intent: IntentType::Transfer(TransferIntent {
-                        asset_id: *sid,
-                        amount: 1, // minimal valid amount
-                        recipient,
-                        memo: None,
-                    }),
-                    max_fee: 1_000,
-                    deadline_epoch: envelope.epoch + 10,
-                    signature: [0u8; 64],
-                    metadata: BTreeMap::new(),
+        //
+        // Two paths:
+        //   (a) Mempool path (use_mempool=true, mempool is Some): look up real
+        //       IntentTransaction payloads by submission_id, verify signatures,
+        //       check deadlines, and resolve per-sender capabilities.
+        //   (b) Scaffold path (use_mempool=false or mempool is None): synthesize
+        //       placeholder transactions for devnet/testing only.
+        let transactions: Vec<IntentTransaction> = if self.use_mempool {
+            if let Some(ref mempool) = self.mempool {
+                // ── Mempool path: resolve real transactions ──────────────────
+                let mut valid_txns = Vec::new();
+                for sid in &envelope.ordered_submission_ids {
+                    // (a) Look up the real IntentTransaction from the mempool
+                    let tx = match mempool.get(sid) {
+                        Some(tx) => tx.clone(),
+                        None => {
+                            // Transaction not in mempool — skip it.
+                            // In production this is expected if the tx was evicted
+                            // or never gossipped to this node.
+                            continue;
+                        }
+                    };
+
+                    // (b) Verify signature (placeholder SHA256 scheme)
+                    // MAINNET_BLOCKER(ed25519): Replace with real Ed25519
+                    // verification once ed25519-dalek is added to Cargo.toml.
+                    if !tx.verify_signature() {
+                        // Invalid signature — skip this transaction
+                        continue;
+                    }
+
+                    // (c) Check deadline: reject transactions whose deadline
+                    //     has already passed
+                    if tx.deadline_epoch < envelope.epoch {
+                        // Expired deadline — skip
+                        continue;
+                    }
+
+                    // (d) Capability check is deferred to process_batch via
+                    //     the capability_registry (see interface.rs Step 5).
+                    //     We only collect structurally valid, authenticated
+                    //     transactions here.
+
+                    valid_txns.push(tx);
                 }
-            })
-            .collect();
+                valid_txns
+            } else {
+                // use_mempool is true but mempool is None — configuration error.
+                // Fall through to scaffold path with a warning.
+                Self::synthesize_scaffold_transactions(&envelope)
+            }
+        } else {
+            // ── Scaffold path (devnet/testing) ──────────────────────────────
+            // SCAFFOLD(devnet-only): This path synthesizes placeholder
+            // IntentTransactions from submission IDs. It does NOT constitute
+            // a production-safe intent execution path. Retained for devnet
+            // backward compatibility.
+            let txns = Self::synthesize_scaffold_transactions(&envelope);
+
+            // Collision guard: the scaffold path uses submission_id as asset_id.
+            // If any submission_id collides with a real asset in the store,
+            // the synthetic transaction could mutate real balances.
+            for sid in &envelope.ordered_submission_ids {
+                if self.runtime.store.find_balance(&envelope.leader_id, sid).is_some() {
+                    return IngestionOutcome::Rejected(IngestionRejection::new(
+                        &envelope,
+                        IngestionRejectionCause::ExecutionFailure(
+                            format!(
+                                "scaffold collision: submission_id {:02x}{:02x}{:02x}{:02x} matches \
+                                 a real asset for sender {:02x}{:02x}{:02x}{:02x}",
+                                sid[0], sid[1], sid[2], sid[3],
+                                envelope.leader_id[0], envelope.leader_id[1],
+                                envelope.leader_id[2], envelope.leader_id[3],
+                            ),
+                        ),
+                    ));
+                }
+            }
+            txns
+        };
 
         let ordered_batch = OrderedBatch {
             batch_id: envelope.batch_id,
@@ -416,6 +492,46 @@ impl RuntimeBatchIngester {
     /// Count of successfully applied batches.
     pub fn applied_count(&self) -> usize {
         self.applied_batches.len()
+    }
+
+    /// Synthesize scaffold transactions from submission IDs (devnet/testing only).
+    ///
+    /// SCAFFOLD(devnet-only): These synthetic transactions have:
+    ///   - sender = leader_id (not the actual submitter)
+    ///   - signature = [0u8;64] (no verification)
+    ///   - amount = 1 (no real economic effect)
+    /// Retained for backward compatibility with devnet test infrastructure.
+    fn synthesize_scaffold_transactions(
+        envelope: &InboundFinalizationEnvelope,
+    ) -> Vec<IntentTransaction> {
+        envelope
+            .ordered_submission_ids
+            .iter()
+            .enumerate()
+            .map(|(i, sid)| {
+                // Derive a non-zero recipient from the submission_id
+                let mut recipient = *sid;
+                recipient[31] ^= 0x01; // ensure recipient != sid
+                if recipient == [0u8; 32] {
+                    recipient[0] = 0x01;
+                }
+                IntentTransaction {
+                    tx_id: *sid,
+                    sender: envelope.leader_id,
+                    nonce: envelope.slot * 1000 + i as u64,
+                    intent: IntentType::Transfer(TransferIntent {
+                        asset_id: *sid,
+                        amount: 1, // minimal valid amount
+                        recipient,
+                        memo: None,
+                    }),
+                    max_fee: 1_000,
+                    deadline_epoch: envelope.epoch + 10,
+                    signature: [0u8; 64],
+                    metadata: BTreeMap::new(),
+                }
+            })
+            .collect()
     }
 }
 

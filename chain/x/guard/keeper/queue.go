@@ -938,8 +938,10 @@ func (k Keeper) VerifyVotingThreshold(ctx context.Context, exec *types.QueuedExe
 		return types.ErrProposalNotPassed.Wrapf("proposal status: %s", proposal.Status.String())
 	}
 
-	// Calculate actual yes vote percentage
-	// In SDK v0.53, vote counts are strings that need to be parsed
+	// Calculate actual yes vote percentage.
+	// In SDK v0.53, FinalTallyResult counts are stake-weighted (total bonded
+	// tokens that voted, not validator address counts). YesCount = total staked
+	// tokens that voted Yes. This means the threshold is automatically power-weighted.
 	yesCount, err := ParseVoteCount(proposal.FinalTallyResult.YesCount)
 	if err != nil {
 		return types.ErrThresholdNotMet.Wrapf("invalid yes count: %v", err)
@@ -949,14 +951,17 @@ func (k Keeper) VerifyVotingThreshold(ctx context.Context, exec *types.QueuedExe
 	abstainCount, _ := ParseVoteCount(proposal.FinalTallyResult.AbstainCount)
 	vetoCount, _ := ParseVoteCount(proposal.FinalTallyResult.NoWithVetoCount)
 
-	totalVotes := yesCount + noCount + abstainCount + vetoCount
+	// Abstain votes indicate participation but no preference — exclude from
+	// the yes/no denominator (same as Cosmos SDK's own tally logic).
+	totalNonAbstain := yesCount + noCount + vetoCount
+	_ = abstainCount // tracked for quorum but not threshold
 
-	if totalVotes == 0 {
-		return types.ErrThresholdNotMet.Wrap("no votes cast")
+	if totalNonAbstain == 0 {
+		return types.ErrThresholdNotMet.Wrap("no yes/no/veto votes cast (only abstains)")
 	}
 
-	// Calculate yes percentage in basis points
-	yesVoteBps := yesCount * 10000 / totalVotes
+	// Calculate yes percentage in basis points (against non-abstain votes)
+	yesVoteBps := yesCount * 10000 / totalNonAbstain
 
 	if yesVoteBps < exec.RequiredThresholdBps {
 		return types.ErrThresholdNotMet.Wrapf(

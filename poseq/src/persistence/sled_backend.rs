@@ -87,6 +87,10 @@ impl PersistenceBackend for SledBackend {
     fn contains(&self, key: &[u8]) -> bool {
         self.db.contains_key(key).unwrap_or(false)
     }
+
+    fn flush(&self) {
+        let _ = self.db.flush();
+    }
 }
 
 #[cfg(test)]

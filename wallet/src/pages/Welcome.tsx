@@ -8,7 +8,6 @@ import { useNavigate } from 'react-router-dom';
 import { useWalletStore } from '@/stores/wallet';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Modal } from '@/components/ui/Modal';
 import toast from 'react-hot-toast';
 
 type Step = 'welcome' | 'create' | 'import' | 'backup';

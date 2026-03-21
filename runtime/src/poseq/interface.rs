@@ -1,5 +1,6 @@
 use crate::attribution::record::{SelectionAuditRecord, SolverAttributionRecord};
 use crate::capabilities::checker::CapabilitySet;
+use crate::capabilities::registry::CapabilityRegistry;
 use crate::errors::RuntimeError;
 use crate::GasCosts;
 use crate::intents::base::{IntentTransaction, IntentType};
@@ -36,6 +37,15 @@ pub struct PoSeqRuntime {
     _scheduler: ParallelScheduler,
     _settlement: SettlementEngine,
     pub current_epoch: u64,
+    /// Safety kernel for enforcing quarantine, pause, and emergency mode.
+    /// When set, process_batch checks emergency_mode and filters quarantined
+    /// objects before execution.
+    pub safety: Option<crate::safety::kernel::SafetyKernel>,
+    /// Capability registry for per-sender capability resolution.
+    /// When set, process_batch resolves capabilities per sender instead of
+    /// granting unrestricted access. When None, falls back to CapabilitySet::all()
+    /// with a logged warning.
+    pub capability_registry: Option<CapabilityRegistry>,
 }
 
 impl PoSeqRuntime {
@@ -47,6 +57,8 @@ impl PoSeqRuntime {
             _scheduler: ParallelScheduler,
             _settlement: SettlementEngine,
             current_epoch: 0,
+            safety: None,
+            capability_registry: None,
         }
     }
 
@@ -71,6 +83,18 @@ impl PoSeqRuntime {
         &mut self,
         batch: OrderedBatch,
     ) -> Result<SettlementResult, RuntimeError> {
+        // ── Step 0: safety enforcement ──────────────────────────────────────
+        // If the safety kernel is active and in emergency mode, reject the
+        // entire batch. This is the chain-halt mechanism — no execution occurs
+        // until governance resets emergency mode.
+        if let Some(ref safety) = self.safety {
+            if safety.emergency_mode {
+                return Err(RuntimeError::DomainPaused(
+                    "emergency mode active — all execution halted until governance reset".into()
+                ));
+            }
+        }
+
         // Advance epoch to match the batch
         self.current_epoch = batch.epoch;
 
@@ -88,11 +112,24 @@ impl PoSeqRuntime {
         }
 
         // ── Step 2: resolve each intent → ExecutionPlan ────────────────────
-        // Use admin caps by default; real system would look up per-sender caps
-        let caps = CapabilitySet::all();
+        // When a CapabilityRegistry is attached, resolve per-sender capabilities.
+        // Otherwise fall back to CapabilitySet::all() (scaffold/devnet mode).
+        let fallback_caps = if self.capability_registry.is_none() {
+            // SCAFFOLD(devnet-only): CapabilitySet::all() grants unrestricted
+            // access. This is acceptable ONLY for devnet where the ingestion
+            // path synthesizes placeholder transactions on non-existent objects.
+            Some(CapabilitySet::all())
+        } else {
+            None
+        };
         let mut plans = Vec::new();
 
         for tx in &valid_txns {
+            let caps = if let Some(ref registry) = self.capability_registry {
+                registry.resolve(&tx.sender).clone()
+            } else {
+                fallback_caps.clone().unwrap()
+            };
             match IntentResolver::resolve(tx, &self.store, &caps) {
                 Ok(plan) => plans.push(plan),
                 Err(_e) => {
@@ -101,6 +138,20 @@ impl PoSeqRuntime {
                 }
             }
         }
+
+        // ── Step 2b: safety enforcement — filter quarantined objects ─────────
+        // Plans that touch quarantined objects are dropped before scheduling.
+        // This enforces SafetyKernel.QuarantineObjects decisions.
+        let plans = if let Some(ref safety) = self.safety {
+            plans.into_iter().filter(|plan| {
+                let touches_quarantined = plan.object_access.iter().any(|access| {
+                    safety.is_object_quarantined(&access.object_id.0)
+                });
+                !touches_quarantined
+            }).collect()
+        } else {
+            plans
+        };
 
         // ── Steps 3-4: access map is embedded in ExecutionPlan; schedule ────
         let groups = ParallelScheduler::schedule(plans);
@@ -116,6 +167,23 @@ impl PoSeqRuntime {
 impl Default for PoSeqRuntime {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl PoSeqRuntime {
+    /// Attach a safety kernel for enforcement. Once attached, process_batch
+    /// will check emergency_mode, quarantined objects, and paused domains.
+    pub fn with_safety(mut self, kernel: crate::safety::kernel::SafetyKernel) -> Self {
+        self.safety = Some(kernel);
+        self
+    }
+
+    /// Attach a capability registry for per-sender capability resolution.
+    /// Once attached, process_batch resolves capabilities per sender instead
+    /// of granting unrestricted CapabilitySet::all().
+    pub fn with_capability_registry(mut self, registry: CapabilityRegistry) -> Self {
+        self.capability_registry = Some(registry);
+        self
     }
 }
 
@@ -344,7 +412,12 @@ impl SolverMarketRuntime {
         intent: &IntentTransaction,
         epoch: u64,
     ) -> Result<SelectedPlanResult, RuntimeError> {
-        let caps = CapabilitySet::all();
+        let caps = if let Some(ref registry) = self.base.capability_registry {
+            registry.resolve(&intent.sender).clone()
+        } else {
+            // SCAFFOLD(devnet-only): fallback to unrestricted capabilities
+            CapabilitySet::all()
+        };
         let exec_plan = IntentResolver::resolve(intent, &self.base.store, &caps)?;
 
         // Construct a synthetic CandidatePlan representing the internally resolved plan
@@ -497,10 +570,18 @@ fn plan_action_to_operation(
             balance_id: action.target_object,
             amount: action.amount.unwrap_or(0),
         },
-        PlanActionType::SwapPoolAmounts => ObjectOperation::SwapPoolAmounts {
-            pool_id: action.target_object,
-            delta_a: action.amount.unwrap_or(0) as i128,
-            delta_b: 0,
+        PlanActionType::SwapPoolAmounts => {
+            // Extract delta_b from metadata. The reverse conversion
+            // (operation_to_plan_action) stores it as metadata["delta_b"].
+            // If missing, default to 0 (legacy plans without delta_b).
+            let delta_b = action.metadata.get("delta_b")
+                .and_then(|s| s.parse::<i128>().ok())
+                .unwrap_or(0);
+            ObjectOperation::SwapPoolAmounts {
+                pool_id: action.target_object,
+                delta_a: action.amount.unwrap_or(0) as i128,
+                delta_b,
+            }
         },
         PlanActionType::LockBalance => ObjectOperation::LockBalance {
             balance_id: action.target_object,
@@ -536,12 +617,16 @@ fn operation_to_plan_action(
             amount: Some(*amount),
             metadata: BTreeMap::new(),
         },
-        ObjectOperation::SwapPoolAmounts { pool_id, delta_a, delta_b: _ } => PlanAction {
-            action_type: PlanActionType::SwapPoolAmounts,
-            target_object: *pool_id,
-            amount: Some(*delta_a as u128),
-            metadata: BTreeMap::new(),
-        },
+        ObjectOperation::SwapPoolAmounts { pool_id, delta_a, delta_b } => {
+            let mut metadata = BTreeMap::new();
+            metadata.insert("delta_b".to_string(), delta_b.to_string());
+            PlanAction {
+                action_type: PlanActionType::SwapPoolAmounts,
+                target_object: *pool_id,
+                amount: Some(*delta_a as u128),
+                metadata,
+            }
+        }
         ObjectOperation::LockBalance { balance_id, amount } => PlanAction {
             action_type: PlanActionType::LockBalance,
             target_object: *balance_id,

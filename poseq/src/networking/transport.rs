@@ -23,10 +23,18 @@ use std::sync::Arc;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Semaphore};
 use tokio::sync::mpsc;
+use tokio::time::{timeout, Duration};
 
 use crate::networking::messages::PoSeqMessage;
+
+/// Maximum number of concurrent inbound connections.
+const MAX_INBOUND_CONNECTIONS: usize = 256;
+/// Maximum number of cached outbound connections.
+const MAX_OUTBOUND_CONNECTIONS: usize = 256;
+/// Read timeout per frame (prevents slow-read DoS).
+const FRAME_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
 // ─── Frame codec ──────────────────────────────────────────────────────────────
 
@@ -91,6 +99,8 @@ pub struct NodeTransport {
     pub listen_addr: String,
     inbox_tx: mpsc::Sender<(String, PoSeqMessage)>,
     outbound: Arc<Mutex<BTreeMap<String, TcpStream>>>,
+    /// Limits concurrent inbound connections to prevent memory exhaustion DoS.
+    _inbound_semaphore: Arc<Semaphore>,
 }
 
 impl NodeTransport {
@@ -103,23 +113,37 @@ impl NodeTransport {
         let listener = TcpListener::bind(listen_addr).await?;
         let actual_addr = listener.local_addr()?.to_string();
 
+        let semaphore = Arc::new(Semaphore::new(MAX_INBOUND_CONNECTIONS));
+        let sem_clone = semaphore.clone();
         let tx_clone = tx.clone();
         tokio::spawn(async move {
             loop {
                 match listener.accept().await {
                     Ok((mut stream, peer_addr)) => {
+                        // Acquire semaphore permit before spawning. If all
+                        // permits are taken, the accept loop blocks here
+                        // until a connection closes — this caps inbound
+                        // connections to MAX_INBOUND_CONNECTIONS.
+                        let permit = match sem_clone.clone().acquire_owned().await {
+                            Ok(p) => p,
+                            Err(_) => break, // semaphore closed
+                        };
                         let peer = peer_addr.to_string();
                         let tx2 = tx_clone.clone();
                         tokio::spawn(async move {
+                            let _permit = permit; // held until task exits
                             loop {
-                                match read_frame(&mut stream).await {
-                                    Ok(Some(msg)) => {
+                                // Per-frame read timeout prevents slow-read
+                                // attacks that hold connections indefinitely.
+                                match timeout(FRAME_READ_TIMEOUT, read_frame(&mut stream)).await {
+                                    Ok(Ok(Some(msg))) => {
                                         if tx2.send((peer.clone(), msg)).await.is_err() {
                                             break;
                                         }
                                     }
-                                    Ok(None) => break, // peer closed
-                                    Err(_e) => break,
+                                    Ok(Ok(None)) => break, // peer closed
+                                    Ok(Err(_e)) => break,  // read error
+                                    Err(_) => break,       // timeout — drop connection
                                 }
                             }
                         });
@@ -133,6 +157,7 @@ impl NodeTransport {
             listen_addr: actual_addr,
             inbox_tx: tx,
             outbound: Arc::new(Mutex::new(BTreeMap::new())),
+            _inbound_semaphore: semaphore,
         };
         Ok((transport, rx))
     }
@@ -150,10 +175,16 @@ impl NodeTransport {
             // Stale connection — remove and reconnect below
             outbound.remove(peer_addr);
         }
-        // Open new connection
+        // Open new connection (with cap on pool size)
         match TcpStream::connect(peer_addr).await {
             Ok(mut stream) => {
                 write_frame(&mut stream, msg).await?;
+                // Evict oldest entry if pool is at capacity
+                if outbound.len() >= MAX_OUTBOUND_CONNECTIONS {
+                    if let Some(oldest_key) = outbound.keys().next().cloned() {
+                        outbound.remove(&oldest_key);
+                    }
+                }
                 outbound.insert(peer_addr.to_string(), stream);
                 Ok(())
             }

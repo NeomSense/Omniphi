@@ -80,6 +80,9 @@ var (
 
 	// Current day's accumulated transaction count
 	KeyCurrentDayTxCount = []byte{0x73}
+
+	// IBC burn report dedup prefix: key = BurnReportDedupPrefix + chain_id + ":" + tx_hash
+	BurnReportDedupPrefix = []byte{0x80}
 )
 
 // Event types
@@ -167,4 +170,10 @@ func GetEmissionRecordKey(emissionID uint64) []byte {
 // dayIndex should be 0-6 representing the 7 days in the rolling window
 func GetDailyTxCountKey(dayIndex uint8) []byte {
 	return append(DailyTxCountPrefix, dayIndex)
+}
+
+// GetBurnReportDedupKey returns the store key for burn report dedup tracking.
+// Key format: BurnReportDedupPrefix + chain_id + ":" + tx_hash
+func GetBurnReportDedupKey(chainID, txHash string) []byte {
+	return append(BurnReportDedupPrefix, []byte(chainID+":"+txHash)...)
 }

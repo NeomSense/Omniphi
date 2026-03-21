@@ -96,7 +96,7 @@ impl MetricsExporter {
                 exported_epochs: s.exported_epochs.iter().copied().collect(),
                 latest_finalized: s.latest_finalized.map(|id| hex::encode(id)),
                 slog_total: s.slog.total_appended,
-                peer_count: s.committee.len(),
+                peer_count: s.connected_peers,
                 sync_status: Some(s.sync_engine.sync_status()),
             }
         } else {

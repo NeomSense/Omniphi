@@ -4,7 +4,6 @@ import {
   ArrowLeftIcon,
   ClockIcon,
   CheckCircleIcon,
-  XCircleIcon,
   HandThumbUpIcon,
   HandThumbDownIcon,
   MinusCircleIcon,
@@ -22,8 +21,8 @@ import {
   getUserVoteOption,
 } from '@/hooks/useGovernance';
 import { useWalletStore } from '@/stores/wallet';
-import { formatAmount, formatAddress } from '@/lib/wallet';
-import { VOTE_OPTIONS, VOTE_OPTION_LABELS, DENOM } from '@/lib/constants';
+import { formatAddress } from '@/lib/wallet';
+import { VOTE_OPTIONS, VOTE_OPTION_LABELS } from '@/lib/constants';
 
 const VoteButton: React.FC<{
   option: number;
@@ -33,7 +32,7 @@ const VoteButton: React.FC<{
   disabled: boolean;
   onClick: () => void;
   variant: 'yes' | 'no' | 'abstain' | 'veto';
-}> = ({ option, label, icon, selected, disabled, onClick, variant }) => {
+}> = ({ label, icon, selected, disabled, onClick, variant }) => {
   const variants = {
     yes: selected
       ? 'bg-green-600 border-green-500 text-white'
@@ -72,7 +71,6 @@ export const ProposalDetail: React.FC<ProposalDetailProps> = ({ proposalId }) =>
   const [showVoteModal, setShowVoteModal] = useState(false);
   const [selectedVote, setSelectedVote] = useState<number | null>(null);
 
-  const wallet = useWalletStore((state) => state.wallet);
   const isUnlocked = useWalletStore((state) => state.isUnlocked);
 
   const { data: proposal, isLoading: proposalLoading } = useProposal(proposalId);

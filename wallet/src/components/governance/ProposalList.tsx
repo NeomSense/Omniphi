@@ -10,8 +10,6 @@ import {
   calculateVotePercentages,
 } from '@/hooks/useGovernance';
 import { Proposal } from '@/lib/api';
-import { formatAmount } from '@/lib/wallet';
-import { DENOM } from '@/lib/constants';
 
 interface ProposalCardProps {
   proposal: Proposal;

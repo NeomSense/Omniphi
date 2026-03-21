@@ -6,7 +6,7 @@
 import React from 'react';
 import { ProposalList } from '@/components/governance/ProposalList';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
-import { GOV_QUORUM, GOV_THRESHOLD, GOV_VETO_THRESHOLD, GOV_VOTING_PERIOD_HOURS, GOV_DEPOSIT_PERIOD_HOURS, GOV_MIN_DEPOSIT } from '@/lib/constants';
+import { GOV_QUORUM, GOV_THRESHOLD, GOV_VOTING_PERIOD_HOURS, GOV_DEPOSIT_PERIOD_HOURS, GOV_MIN_DEPOSIT } from '@/lib/constants';
 import { formatAmount } from '@/lib/utils';
 
 const Governance: React.FC = () => {

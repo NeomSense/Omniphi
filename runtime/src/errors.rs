@@ -36,6 +36,12 @@ pub enum RuntimeError {
     BranchExecutionFailed { branch_id: u32, reason: String },
     FinalityEscalationRequired(String),
     CRXSettlementFailed(String),
+    // Phase 5: Intent Contracts (OIC) errors
+    ContractNotFound { schema_id: [u8; 32] },
+    ContractConstraintViolation { schema_id: [u8; 32], reason: String },
+    ContractValidatorError(String),
+    ContractDeploymentFailed(String),
+    ContractStateOverflow { schema_id: [u8; 32], max_bytes: u64, actual_bytes: u64 },
     // Phase 4: Safety Kernel errors
     SafetyViolation { incident_type: String, severity: String },
     ContainmentFailed { scope: String, reason: String },
@@ -86,6 +92,17 @@ impl fmt::Display for RuntimeError {
             }
             RuntimeError::FinalityEscalationRequired(msg) => write!(f, "FinalityEscalationRequired: {}", msg),
             RuntimeError::CRXSettlementFailed(msg) => write!(f, "CRXSettlementFailed: {}", msg),
+            RuntimeError::ContractNotFound { schema_id } => {
+                write!(f, "ContractNotFound: schema={}", hex::encode(schema_id))
+            }
+            RuntimeError::ContractConstraintViolation { schema_id, reason } => {
+                write!(f, "ContractConstraintViolation: schema={} reason={}", hex::encode(schema_id), reason)
+            }
+            RuntimeError::ContractValidatorError(msg) => write!(f, "ContractValidatorError: {}", msg),
+            RuntimeError::ContractDeploymentFailed(msg) => write!(f, "ContractDeploymentFailed: {}", msg),
+            RuntimeError::ContractStateOverflow { schema_id, max_bytes, actual_bytes } => {
+                write!(f, "ContractStateOverflow: schema={} max={} actual={}", hex::encode(schema_id), max_bytes, actual_bytes)
+            }
             RuntimeError::SafetyViolation { incident_type, severity } => {
                 write!(f, "SafetyViolation: type={} severity={}", incident_type, severity)
             }

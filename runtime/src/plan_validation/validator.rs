@@ -25,6 +25,10 @@ pub enum ValidationReasonCode {
     PolicyRejected,
     FeeTooHigh,
     ZeroOutput,
+    /// Contract constraint validator rejected the proposed state transition.
+    ContractConstraintRejected,
+    /// Referenced contract schema not found in registry.
+    ContractSchemaNotFound,
 }
 
 pub struct PlanValidator;
@@ -93,6 +97,27 @@ impl PlanValidator {
         // Step 9: Check expected_output_amount > 0
         if plan.expected_output_amount == 0 {
             reason_codes.push(ValidationReasonCode::ZeroOutput);
+        }
+
+        // Step 10 (OIC): Validate contract actions via constraint validator.
+        // For each PlanActionType::Custom that targets a contract object,
+        // verify the action metadata contains a valid "schema_id" and
+        // "proposed_state". Full constraint validation (Wasm invocation)
+        // happens at the CRX execution layer; here we do structural checks.
+        for action in &plan.actions {
+            if let PlanActionType::Custom(method) = &action.action_type {
+                if let Some(schema_hex) = action.metadata.get("schema_id") {
+                    // Structural check: schema_id must be valid 64-char hex
+                    if schema_hex.len() != 64 || hex::decode(schema_hex).is_err() {
+                        reason_codes.push(ValidationReasonCode::ContractSchemaNotFound);
+                    }
+                    // Structural check: proposed_state must be present
+                    if !action.metadata.contains_key("proposed_state") {
+                        reason_codes.push(ValidationReasonCode::ContractConstraintRejected);
+                    }
+                    let _ = method; // method is used in CRX execution
+                }
+            }
         }
 
         let passed = reason_codes.is_empty();

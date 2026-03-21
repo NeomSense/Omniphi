@@ -337,5 +337,7 @@ fn node_to_action_type(
         NodeExecutionClass::EmitReceipt => Some(AllowedActionType::EmitReceipt),
         NodeExecutionClass::InvokeSafetyHook => Some(AllowedActionType::InvokeSafetyHook),
         NodeExecutionClass::BranchGate => None,
+        // Contract state transitions map to WriteObject in the rights capsule.
+        NodeExecutionClass::ContractStateTransition { .. } => Some(AllowedActionType::UpdateVersion),
     }
 }

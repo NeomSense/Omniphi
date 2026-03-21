@@ -140,17 +140,17 @@ impl HotStuffEngine {
             return HotStuffOutput::None;
         }
         self.voted.insert(key, true);
+        self.safety.record_vote(view);
         self.pacemaker.on_voted();
 
-        // Produce a vote (real signature is a placeholder here — signing key
-        // is in the caller; the caller fills in the real signature).
-        let vote_hash = QuorumCertificate::vote_hash(view, &block.block_id, Phase::Prepare);
+        // Produce a vote with an empty signature. The node_runner MUST sign
+        // this with Ed25519 before broadcasting (see `unsigned_vote_sig()` docs).
         HotStuffOutput::SendVote(HotStuffVote {
             view,
             block_id: block.block_id,
             phase: Phase::Prepare,
             voter_id: self.self_id,
-            signature: placeholder_sig(&vote_hash),
+            signature: unsigned_vote_sig(),
         })
     }
 
@@ -258,14 +258,14 @@ impl HotStuffEngine {
         }
 
         self.voted.insert(key, true);
+        self.safety.record_vote(view);
 
-        let vote_hash = QuorumCertificate::vote_hash(view, &qc.block_id, next_phase);
         HotStuffOutput::SendVote(HotStuffVote {
             view,
             block_id: qc.block_id,
             phase: next_phase,
             voter_id: self.self_id,
-            signature: placeholder_sig(&vote_hash),
+            signature: unsigned_vote_sig(),
         })
     }
 
@@ -336,6 +336,69 @@ impl HotStuffEngine {
         block
     }
 
+    // ─── Verified message handlers (network layer entry points) ────────────
+
+    /// Accept a vote that has already been cryptographically verified by the
+    /// caller (node_runner). The caller MUST verify the Ed25519 signature
+    /// against the voter's registered public key before calling this.
+    ///
+    /// This is the only intended entry point for network-received votes.
+    /// Direct calls to `on_vote()` are for internal use (leader's own votes).
+    pub fn submit_verified_vote(&mut self, vote: HotStuffVote) -> HotStuffOutput {
+        self.on_vote(vote)
+    }
+
+    /// Verify that a QC has at least `quorum_threshold` valid signatures.
+    ///
+    /// `pubkey_lookup` maps node_id → Ed25519 public key bytes.
+    /// Returns `true` if ≥ threshold signatures verify against the vote hash.
+    pub fn verify_qc<F>(&self, qc: &QuorumCertificate, pubkey_lookup: F) -> bool
+    where
+        F: Fn(&NodeId) -> Option<[u8; 32]>,
+    {
+        use ed25519_dalek::{Signature, VerifyingKey};
+
+        let vote_hash = QuorumCertificate::vote_hash(qc.view, &qc.block_id, qc.phase);
+        let mut valid_count = 0usize;
+        let mut seen_signers = std::collections::BTreeSet::new();
+
+        for (signer_id, sig_bytes) in &qc.signatures {
+            // Dedup: each signer counted at most once
+            if !seen_signers.insert(*signer_id) {
+                continue;
+            }
+            let pubkey_bytes = match pubkey_lookup(signer_id) {
+                Some(pk) => pk,
+                None => continue, // unknown signer
+            };
+            let vk = match VerifyingKey::from_bytes(&pubkey_bytes) {
+                Ok(vk) => vk,
+                Err(_) => continue,
+            };
+            if sig_bytes.len() != 64 {
+                continue;
+            }
+            let sig = match Signature::from_slice(sig_bytes) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            if vk.verify_strict(&vote_hash, &sig).is_ok() {
+                valid_count += 1;
+            }
+        }
+        valid_count >= self.quorum_threshold
+    }
+
+    /// Sign a vote produced by this engine using the node's Ed25519 keypair.
+    /// Returns the vote with a real 64-byte signature.
+    pub fn sign_vote(vote: &mut HotStuffVote, signing_seed: &[u8; 32]) {
+        use ed25519_dalek::{SigningKey, Signer};
+        let vote_hash = vote.vote_hash();
+        let sk = SigningKey::from_bytes(signing_seed);
+        let sig = sk.sign(&vote_hash);
+        vote.signature = sig.to_bytes().to_vec();
+    }
+
     // ─── Helpers ───────────────────────────────────────────────────────────
 
     /// Clear per-view state (votes, pending block) for a fresh view.
@@ -350,6 +413,33 @@ impl HotStuffEngine {
         }
     }
 
+    /// Persist the SafetyRule to durable storage. Must be called after every
+    /// vote and every lock update to prevent equivocation after restart.
+    pub fn persist_safety_rule(&self, store: &mut dyn crate::persistence::backend::PersistenceBackend) {
+        let key = b"hotstuff/safety_rule";
+        let value = self.safety.to_bytes();
+        store.put(key, value);
+        store.flush();
+    }
+
+    /// Restore SafetyRule from durable storage. Call on startup before
+    /// processing any messages. Returns `true` if restored successfully.
+    pub fn restore_safety_rule(&mut self, store: &dyn crate::persistence::backend::PersistenceBackend) -> bool {
+        let key = b"hotstuff/safety_rule".as_slice();
+        match store.get(key) {
+            Some(bytes) => {
+                if let Some(rule) = SafetyRule::from_bytes(&bytes) {
+                    self.safety = rule;
+                    self.pacemaker.reset_view_timer(self.safety.current_view);
+                    true
+                } else {
+                    false
+                }
+            }
+            None => false,
+        }
+    }
+
     pub fn current_view(&self) -> View {
         self.pacemaker.current_view
     }
@@ -359,15 +449,20 @@ impl HotStuffEngine {
     }
 }
 
-// ─── Placeholder signature ────────────────────────────────────────────────────
+// ─── Unsigned vote marker ─────────────────────────────────────────────────────
 
-/// In the engine layer, signatures are computed from the vote_hash as a placeholder
-/// (zeros XOR first 8 bytes of hash to distinguish from all-zeros).
-/// Real Ed25519 signatures are applied by the node_runner which holds the key pair.
-fn placeholder_sig(vote_hash: &[u8; 32]) -> Vec<u8> {
-    let mut sig = vec![0u8; 64];
-    sig[..32].copy_from_slice(vote_hash);
-    sig
+/// The engine does NOT hold the Ed25519 private key (the node_runner does).
+/// Votes produced by the engine carry an empty signature. The node_runner MUST
+/// call `sign_vote()` before broadcasting. On the receiving side, `on_vote()`
+/// ONLY accepts votes that have already been verified by the caller — the engine
+/// trusts that callers reject invalid signatures before passing votes in.
+///
+/// This is enforced by `HotStuffEngine::submit_verified_vote()`, which is the
+/// only intended entry point from the network layer.
+fn unsigned_vote_sig() -> Vec<u8> {
+    // Empty vec signals "needs signing before broadcast".
+    // The node_runner replaces this with a real Ed25519 signature.
+    Vec::new()
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────

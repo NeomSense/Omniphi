@@ -1,6 +1,36 @@
 use crate::errors::RuntimeError;
-use crate::intents::types::{SwapIntent, TransferIntent, TreasuryRebalanceIntent, YieldAllocateIntent, RouteLiquidityIntent};
+use crate::intents::types::{
+    RouteLiquidityIntent, SwapIntent, TransferIntent, TreasuryRebalanceIntent,
+    YieldAllocateIntent,
+};
+use crate::objects::base::ObjectId;
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
+
+/// Constraints specific to a contract call intent.
+#[derive(Debug, Clone)]
+pub struct ContractConstraints {
+    /// Maximum bytes of state delta the solver may propose.
+    pub max_state_delta_bytes: u64,
+    /// If set, the intent is only valid against these exact object versions.
+    /// Prevents stale-state execution.
+    pub required_object_versions: Vec<(ObjectId, u64)>,
+    /// Contract-specific constraint parameters (opaque, passed to validator).
+    pub custom_constraints: Vec<u8>,
+}
+
+/// An intent to invoke a deployed Intent Contract.
+#[derive(Debug, Clone)]
+pub struct ContractCallIntent {
+    /// The schema ID of the target contract.
+    pub schema_id: [u8; 32],
+    /// The method selector within the contract (matches an intent schema name).
+    pub method_selector: String,
+    /// Arbitrary parameters for the contract method.
+    pub params: BTreeMap<String, Vec<u8>>,
+    /// Constraints on the execution.
+    pub constraints: ContractConstraints,
+}
 
 /// The variant of intent contained in this transaction.
 #[derive(Debug, Clone)]
@@ -10,6 +40,8 @@ pub enum IntentType {
     YieldAllocate(YieldAllocateIntent),
     TreasuryRebalance(TreasuryRebalanceIntent),
     RouteLiquidity(RouteLiquidityIntent),
+    /// A call to a deployed Intent Contract.
+    ContractCall(ContractCallIntent),
 }
 
 /// A fully described, signed intent transaction.
@@ -135,8 +167,141 @@ impl IntentTransaction {
                     ));
                 }
             }
+            IntentType::ContractCall(c) => {
+                if c.schema_id == [0u8; 32] {
+                    return Err(RuntimeError::InvalidIntent(
+                        "contract call schema_id must be non-zero".to_string(),
+                    ));
+                }
+                if c.method_selector.is_empty() {
+                    return Err(RuntimeError::InvalidIntent(
+                        "contract call method_selector must not be empty".to_string(),
+                    ));
+                }
+            }
         }
 
         Ok(())
+    }
+
+    /// Compute the deterministic canonical byte representation of the intent payload.
+    ///
+    /// Used as input to signature verification. Each intent variant is prefixed
+    /// with a single discriminant byte for domain separation.
+    pub fn intent_canonical_bytes(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
+        match &self.intent {
+            IntentType::Transfer(t) => {
+                buf.push(0x01);
+                buf.extend_from_slice(&t.asset_id);
+                buf.extend_from_slice(&t.amount.to_be_bytes());
+                buf.extend_from_slice(&t.recipient);
+            }
+            IntentType::Swap(s) => {
+                buf.push(0x02);
+                buf.extend_from_slice(&s.input_asset);
+                buf.extend_from_slice(&s.output_asset);
+                buf.extend_from_slice(&s.input_amount.to_be_bytes());
+                buf.extend_from_slice(&s.min_output_amount.to_be_bytes());
+                buf.extend_from_slice(&s.max_slippage_bps.to_be_bytes());
+            }
+            IntentType::YieldAllocate(y) => {
+                buf.push(0x03);
+                buf.extend_from_slice(&y.asset_id);
+                buf.extend_from_slice(&y.amount.to_be_bytes());
+                buf.extend_from_slice(&(y.target_vault_id.0));
+                buf.extend_from_slice(&y.min_apy_bps.to_be_bytes());
+            }
+            IntentType::TreasuryRebalance(r) => {
+                buf.push(0x04);
+                buf.extend_from_slice(&r.from_asset);
+                buf.extend_from_slice(&r.to_asset);
+                buf.extend_from_slice(&r.amount.to_be_bytes());
+                buf.extend_from_slice(&(r.authorized_by.len() as u32).to_be_bytes());
+                for auth in &r.authorized_by {
+                    buf.extend_from_slice(auth);
+                }
+            }
+            IntentType::RouteLiquidity(rl) => {
+                buf.push(0x05);
+                buf.extend_from_slice(&(rl.source_pool.0));
+                buf.extend_from_slice(&(rl.target_pool.0));
+                buf.extend_from_slice(&rl.asset_id);
+                buf.extend_from_slice(&rl.amount.to_be_bytes());
+                buf.extend_from_slice(&rl.min_received.to_be_bytes());
+                buf.push(rl.max_hops);
+                buf.extend_from_slice(&rl.max_price_impact_bps.to_be_bytes());
+            }
+            IntentType::ContractCall(c) => {
+                buf.push(0x06);
+                buf.extend_from_slice(&c.schema_id);
+                buf.extend_from_slice(c.method_selector.as_bytes());
+                buf.extend_from_slice(&c.constraints.max_state_delta_bytes.to_be_bytes());
+                buf.extend_from_slice(&c.constraints.custom_constraints);
+            }
+        }
+        buf
+    }
+
+    /// Compute the signing payload for this transaction.
+    ///
+    /// payload = SHA256("OMNIPHI_INTENT_V1" || tx_id || sender || nonce_be
+    ///                   || intent_bytes || max_fee_be || deadline_epoch_be)
+    pub fn signing_payload(&self) -> [u8; 32] {
+        let mut h = Sha256::new();
+        h.update(b"OMNIPHI_INTENT_V1");
+        h.update(&self.tx_id);
+        h.update(&self.sender);
+        h.update(&self.nonce.to_be_bytes());
+        h.update(&self.intent_canonical_bytes());
+        h.update(&self.max_fee.to_be_bytes());
+        h.update(&self.deadline_epoch.to_be_bytes());
+        let r = h.finalize();
+        let mut out = [0u8; 32];
+        out.copy_from_slice(&r);
+        out
+    }
+
+    /// Verify the transaction signature.
+    ///
+    /// MAINNET_BLOCKER(ed25519): This currently uses a SHA256-based placeholder
+    /// verification scheme. Before mainnet, replace with proper Ed25519
+    /// verification using the `ed25519-dalek` crate:
+    ///   let pubkey = ed25519_dalek::VerifyingKey::from_bytes(&self.sender)?;
+    ///   let sig = ed25519_dalek::Signature::from_bytes(&self.signature);
+    ///   pubkey.verify(&self.signing_payload(), &sig).is_ok()
+    ///
+    /// Current placeholder: signature[0..32] must equal SHA256(payload || sender).
+    /// This proves the signer knew the sender key and intent content, but does NOT
+    /// provide public-key cryptographic authentication.
+    pub fn verify_signature(&self) -> bool {
+        let payload = self.signing_payload();
+        let mut h = Sha256::new();
+        h.update(&payload);
+        h.update(&self.sender);
+        let r = h.finalize();
+        let expected: [u8; 32] = {
+            let mut out = [0u8; 32];
+            out.copy_from_slice(&r);
+            out
+        };
+        self.signature[0..32] == expected[..]
+    }
+
+    /// Compute the placeholder signature for this transaction.
+    ///
+    /// MAINNET_BLOCKER(ed25519): This produces the SHA256-based placeholder
+    /// signature that `verify_signature` accepts. Replace with real Ed25519
+    /// signing before mainnet.
+    pub fn compute_placeholder_signature(&self) -> [u8; 64] {
+        let payload = self.signing_payload();
+        let mut h = Sha256::new();
+        h.update(&payload);
+        h.update(&self.sender);
+        let r = h.finalize();
+        let mut sig = [0u8; 64];
+        sig[0..32].copy_from_slice(&r);
+        // Bytes 32..64 are zero-padded (reserved for Ed25519 upgrade)
+        sig
     }
 }

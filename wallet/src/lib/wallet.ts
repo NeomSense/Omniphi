@@ -5,12 +5,10 @@
 
 import { DirectSecp256k1HdWallet, OfflineSigner } from '@cosmjs/proto-signing';
 import { SigningStargateClient, StargateClient, GasPrice } from '@cosmjs/stargate';
-import { Secp256k1HdWallet } from '@cosmjs/amino';
 import { stringToPath, EnglishMnemonic } from '@cosmjs/crypto';
 import { Wallet as EthersWallet } from 'ethers';
 import {
   BECH32_PREFIX,
-  CHAIN_ID,
   DENOM,
   GAS_PRICE,
   RPC_ENDPOINTS,
@@ -304,13 +302,6 @@ export function parseAmount(displayAmount: string, decimals = 6): string {
   const paddedFraction = fraction.padEnd(decimals, '0').slice(0, decimals);
   const combined = `${whole}${paddedFraction}`.replace(/^0+/, '') || '0';
   return combined;
-}
-
-/**
- * Convert string path to Cosmos SDK HD path
- */
-function stringToHdPath(path: string) {
-  return stringToPath(path);
 }
 
 /**

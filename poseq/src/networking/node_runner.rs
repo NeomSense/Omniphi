@@ -112,6 +112,8 @@ pub struct NodeState {
     pub latest_snapshot_epoch: Option<u64>,
     /// Sync status tracking (catch-up detection, bridge delivery, checkpoints).
     pub sync_engine: crate::sync::StateSyncEngine,
+    /// Number of connected peers (updated from peer manager on each PeerStatus).
+    pub connected_peers: usize,
 }
 
 impl NodeState {
@@ -137,6 +139,7 @@ impl NodeState {
                 crate::checkpoints::CheckpointPolicy::default_policy(),
                 crate::bridge_recovery::BridgeRetryPolicy::default_policy(),
             ),
+            connected_peers: 0,
         }
     }
 
@@ -366,6 +369,25 @@ impl NetworkedNode {
 
         let quorum = config.quorum_threshold;
         let hs_timeout_ms = config.slot_duration_ms * 4;
+
+        // Create HotStuff engine and restore SafetyRule from durable store
+        // BEFORE wrapping in Arc<Mutex> to prevent equivocation after restart.
+        let mut hs_engine = HotStuffEngine::new(self_id, quorum, hs_timeout_ms);
+        {
+            let locked = store.lock().await;
+            if hs_engine.restore_safety_rule(locked.engine.backend()) {
+                initial_state.slog.info(
+                    "startup.restore.safety_rule",
+                    0,
+                    None,
+                    format!(
+                        "restored HotStuff SafetyRule: view={}",
+                        hs_engine.current_view(),
+                    ),
+                );
+            }
+        }
+
         Ok(NetworkedNode {
             config,
             state: Arc::new(Mutex::new(initial_state)),
@@ -375,7 +397,7 @@ impl NetworkedNode {
             key_pair: None,           // set via set_key_pair() after bind
             verify_signatures: false,  // enable via set_verify_signatures() after bind
             runtime_sender: None,      // set via set_runtime_sender() after bind
-            hotstuff: Arc::new(Mutex::new(HotStuffEngine::new(self_id, quorum, hs_timeout_ms))),
+            hotstuff: Arc::new(Mutex::new(hs_engine)),
             sequencer_registry: Arc::new(Mutex::new(SequencerRegistry::new())),
             snapshot_importer: Arc::new(Mutex::new(snapshot_importer)),
             bridge_exporter: Arc::new(Mutex::new(ChainBridgeExporter::new())),
@@ -469,6 +491,10 @@ impl NetworkedNode {
 
     /// Wrap a message in a `WireSignedEnvelope` if a signing seed is configured,
     /// otherwise return the message unchanged.
+    ///
+    /// `signer_id` is always `node_id` — the protocol identity. The receiver
+    /// looks up `node_id` in the SequencerRegistry to find the corresponding
+    /// Ed25519 public key and verifies the signature against that.
     fn maybe_sign(&self, msg: PoSeqMessage) -> PoSeqMessage {
         if let Some(ref seed) = self.signing_seed {
             if let Some(signed) = WireSignedEnvelope::sign(&msg, seed, self.config.node_id) {
@@ -478,41 +504,67 @@ impl NetworkedNode {
         msg
     }
 
-    /// Unwrap a signed envelope if `verify_signatures` is true, or pass through unchanged.
+    /// Unwrap a signed envelope with full Ed25519 verification.
     ///
-    /// Returns `None` if signature verification fails (message should be dropped).
+    /// Returns `(inner_message, verified_node_id)` on success, `None` on failure.
     ///
-    /// Security model (devnet/testnet Sprint 9):
-    /// - `Signed` messages: decoded without verifying the signature bytes.
-    ///   All peers MUST sign (enforcement), but we don't yet verify WHICH key signed.
-    ///   Full PKI verification against the SequencerRegistry is wired in a later sprint.
-    /// - Unsigned messages when `verify_signatures = true`: rejected (None).
-    fn maybe_verify(&self, msg: PoSeqMessage) -> Option<PoSeqMessage> {
+    /// Security model:
+    /// - `signer_id` in the envelope is the sender's `node_id` (protocol identity).
+    /// - The receiver looks up `signer_id` in the `SequencerRegistry` to get the
+    ///   registered Ed25519 public key, then calls `verify_and_decode(pubkey)`.
+    /// - If `signer_id` is not in the registry, the message is REJECTED —
+    ///   including PeerStatus. We cannot verify a signature without a known
+    ///   public key, and `node_id` is not guaranteed to be the raw Ed25519 key
+    ///   (it may be a hash or operator-chosen value per registry.rs:48).
+    ///   Peer discovery for unregistered nodes relies on the bootstrap peer
+    ///   list in the node config, not on unauthenticated wire messages.
+    /// - Unsigned messages are rejected when `verify_signatures = true`.
+    fn maybe_verify(&self, msg: PoSeqMessage) -> Option<(PoSeqMessage, Option<[u8; 32]>)> {
         match msg {
-            PoSeqMessage::Signed(env) => {
-                // Accept all signed messages; decode without verifying signature bytes.
-                // This enforces that peers MUST sign while deferring full PKI verification.
-                env.decode_unverified()
+            PoSeqMessage::Signed(ref env) => {
+                if self.verify_signatures {
+                    let reg = self.sequencer_registry.try_lock().ok()?;
+                    if let Some(rec) = reg.get(&env.signer_id) {
+                        // Registered node: verify signature against registered pubkey
+                        let inner = env.verify_and_decode(&rec.public_key)?;
+                        Some((inner, Some(env.signer_id)))
+                    } else {
+                        // Not in registry — reject. Without a registered pubkey
+                        // we cannot verify the signature. node_id != pubkey in
+                        // the general case (registry.rs:48).
+                        None
+                    }
+                } else {
+                    // Devnet/test mode: decode without verification
+                    let inner = env.decode_unverified()?;
+                    Some((inner, None))
+                }
             }
             other => {
                 if self.verify_signatures {
                     // Reject unsigned messages when signature enforcement is enabled.
                     None
                 } else {
-                    Some(other)
+                    Some((other, None))
                 }
             }
         }
     }
 
-    /// Open a durable sled store, falling back to an in-memory store on error.
+    /// Open a durable sled store. Panics on failure — in-memory fallback is
+    /// unsafe because it silently breaks replay protection, dedup, and restart
+    /// safety. A node that cannot persist state MUST NOT participate in consensus.
     fn open_store(data_dir: &str) -> Arc<Mutex<DurableStore>> {
         let backend: Box<dyn crate::persistence::backend::PersistenceBackend> =
             match SledBackend::open(std::path::Path::new(data_dir)) {
                 Ok(sled) => Box::new(sled),
                 Err(e) => {
-                    eprintln!("[poseq] WARNING: sled open failed for {data_dir}: {e} — using in-memory store");
-                    Box::new(crate::persistence::backend::InMemoryBackend::new())
+                    panic!(
+                        "[poseq] FATAL: sled open failed for {data_dir}: {e} — \
+                         refusing to start with in-memory store (replay protection \
+                         and dedup would be lost on restart). Fix the data directory \
+                         permissions or disk and retry."
+                    );
                 }
             };
         let engine = PersistenceEngine::new(backend);
@@ -628,8 +680,8 @@ impl NetworkedNode {
                         Some((peer_addr, msg)) => {
                             if !crashed {
                                 // Verify/unwrap signed envelope before dispatch
-                                if let Some(inner) = self.maybe_verify(msg) {
-                                    self.handle_message(peer_addr, inner).await;
+                                if let Some((inner, verified_signer)) = self.maybe_verify(msg) {
+                                    self.handle_message(peer_addr, inner, verified_signer).await;
                                 }
                                 // else: drop silently (bad sig or unsigned in enforce mode)
                             }
@@ -851,7 +903,17 @@ impl NetworkedNode {
     }
 
     /// Process one inbound message.
-    async fn handle_message(&self, _peer_addr: String, msg: PoSeqMessage) {
+    /// Handle an inbound message after signature verification.
+    ///
+    /// `verified_signer` is `Some(node_id)` when the message was cryptographically
+    /// verified against the SequencerRegistry, or `None` for unverified messages
+    /// (devnet mode or PeerStatus discovery messages).
+    ///
+    /// For consensus messages (Proposal, Attestation, Finalized), the inner
+    /// `leader_id` / `attestor_id` MUST match `verified_signer`. A mismatch
+    /// means the peer signed with its own key but claimed a different identity
+    /// in the message — this is rejected as identity spoofing.
+    async fn handle_message(&self, _peer_addr: String, msg: PoSeqMessage, verified_signer: Option<[u8; 32]>) {
         // Dedup first
         let mut pm = self.peer_manager.lock().await;
         if pm.is_duplicate(&msg) {
@@ -861,15 +923,39 @@ impl NetworkedNode {
 
         match msg {
             PoSeqMessage::PeerStatus(status) => {
+                // Identity binding: if the message was signature-verified,
+                // the inner node_id must match the verified signer. This
+                // prevents an attacker from signing with their own key but
+                // claiming to be a different node in the PeerStatus payload.
+                if let Some(signer) = verified_signer {
+                    if status.node_id != signer {
+                        let mut state = self.state.lock().await;
+                        state.log(format!(
+                            "PEERSTATUS REJECTED: signer {:?} != claimed node_id {:?} (identity spoofing)",
+                            &signer[..4], &status.node_id[..4]
+                        ));
+                        return;
+                    }
+                }
+                // All PeerStatus messages reaching here are from registered,
+                // signature-verified senders (unregistered are rejected in
+                // maybe_verify). In devnet mode (verify_signatures=false),
+                // verified_signer is None but all messages are trusted.
                 let mut pm = self.peer_manager.lock().await;
                 pm.update_from_status(&status);
+                let cc = pm.connected_count();
                 if let Some(ref m) = self.metrics {
-                    m.peer_count.set(pm.connected_count() as i64);
-                    m.peers_connected.set(pm.connected_count() as i64);
+                    m.peer_count.set(cc as i64);
+                    m.peers_connected.set(cc as i64);
                     m.peers_degraded.set(pm.degraded_count() as i64);
                     m.peers_disconnected.set(pm.disconnected_count() as i64);
                 }
                 drop(pm);
+                // Update connected_peers on state so /status can report it
+                {
+                    let mut state = self.state.lock().await;
+                    state.connected_peers = cc;
+                }
                 // Update peer epoch for catch-up detection
                 {
                     let mut state = self.state.lock().await;
@@ -922,12 +1008,39 @@ impl NetworkedNode {
             }
 
             PoSeqMessage::Proposal(proposal) => {
+                // Identity binding: the inner leader_id must match the verified
+                // signer. Without this, a malicious peer could sign with its own
+                // key but set leader_id to the real leader's node_id.
+                if let Some(signer) = verified_signer {
+                    if proposal.leader_id != signer {
+                        let mut state = self.state.lock().await;
+                        state.log(format!(
+                            "PROPOSAL REJECTED: signer {:?} != claimed leader {:?} (identity spoofing)",
+                            &signer[..4], &proposal.leader_id[..4]
+                        ));
+                        return;
+                    }
+                }
                 let mut state = self.state.lock().await;
                 let pid = proposal.proposal_id;
                 // Verify this came from the expected leader
                 if Some(proposal.leader_id) != state.current_leader {
                     state.log(format!("PROPOSAL from unexpected leader {:?}", &proposal.leader_id[..4]));
                     return;
+                }
+                // Reject proposals with duplicate submission IDs (double-spending prevention).
+                // A malicious leader could include the same submission twice to double-execute it.
+                {
+                    let mut seen = std::collections::BTreeSet::new();
+                    for sid in &proposal.ordered_submission_ids {
+                        if !seen.insert(sid) {
+                            state.log(format!(
+                                "PROPOSAL REJECTED: duplicate submission_id {:?} (double-spend attempt)",
+                                &sid[..4]
+                            ));
+                            return;
+                        }
+                    }
                 }
                 state.pending_proposals.insert(pid, proposal.clone());
                 state.log(format!("RECEIVED PROPOSAL slot={} epoch={}", proposal.slot, proposal.epoch));
@@ -950,10 +1063,29 @@ impl NetworkedNode {
                     let addrs = pm.all_peer_addrs();
                     drop(pm);
                     self.broadcast_signed(&addrs, PoSeqMessage::Attestation(attestation)).await;
+
+                    // Persist HotStuff SafetyRule after voting to prevent equivocation on restart.
+                    // Lock store first, then hotstuff, to maintain consistent lock ordering.
+                    {
+                        let mut locked = self.store.lock().await;
+                        let hs = self.hotstuff.lock().await;
+                        hs.persist_safety_rule(locked.engine.backend_mut());
+                    }
                 }
             }
 
             PoSeqMessage::Attestation(vote) => {
+                // Identity binding: attestor_id must match the verified signer.
+                if let Some(signer) = verified_signer {
+                    if vote.attestor_id != signer {
+                        let mut state = self.state.lock().await;
+                        state.log(format!(
+                            "ATTESTATION REJECTED: signer {:?} != claimed attestor {:?} (identity spoofing)",
+                            &signer[..4], &vote.attestor_id[..4]
+                        ));
+                        return;
+                    }
+                }
                 let mut state = self.state.lock().await;
                 let pid = vote.proposal_id;
                 state.attestations.entry(pid).or_default().push(vote.clone());
@@ -994,6 +1126,11 @@ impl NetworkedNode {
                                 let mut locked = self.store.lock().await;
                                 locked.engine.put_finalized(&batch_id, encoded);
                                 locked.engine.put_raw(b"meta:latest_finalized", batch_id.to_vec());
+                                // Persist HotStuff SafetyRule after finalization
+                                let hs = self.hotstuff.lock().await;
+                                hs.persist_safety_rule(locked.engine.backend_mut());
+                                drop(hs);
+                                locked.engine.flush();
                             }
                             // Deliver to runtime ingester
                             self.deliver_to_runtime(&finalized, delivery_seq).await;
@@ -1009,6 +1146,17 @@ impl NetworkedNode {
             }
 
             PoSeqMessage::Finalized(fin) => {
+                // Identity binding: leader_id must match the verified signer.
+                if let Some(signer) = verified_signer {
+                    if fin.leader_id != signer {
+                        let mut state = self.state.lock().await;
+                        state.log(format!(
+                            "FINALIZED REJECTED: signer {:?} != claimed leader {:?} (identity spoofing)",
+                            &signer[..4], &fin.leader_id[..4]
+                        ));
+                        return;
+                    }
+                }
                 let mut state = self.state.lock().await;
                 let bid = fin.batch_id;
                 if !state.finalized_batches.contains_key(&bid) {
@@ -1024,6 +1172,11 @@ impl NetworkedNode {
                         let mut locked = self.store.lock().await;
                         locked.engine.put_finalized(&bid, encoded);
                         locked.engine.put_raw(b"meta:latest_finalized", bid.to_vec());
+                        // Persist HotStuff SafetyRule after receiving finalization
+                        let hs = self.hotstuff.lock().await;
+                        hs.persist_safety_rule(locked.engine.backend_mut());
+                        drop(hs);
+                        locked.engine.flush();
                     }
                     // Deliver to runtime ingester
                     self.deliver_to_runtime(&fin, delivery_seq).await;
@@ -1232,6 +1385,7 @@ impl NetworkedNode {
                     let mut locked = self.store.lock().await;
                     locked.engine.put_finalized(&batch_id, encoded);
                     locked.engine.put_raw(b"meta:latest_finalized", batch_id.to_vec());
+                    locked.engine.flush();
                 }
 
                 // Deliver to runtime
@@ -1293,6 +1447,7 @@ impl NetworkedNode {
                                 let mut locked = self.store.lock().await;
                                 locked.engine.put_finalized(&batch_id, encoded);
                                 locked.engine.put_raw(b"meta:latest_finalized", batch_id.to_vec());
+                                locked.engine.flush();
                             }
                             self.deliver_to_runtime(&fin, delivery_seq).await;
                         }

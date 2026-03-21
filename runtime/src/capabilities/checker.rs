@@ -15,6 +15,12 @@ pub enum Capability {
     BurnAsset,
     ModifyGovernance,
     UpdateIdentity,
+    /// Permission to call intents on a specific contract schema.
+    ContractCall([u8; 32]),
+    /// Admin permission for a specific contract (migrate, upgrade).
+    ContractAdmin([u8; 32]),
+    /// Permission to deploy new contract schemas.
+    ContractDeploy,
 }
 
 /// An ordered set of capabilities (BTreeSet for deterministic ordering).

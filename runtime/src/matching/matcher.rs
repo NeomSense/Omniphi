@@ -47,6 +47,7 @@ impl IntentSolverMatcher {
             IntentType::YieldAllocate(_) => "yield_allocate",
             IntentType::TreasuryRebalance(_) => "treasury_rebalance",
             IntentType::RouteLiquidity(_) => "route_liquidity",
+            IntentType::ContractCall(_) => "contract_call",
         }
     }
 }

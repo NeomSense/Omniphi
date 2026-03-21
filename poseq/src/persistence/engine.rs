@@ -11,6 +11,16 @@ impl PersistenceEngine {
         PersistenceEngine { backend }
     }
 
+    /// Immutable reference to the underlying backend (e.g. for HotStuff SafetyRule restore).
+    pub fn backend(&self) -> &dyn PersistenceBackend {
+        self.backend.as_ref()
+    }
+
+    /// Mutable reference to the underlying backend (e.g. for HotStuff SafetyRule persist).
+    pub fn backend_mut(&mut self) -> &mut dyn PersistenceBackend {
+        self.backend.as_mut()
+    }
+
     // ─── Generic read/write ──────────────────────────────────────────────────
 
     pub fn get_raw(&self, key: &[u8]) -> Option<Vec<u8>> {
@@ -31,6 +41,12 @@ impl PersistenceEngine {
 
     pub fn contains(&self, key: &[u8]) -> bool {
         self.backend.contains(key)
+    }
+
+    /// Flush all pending writes to durable storage. Call after persisting
+    /// finalized batches and committee snapshots to guarantee crash safety.
+    pub fn flush(&self) {
+        self.backend.flush();
     }
 
     // ─── Proposal domain ────────────────────────────────────────────────────

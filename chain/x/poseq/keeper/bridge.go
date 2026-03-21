@@ -78,12 +78,12 @@ func (k Keeper) IngestFromDirectory(ctx context.Context, exportDir, ackDir, send
 	sort.Slice(files, func(i, j int) bool { return files[i].epoch < files[j].epoch })
 
 	for _, ef := range files {
-		// Check if ACK already written (avoid re-reading and re-parsing)
 		ackPath := filepath.Join(ackDir, fmt.Sprintf("%d.ack.json", ef.epoch))
-		if _, err := os.Stat(ackPath); err == nil {
-			// ACK already exists — skip
-			continue
-		}
+
+		// Always read and validate the export file first, even if an ACK file
+		// exists. This prevents a stale or malicious ACK file from permanently
+		// suppressing ingestion of a valid export. Deduplication is handled by
+		// the keeper (IngestExportBatchWithAck), not the filesystem.
 
 		// Read export file
 		exportPath := filepath.Join(exportDir, ef.filename)

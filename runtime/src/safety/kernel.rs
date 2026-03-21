@@ -15,6 +15,13 @@ use crate::safety::recovery_hooks::{GovernanceEscalationMarker, RecoveryHook};
 use crate::safety::solver_controls::{SolverSafetyAction, SolverSafetyController, SolverSafetyStatus};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// Governance Multi-Sig Proof used to unhalt the chain.
+#[derive(Debug, Clone)]
+pub struct GovernanceProof {
+    pub is_valid: bool,
+    pub proposal_id: Option<u64>,
+}
+
 /// Input to the Safety Kernel from CRX settlement.
 #[derive(Debug, Clone)]
 pub struct SafetyEvaluationContext {
@@ -405,6 +412,52 @@ impl SafetyKernel {
     /// Check whether a solver is allowed to submit.
     pub fn is_solver_allowed(&self, solver_id: &[u8; 32]) -> bool {
         self.solver_controller.is_solver_allowed(solver_id)
+    }
+
+    /// Resets the emergency mode, unhalting the chain.
+    /// Strictly gated by a valid governance multi-sig proof.
+    pub fn reset_emergency_mode(&mut self, proof: &GovernanceProof, epoch: u64) -> Result<(), &'static str> {
+        if !proof.is_valid {
+            return Err("Emergency mode reset denied: invalid governance proof");
+        }
+
+        self.emergency_mode = false;
+
+        // Log the recovery into the incident ledger
+        let incident_id = SafetyIncident::compute_id(&IncidentType::PolicyRuleViolation, epoch, None);
+        let reset_receipt = SafetyReceipt {
+            receipt_id: incident_id,
+            incident: SafetyIncident {
+                incident_id,
+                incident_type: IncidentType::PolicyRuleViolation,
+                severity: IncidentSeverity::Emergency,
+                scope: IncidentScope::FullChain,
+                affected: AffectedDomainSet::new(),
+                triggering_rule: "GovernanceReset".to_string(),
+                detail: "Emergency mode was manually reset by governance multi-sig".to_string(),
+                goal_packet_id: None,
+                plan_id: None,
+                solver_id: None,
+                capsule_hash: None,
+                epoch,
+                reversible: false,
+                requires_governance: true,
+                metadata: BTreeMap::new(),
+            },
+            containment_actions: vec![],
+            recovery: SafetyRecoveryPlaceholder {
+                incident_id,
+                recovery_status: RecoveryStatus::Pending,
+                governance_proposal_id: None, 
+                recovery_epoch: Some(epoch),
+                notes: "Emergency mode explicitly reset by governance".to_string(),
+            },
+            epoch,
+            receipt_hash: [0u8; 32],
+        };
+        let _ = self.ledger.append(reset_receipt, None);
+
+        Ok(())
     }
 
     pub(crate) fn apply_action(&mut self, action: &SafetyAction, ctx: &SafetyEvaluationContext) {

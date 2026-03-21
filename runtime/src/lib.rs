@@ -31,6 +31,9 @@ pub use crx::*;
 pub mod safety;
 pub use safety::*;
 
+// Phase 5: Intent Contracts (OIC)
+pub mod contracts;
+
 // Phase 6: Intent-Based Execution Architecture
 pub mod verification;
 pub mod disputes;
@@ -56,7 +59,7 @@ pub mod solver_market;
 pub mod solver_registry;
 
 // Phase 1 re-exports
-pub use capabilities::{Capability, CapabilityChecker, CapabilitySet};
+pub use capabilities::{Capability, CapabilityChecker, CapabilityRegistry, CapabilitySet};
 pub use errors::RuntimeError;
 pub use gas::{GasCost, GasCosts, GasMeter};
 pub use intents::{IntentTransaction, IntentType, SwapIntent, TransferIntent,
@@ -65,7 +68,7 @@ pub use objects::{AccessMode, BalanceObject, BoxedObject, GovernanceProposalObje
                   IdentityObject, LiquidityPoolObject, Object, ObjectAccess, ObjectId,
                   ObjectMeta, ObjectType, ObjectVersion, ProposalStatus, TokenObject,
                   VaultObject, WalletObject, ExecutionReceiptObject};
-pub use poseq::{OrderedBatch, PoSeqRuntime};
+pub use poseq::{IntentMempool, OrderedBatch, PoSeqRuntime};
 pub use resolution::{ExecutionPlan, IntentResolver, ObjectOperation};
 pub use scheduler::{ConflictGraph, ExecutionGroup, ParallelScheduler};
 pub use settlement::{ExecutionReceipt, SettlementEngine, SettlementResult};

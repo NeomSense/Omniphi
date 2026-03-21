@@ -26,6 +26,7 @@ pub mod escalation;
 pub mod anchor;
 pub mod exporter;
 pub mod snapshot;
+pub mod contracts;
 
 pub use evidence::{
     EvidencePacket, EvidenceKind, EvidencePacketSet,
@@ -43,4 +44,7 @@ pub use exporter::{
 };
 pub use snapshot::{
     ChainCommitteeSnapshot, ChainCommitteeMember, SnapshotImporter, SnapshotImportError,
+};
+pub use contracts::{
+    ChainContractSchema, ChainIntentSchema, ContractSchemaCache,
 };

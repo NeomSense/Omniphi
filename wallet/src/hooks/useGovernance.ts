@@ -12,11 +12,10 @@ import {
   getProposal,
   getVote,
   getProposalTally,
-  Proposal,
   Vote,
 } from '@/lib/api';
 import { useWalletStore } from '@/stores/wallet';
-import { CHAIN_ID, DENOM, VOTE_OPTIONS, VOTE_OPTION_LABELS } from '@/lib/constants';
+import { DENOM, VOTE_OPTIONS, VOTE_OPTION_LABELS } from '@/lib/constants';
 
 // Query keys
 const QUERY_KEYS = {

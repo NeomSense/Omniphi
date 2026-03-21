@@ -3,7 +3,7 @@
  * Common helpers for the Omniphi wallet
  */
 
-import { DECIMALS, DISPLAY_DENOM } from './constants';
+import { DECIMALS } from './constants';
 
 /**
  * Format amount from base units to display units
@@ -15,7 +15,7 @@ export function formatAmount(
 ): string {
   // Handle decimal strings (e.g., from rewards API)
   if (typeof amount === 'string' && amount.includes('.')) {
-    const [whole, frac = ''] = amount.split('.');
+    const [whole] = amount.split('.');
     const amountBigInt = BigInt(whole || 0);
     const divisor = BigInt(10 ** decimals);
     const wholePart = amountBigInt / divisor;

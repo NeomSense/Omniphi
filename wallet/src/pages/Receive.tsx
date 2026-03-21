@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { useWalletStore } from '@/stores/wallet';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { to1x } from '@/lib/wallet';
 import toast from 'react-hot-toast';

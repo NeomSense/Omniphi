@@ -101,12 +101,16 @@ impl ChainCommitteeSnapshot {
 pub struct SnapshotImporter {
     /// Verified snapshots keyed by epoch.
     snapshots: BTreeMap<u64, ChainCommitteeSnapshot>,
+    /// Highest produced_at_block seen across all imported snapshots.
+    /// Used to reject stale/replayed snapshots from a compromised relayer.
+    max_produced_at_block: i64,
 }
 
 impl SnapshotImporter {
     pub fn new() -> Self {
         Self {
             snapshots: BTreeMap::new(),
+            max_produced_at_block: 0,
         }
     }
 
@@ -116,12 +120,27 @@ impl SnapshotImporter {
     /// - Hash verification fails
     /// - A snapshot for this epoch is already cached
     /// - Any member node_id is not valid 32-byte hex
+    /// - The snapshot's produced_at_block is older than a previously seen snapshot
+    ///   (prevents relayer from rolling back committee composition)
     pub fn import(&mut self, snap: ChainCommitteeSnapshot) -> Result<(), SnapshotImportError> {
         if self.snapshots.contains_key(&snap.epoch) {
             return Err(SnapshotImportError::DuplicateEpoch(snap.epoch));
         }
         if !snap.verify_hash() {
             return Err(SnapshotImportError::HashMismatch { epoch: snap.epoch });
+        }
+        // Reject snapshots produced at a block height older than what we've
+        // already seen. This prevents a compromised relayer from delivering
+        // old, valid snapshots to roll back committee composition.
+        if snap.produced_at_block > 0 && snap.produced_at_block < self.max_produced_at_block {
+            return Err(SnapshotImportError::StaleSnapshot {
+                epoch: snap.epoch,
+                produced_at: snap.produced_at_block,
+                max_seen: self.max_produced_at_block,
+            });
+        }
+        if snap.produced_at_block > self.max_produced_at_block {
+            self.max_produced_at_block = snap.produced_at_block;
         }
         self.snapshots.insert(snap.epoch, snap);
         Ok(())
@@ -159,6 +178,8 @@ pub enum SnapshotImportError {
     DuplicateEpoch(u64),
     /// A member `node_id` is not valid 32-byte hex.
     InvalidNodeId { node_id: String, error: String },
+    /// The snapshot was produced at a block height older than a previously imported snapshot.
+    StaleSnapshot { epoch: u64, produced_at: i64, max_seen: i64 },
 }
 
 impl std::fmt::Display for SnapshotImportError {
@@ -166,6 +187,9 @@ impl std::fmt::Display for SnapshotImportError {
         match self {
             Self::HashMismatch { epoch } => write!(f, "snapshot hash mismatch for epoch {epoch}"),
             Self::DuplicateEpoch(epoch) => write!(f, "snapshot already imported for epoch {epoch}"),
+            Self::StaleSnapshot { epoch, produced_at, max_seen } => {
+                write!(f, "stale snapshot for epoch {epoch}: produced_at_block={produced_at} < max_seen={max_seen}")
+            }
             Self::InvalidNodeId { node_id, error } => {
                 write!(f, "invalid node_id {node_id}: {error}")
             }

@@ -155,6 +155,10 @@ pub fn goal_packet_from_intent(intent: &IntentTransaction, epoch: u64) -> GoalPa
             vec![ObjectType::Balance, ObjectType::LiquidityPool],
             "Route liquidity between pools via multi-hop path".to_string(),
         ),
+        IntentType::ContractCall(c) => (
+            vec![ObjectType::Contract(c.schema_id)],
+            format!("Contract call: {}.{}", hex::encode(&c.schema_id[..4]), c.method_selector),
+        ),
     };
 
     let (min_output, max_slippage) = match &intent.intent {
@@ -201,5 +205,6 @@ fn intent_type_name(intent: &IntentType) -> &'static str {
         IntentType::YieldAllocate(_) => "yield_allocate",
         IntentType::TreasuryRebalance(_) => "treasury_rebalance",
         IntentType::RouteLiquidity(_) => "route_liquidity",
+        IntentType::ContractCall(_) => "contract_call",
     }
 }

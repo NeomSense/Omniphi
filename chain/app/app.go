@@ -51,6 +51,7 @@ import (
 	guardkeeper "pos/x/guard/keeper"
 	pockeeper "pos/x/poc/keeper"
 	porkeeper "pos/x/por/keeper"
+	contractskeeper "pos/x/contracts/keeper"
 	poseqkeeper "pos/x/poseq/keeper"
 	repgovkeeper "pos/x/repgov/keeper"
 	rewardmultkeeper "pos/x/rewardmult/keeper"
@@ -116,6 +117,7 @@ type App struct {
 	RoyaltyKeeper         *royaltykeeper.Keeper
 	UCIKeeper             *ucikeeper.Keeper
 	PoseqKeeper           poseqkeeper.Keeper
+	ContractsKeeper       *contractskeeper.Keeper
 
 	// ibc keepers
 	IBCKeeper           *ibckeeper.Keeper
@@ -257,6 +259,11 @@ func New(
 
 	// register x/poseq (manually wired — no proto v1 depinject config)
 	if err := app.registerPoseqModule(); err != nil {
+		panic(err)
+	}
+
+	// register x/contracts (Intent Contracts — manually wired)
+	if err := app.registerContractsModule(); err != nil {
 		panic(err)
 	}
 

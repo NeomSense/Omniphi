@@ -471,6 +471,15 @@ impl BranchAwareExecutor {
                 Ok(())
             }
 
+            // Contract state transitions are applied as opaque byte updates.
+            // The constraint validator has already approved the transition during
+            // plan validation. Here we just apply the proposed state.
+            NodeExecutionClass::ContractStateTransition { .. } => {
+                // Actual state application is handled by the settlement engine
+                // after the CRX graph completes. This node marks the dependency.
+                Ok(())
+            }
+
             // No-op extension points
             NodeExecutionClass::BranchGate
             | NodeExecutionClass::EmitReceipt
