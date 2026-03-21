@@ -107,6 +107,7 @@ out/
 .poseq_relayer_target/
 .poseq_target/
 .runtime_target/
+.runtime_target2/
 target/
 
 # ============================================

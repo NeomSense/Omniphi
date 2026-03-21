@@ -591,8 +591,29 @@ fn plan_action_to_operation(
             balance_id: action.target_object,
             amount: action.amount.unwrap_or(0),
         },
-        PlanActionType::Custom(_) => ObjectOperation::UpdateVersion {
-            object_id: action.target_object,
+        PlanActionType::Custom(_) => {
+            // Check if this is a contract action (has schema_id + proposed_state)
+            if let (Some(schema_hex), Some(state_hex)) = (
+                action.metadata.get("schema_id"),
+                action.metadata.get("proposed_state"),
+            ) {
+                let mut schema_id = [0u8; 32];
+                if let Ok(bytes) = hex::decode(schema_hex) {
+                    if bytes.len() == 32 {
+                        schema_id.copy_from_slice(&bytes);
+                    }
+                }
+                let proposed_state = hex::decode(state_hex).unwrap_or_default();
+                ObjectOperation::ContractStateTransition {
+                    contract_id: action.target_object,
+                    schema_id,
+                    proposed_state,
+                }
+            } else {
+                ObjectOperation::UpdateVersion {
+                    object_id: action.target_object,
+                }
+            }
         },
     }
 }
@@ -644,6 +665,17 @@ fn operation_to_plan_action(
             target_object: *object_id,
             amount: None,
             metadata: BTreeMap::new(),
+        },
+        ObjectOperation::ContractStateTransition { contract_id, schema_id, proposed_state } => {
+            let mut metadata = BTreeMap::new();
+            metadata.insert("schema_id".to_string(), hex::encode(schema_id));
+            metadata.insert("proposed_state".to_string(), hex::encode(proposed_state));
+            PlanAction {
+                action_type: PlanActionType::Custom("contract_state_transition".to_string()),
+                target_object: *contract_id,
+                amount: None,
+                metadata,
+            }
         },
     }
 }

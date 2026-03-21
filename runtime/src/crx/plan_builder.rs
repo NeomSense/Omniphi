@@ -312,20 +312,45 @@ impl GraphAssembler {
                     last_mutation_node = Some(finalize_id);
                 }
 
-                PlanActionType::Custom(_) => {
-                    // Generic custom action
+                PlanActionType::Custom(method_name) => {
+                    // Check if this is a contract action (has schema_id in metadata)
+                    let is_contract_action = action.metadata.contains_key("schema_id");
                     let custom_id = NodeId(next_id);
                     next_id += 1;
 
+                    let (exec_class, domain_tag, label) = if is_contract_action {
+                        let schema_hex = action.metadata.get("schema_id").cloned().unwrap_or_default();
+                        let mut sid = [0u8; 32];
+                        if let Ok(bytes) = hex::decode(&schema_hex) {
+                            if bytes.len() == 32 {
+                                sid.copy_from_slice(&bytes);
+                            }
+                        }
+                        (
+                            NodeExecutionClass::ContractStateTransition {
+                                schema_id: sid,
+                                method: method_name.clone(),
+                            },
+                            Some(format!("contract.{}", &schema_hex[..8.min(schema_hex.len())])),
+                            format!("Contract({}.{})", &schema_hex[..8.min(schema_hex.len())], method_name),
+                        )
+                    } else {
+                        (
+                            NodeExecutionClass::EmitReceipt,
+                            None,
+                            format!("Custom({})", hex::encode(&target_bytes[..4])),
+                        )
+                    };
+
                     let custom_node = CausalNode {
                         node_id: custom_id.clone(),
-                        label: format!("Custom({})", hex::encode(&target_bytes[..4])),
-                        execution_class: NodeExecutionClass::EmitReceipt,
-                        access_type: NodeAccessType::SettlementOnly,
+                        label,
+                        execution_class: exec_class,
+                        access_type: NodeAccessType::Write,
                         target_object: Some(target_bytes),
                         amount: action.amount,
                         branch_id: 0,
-                        domain_tag: None,
+                        domain_tag,
                         risk_tags: vec![],
                         metadata: action.metadata.clone(),
                     };
@@ -336,11 +361,12 @@ impl GraphAssembler {
                         edges.push(CausalEdge {
                             from: prev.clone(),
                             to: custom_id.clone(),
-                            dependency_kind: NodeDependencyKind::OrderingOnly,
-                            is_critical: false,
+                            dependency_kind: NodeDependencyKind::StateDependent,
+                            is_critical: is_contract_action,
                         });
                     }
 
+                    all_mutation_nodes.push(custom_id.clone());
                     last_mutation_node = Some(custom_id);
                 }
             }

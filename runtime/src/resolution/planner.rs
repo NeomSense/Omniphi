@@ -19,6 +19,13 @@ pub enum ObjectOperation {
     LockBalance { balance_id: ObjectId, amount: u128 },
     UnlockBalance { balance_id: ObjectId, amount: u128 },
     UpdateVersion { object_id: ObjectId },
+    /// Apply a proposed state transition to a contract object.
+    /// The constraint validator has already approved this transition.
+    ContractStateTransition {
+        contract_id: ObjectId,
+        schema_id: [u8; 32],
+        proposed_state: Vec<u8>,
+    },
 }
 
 /// The resolved execution plan for a single intent transaction.
@@ -92,6 +99,11 @@ fn estimate_gas(ops: &[ObjectOperation], costs: &GasCosts) -> u64 {
             ObjectOperation::LockBalance { .. } => costs.lock_balance,
             ObjectOperation::UnlockBalance { .. } => costs.unlock_balance,
             ObjectOperation::UpdateVersion { .. } => costs.update_version,
+            ObjectOperation::ContractStateTransition { proposed_state, .. } => {
+                costs.contract_state_write
+                    + costs.constraint_validation_base
+                    + costs.constraint_validation_per_byte * proposed_state.len() as u64
+            }
         };
         total = total.saturating_add(cost);
     }

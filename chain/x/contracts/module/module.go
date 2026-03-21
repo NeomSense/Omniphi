@@ -15,6 +15,7 @@ import (
 	gwruntime "github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"github.com/spf13/cobra"
 
+	"pos/x/contracts/client/cli"
 	"pos/x/contracts/keeper"
 	"pos/x/contracts/types"
 )
@@ -105,5 +106,5 @@ func (AppModule) ConsensusVersion() uint64 { return 1 }
 
 // ── CLI ─────────────────────────────────────────────────────────────────────
 
-func (AppModule) GetTxCmd() *cobra.Command    { return nil }
-func (AppModule) GetQueryCmd() *cobra.Command  { return nil }
+func (AppModule) GetTxCmd() *cobra.Command    { return cli.GetTxCmd() }
+func (AppModule) GetQueryCmd() *cobra.Command  { return cli.GetQueryCmd() }

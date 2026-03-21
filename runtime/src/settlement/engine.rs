@@ -192,6 +192,11 @@ impl SettlementEngine {
             ObjectOperation::LockBalance { .. } => costs.lock_balance,
             ObjectOperation::UnlockBalance { .. } => costs.unlock_balance,
             ObjectOperation::UpdateVersion { .. } => costs.update_version,
+            ObjectOperation::ContractStateTransition { proposed_state, .. } => {
+                costs.contract_state_write
+                    + costs.constraint_validation_base
+                    + costs.constraint_validation_per_byte * proposed_state.len() as u64
+            }
         }
     }
 
@@ -255,6 +260,37 @@ impl SettlementEngine {
                 store.get(object_id).ok_or_else(|| {
                     RuntimeError::ObjectNotFound(*object_id)
                 })?;
+            }
+            ObjectOperation::ContractStateTransition { contract_id, schema_id, proposed_state } => {
+                // Verify the contract object exists
+                let obj = store.get(contract_id).ok_or_else(|| {
+                    RuntimeError::ObjectNotFound(*contract_id)
+                })?;
+                // Verify it's actually a Contract object type
+                match obj.object_type() {
+                    crate::objects::base::ObjectType::Contract(sid) => {
+                        if sid != *schema_id {
+                            return Err(RuntimeError::ContractConstraintViolation {
+                                schema_id: *schema_id,
+                                reason: "contract object schema_id mismatch".to_string(),
+                            });
+                        }
+                    }
+                    _ => {
+                        return Err(RuntimeError::ContractConstraintViolation {
+                            schema_id: *schema_id,
+                            reason: "target object is not a Contract type".to_string(),
+                        });
+                    }
+                }
+                // Verify proposed state doesn't exceed max — we check via
+                // ContractObject's max_state_bytes. For now validate non-empty.
+                if proposed_state.is_empty() {
+                    return Err(RuntimeError::ContractConstraintViolation {
+                        schema_id: *schema_id,
+                        reason: "proposed_state cannot be empty".to_string(),
+                    });
+                }
             }
         }
         Ok(())
@@ -321,6 +357,31 @@ impl SettlementEngine {
             ObjectOperation::UpdateVersion { object_id } => {
                 // Version increment is handled in the outer loop; just record as affected
                 affected.push(*object_id);
+            }
+            ObjectOperation::ContractStateTransition { contract_id, schema_id: _, proposed_state } => {
+                // Apply the proposed state to the contract object in the
+                // canonical store. The constraint validator has already approved
+                // this transition during plan validation.
+                let obj = store.get_mut(contract_id).ok_or_else(|| {
+                    RuntimeError::ObjectNotFound(*contract_id)
+                })?;
+                // Downcast to ContractObject to call set_state.
+                // The object is stored as a BoxedObject (Box<dyn Object>).
+                // We encode the proposed state into the object's internal bytes.
+                // Since we can't downcast trait objects directly, we update via
+                // a re-serialization approach: read the current encoded form,
+                // deserialize as ContractObject, update state, re-insert.
+                let encoded = obj.encode();
+                if let Ok(mut contract_obj) = bincode::deserialize::<crate::objects::types::ContractObject>(&encoded) {
+                    contract_obj.set_state(proposed_state.clone());
+                    contract_obj.meta.updated_at = contract_obj.meta.updated_at + 1;
+                    store.insert(Box::new(contract_obj));
+                    affected.push(*contract_id);
+                } else {
+                    return Err(RuntimeError::ContractValidatorError(
+                        "failed to deserialize contract object for state update".to_string(),
+                    ));
+                }
             }
         }
         Ok(())
