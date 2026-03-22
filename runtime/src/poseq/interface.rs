@@ -43,7 +43,7 @@ pub struct PoSeqRuntime {
     pub safety: Option<crate::safety::kernel::SafetyKernel>,
     /// Capability registry for per-sender capability resolution.
     /// When set, process_batch resolves capabilities per sender instead of
-    /// granting unrestricted access. When None, falls back to CapabilitySet::all()
+    /// granting unrestricted access. When None, falls back to CapabilitySet::user_default()
     /// with a logged warning.
     pub capability_registry: Option<CapabilityRegistry>,
 }
@@ -113,12 +113,9 @@ impl PoSeqRuntime {
 
         // ── Step 2: resolve each intent → ExecutionPlan ────────────────────
         // When a CapabilityRegistry is attached, resolve per-sender capabilities.
-        // Otherwise fall back to CapabilitySet::all() (scaffold/devnet mode).
+        // Otherwise fall back to user_default (safe default for standard users).
         let fallback_caps = if self.capability_registry.is_none() {
-            // SCAFFOLD(devnet-only): CapabilitySet::all() grants unrestricted
-            // access. This is acceptable ONLY for devnet where the ingestion
-            // path synthesizes placeholder transactions on non-existent objects.
-            Some(CapabilitySet::all())
+            Some(CapabilitySet::user_default())
         } else {
             None
         };
@@ -180,7 +177,7 @@ impl PoSeqRuntime {
 
     /// Attach a capability registry for per-sender capability resolution.
     /// Once attached, process_batch resolves capabilities per sender instead
-    /// of granting unrestricted CapabilitySet::all().
+    /// of granting unrestricted capabilities.
     pub fn with_capability_registry(mut self, registry: CapabilityRegistry) -> Self {
         self.capability_registry = Some(registry);
         self
@@ -415,8 +412,8 @@ impl SolverMarketRuntime {
         let caps = if let Some(ref registry) = self.base.capability_registry {
             registry.resolve(&intent.sender).clone()
         } else {
-            // SCAFFOLD(devnet-only): fallback to unrestricted capabilities
-            CapabilitySet::all()
+            // Fallback to safe default capabilities for standard users
+            CapabilitySet::user_default()
         };
         let exec_plan = IntentResolver::resolve(intent, &self.base.store, &caps)?;
 

@@ -262,37 +262,46 @@ impl IntentTransaction {
         out
     }
 
-    /// Verify the transaction signature.
+    /// Verify the transaction signature using Ed25519.
     ///
-    /// MAINNET_BLOCKER(ed25519): This currently uses a SHA256-based placeholder
-    /// verification scheme. Before mainnet, replace with proper Ed25519
-    /// verification using the `ed25519-dalek` crate:
-    ///   let pubkey = ed25519_dalek::VerifyingKey::from_bytes(&self.sender)?;
-    ///   let sig = ed25519_dalek::Signature::from_bytes(&self.signature);
-    ///   pubkey.verify(&self.signing_payload(), &sig).is_ok()
-    ///
-    /// Current placeholder: signature[0..32] must equal SHA256(payload || sender).
-    /// This proves the signer knew the sender key and intent content, but does NOT
-    /// provide public-key cryptographic authentication.
+    /// The `sender` field is the 32-byte Ed25519 public key. The `signature`
+    /// field is the 64-byte Ed25519 signature over `signing_payload()`.
     pub fn verify_signature(&self) -> bool {
-        let payload = self.signing_payload();
-        let mut h = Sha256::new();
-        h.update(&payload);
-        h.update(&self.sender);
-        let r = h.finalize();
-        let expected: [u8; 32] = {
-            let mut out = [0u8; 32];
-            out.copy_from_slice(&r);
-            out
+        use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+
+        let pubkey = match VerifyingKey::from_bytes(&self.sender) {
+            Ok(k) => k,
+            Err(_) => return false, // invalid public key
         };
-        self.signature[0..32] == expected[..]
+
+        let sig = Signature::from_slice(&self.signature);
+        let sig = match sig {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+
+        let payload = self.signing_payload();
+        pubkey.verify(&payload, &sig).is_ok()
     }
 
-    /// Compute the placeholder signature for this transaction.
+    /// Sign this transaction with an Ed25519 secret key.
     ///
-    /// MAINNET_BLOCKER(ed25519): This produces the SHA256-based placeholder
-    /// signature that `verify_signature` accepts. Replace with real Ed25519
-    /// signing before mainnet.
+    /// The `signing_key` is a 32-byte Ed25519 seed. Returns the 64-byte
+    /// signature. The caller should set `self.signature` to the result.
+    pub fn sign(&self, signing_key: &[u8; 32]) -> [u8; 64] {
+        use ed25519_dalek::{Signer, SigningKey};
+
+        let key = SigningKey::from_bytes(signing_key);
+        let payload = self.signing_payload();
+        let sig = key.sign(&payload);
+        sig.to_bytes()
+    }
+
+    /// Compute a test-only placeholder signature (for backward compatibility
+    /// with tests that don't have real keypairs). Uses SHA256, NOT Ed25519.
+    /// This will NOT pass `verify_signature()` — use only in scaffold tests
+    /// that skip signature verification.
+    #[cfg(test)]
     pub fn compute_placeholder_signature(&self) -> [u8; 64] {
         let payload = self.signing_payload();
         let mut h = Sha256::new();
@@ -301,7 +310,6 @@ impl IntentTransaction {
         let r = h.finalize();
         let mut sig = [0u8; 64];
         sig[0..32].copy_from_slice(&r);
-        // Bytes 32..64 are zero-padded (reserved for Ed25519 upgrade)
         sig
     }
 }

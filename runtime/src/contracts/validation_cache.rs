@@ -16,9 +16,14 @@ use std::collections::BTreeMap;
 
 /// Cache key: deterministic hash of (schema_id, current_state_hash, proposed_state_hash, method)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ValidationCacheKey([u8; 32]);
+pub struct ValidationCacheKey(pub [u8; 32]);
 
 impl ValidationCacheKey {
+    /// Create a cache key from raw bytes.
+    pub fn from_bytes(bytes: [u8; 32]) -> Self {
+        ValidationCacheKey(bytes)
+    }
+
     pub fn compute(
         schema_id: &[u8; 32],
         current_state_hash: &[u8; 32],

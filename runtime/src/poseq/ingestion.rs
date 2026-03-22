@@ -304,7 +304,7 @@ pub struct RuntimeBatchIngester {
     pub mempool: Option<IntentMempool>,
     /// Capability registry for per-sender capability resolution.
     /// When set, used by process_batch (via interface.rs) for capability gating.
-    /// When None, falls back to CapabilitySet::all() (scaffold mode).
+    /// When None, falls back to CapabilitySet::user_default().
     pub capability_registry: Option<CapabilityRegistry>,
     /// When true and mempool is set, use the mempool path for transaction resolution.
     /// When false, always use the scaffold path (devnet compatibility).
@@ -389,9 +389,7 @@ impl RuntimeBatchIngester {
                         }
                     };
 
-                    // (b) Verify signature (placeholder SHA256 scheme)
-                    // MAINNET_BLOCKER(ed25519): Replace with real Ed25519
-                    // verification once ed25519-dalek is added to Cargo.toml.
+                    // (b) Verify Ed25519 signature
                     if !tx.verify_signature() {
                         // Invalid signature — skip this transaction
                         continue;
