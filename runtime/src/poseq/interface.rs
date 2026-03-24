@@ -674,5 +674,78 @@ fn operation_to_plan_action(
                 metadata,
             }
         },
+        ObjectOperation::BindContractBalance { contract_id, balance_id, schema_id, asset_id, label } => {
+            let mut metadata = BTreeMap::new();
+            metadata.insert("balance_id".to_string(), hex::encode(balance_id.0));
+            metadata.insert("schema_id".to_string(), hex::encode(schema_id));
+            metadata.insert("asset_id".to_string(), hex::encode(asset_id));
+            metadata.insert("label".to_string(), label.clone());
+            PlanAction {
+                action_type: PlanActionType::Custom("bind_contract_balance".to_string()),
+                target_object: *contract_id,
+                amount: None,
+                metadata,
+            }
+        },
+        ObjectOperation::CreateToken { creator_contract, mint_authority_schema, symbol, decimals, initial_supply, max_supply } => {
+            let mut metadata = BTreeMap::new();
+            metadata.insert("mint_authority_schema".to_string(), hex::encode(mint_authority_schema));
+            metadata.insert("symbol".to_string(), symbol.clone());
+            metadata.insert("decimals".to_string(), decimals.to_string());
+            if let Some(max) = max_supply {
+                metadata.insert("max_supply".to_string(), max.to_string());
+            }
+            PlanAction {
+                action_type: PlanActionType::Custom("create_token".to_string()),
+                target_object: *creator_contract,
+                amount: Some(*initial_supply),
+                metadata,
+            }
+        },
+        ObjectOperation::EmitContractEvent { contract_id, schema_id, event_type, indexed, data } => {
+            let mut metadata = BTreeMap::new();
+            metadata.insert("schema_id".to_string(), hex::encode(schema_id));
+            metadata.insert("event_type".to_string(), event_type.clone());
+            metadata.insert("data".to_string(), hex::encode(data));
+            for (k, v) in indexed {
+                metadata.insert(format!("idx_{}", k), v.clone());
+            }
+            PlanAction {
+                action_type: PlanActionType::Custom("emit_event".to_string()),
+                target_object: *contract_id,
+                amount: None,
+                metadata,
+            }
+        },
+        ObjectOperation::IBCTransfer { source_contract, channel_id, port_id, denom, amount, receiver, timeout_secs } => {
+            let mut metadata = BTreeMap::new();
+            metadata.insert("channel_id".to_string(), channel_id.clone());
+            metadata.insert("port_id".to_string(), port_id.clone());
+            metadata.insert("denom".to_string(), denom.clone());
+            metadata.insert("receiver".to_string(), receiver.clone());
+            metadata.insert("timeout_secs".to_string(), timeout_secs.to_string());
+            PlanAction {
+                action_type: PlanActionType::Custom("ibc_transfer".to_string()),
+                target_object: *source_contract,
+                amount: Some(*amount),
+                metadata,
+            }
+        },
+        ObjectOperation::ScheduleExecution { contract_id, schema_id, method, params, execute_at_epoch, recurring, interval_epochs, max_recurrences } => {
+            let mut metadata = BTreeMap::new();
+            metadata.insert("schema_id".to_string(), hex::encode(schema_id));
+            metadata.insert("method".to_string(), method.clone());
+            metadata.insert("params".to_string(), hex::encode(params));
+            metadata.insert("execute_at_epoch".to_string(), execute_at_epoch.to_string());
+            metadata.insert("recurring".to_string(), recurring.to_string());
+            metadata.insert("interval_epochs".to_string(), interval_epochs.to_string());
+            metadata.insert("max_recurrences".to_string(), max_recurrences.to_string());
+            PlanAction {
+                action_type: PlanActionType::Custom("schedule_execution".to_string()),
+                target_object: *contract_id,
+                amount: None,
+                metadata,
+            }
+        },
     }
 }

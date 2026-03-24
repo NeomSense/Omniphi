@@ -26,6 +26,53 @@ pub enum ObjectOperation {
         schema_id: [u8; 32],
         proposed_state: Vec<u8>,
     },
+    /// Bind a balance to a contract (contract-held balances).
+    /// After binding, debits on this balance require the contract's validator approval.
+    BindContractBalance {
+        contract_id: ObjectId,
+        balance_id: ObjectId,
+        schema_id: [u8; 32],
+        asset_id: [u8; 32],
+        label: String,
+    },
+    /// Create a new token via a contract (token factory).
+    CreateToken {
+        creator_contract: ObjectId,
+        mint_authority_schema: [u8; 32],
+        symbol: String,
+        decimals: u8,
+        initial_supply: u128,
+        max_supply: Option<u128>,
+    },
+    /// Emit an event from a contract settlement (event emission).
+    EmitContractEvent {
+        contract_id: ObjectId,
+        schema_id: [u8; 32],
+        event_type: String,
+        indexed: std::collections::BTreeMap<String, String>,
+        data: Vec<u8>,
+    },
+    /// Request an IBC transfer from a contract (IBC hooks).
+    IBCTransfer {
+        source_contract: ObjectId,
+        channel_id: String,
+        port_id: String,
+        denom: String,
+        amount: u128,
+        receiver: String,
+        timeout_secs: u64,
+    },
+    /// Schedule a future contract execution (scheduled execution).
+    ScheduleExecution {
+        contract_id: ObjectId,
+        schema_id: [u8; 32],
+        method: String,
+        params: Vec<u8>,
+        execute_at_epoch: u64,
+        recurring: bool,
+        interval_epochs: u64,
+        max_recurrences: u64,
+    },
 }
 
 /// The resolved execution plan for a single intent transaction.
@@ -104,6 +151,13 @@ fn estimate_gas(ops: &[ObjectOperation], costs: &GasCosts) -> u64 {
                     + costs.constraint_validation_base
                     + costs.constraint_validation_per_byte * proposed_state.len() as u64
             }
+            ObjectOperation::BindContractBalance { .. } => costs.bind_contract_balance,
+            ObjectOperation::CreateToken { .. } => costs.create_token,
+            ObjectOperation::EmitContractEvent { data, .. } => {
+                costs.emit_event + costs.constraint_validation_per_byte * data.len() as u64
+            }
+            ObjectOperation::IBCTransfer { .. } => costs.ibc_transfer,
+            ObjectOperation::ScheduleExecution { .. } => costs.schedule_execution,
         };
         total = total.saturating_add(cost);
     }

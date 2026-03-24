@@ -197,6 +197,13 @@ impl SettlementEngine {
                     + costs.constraint_validation_base
                     + costs.constraint_validation_per_byte * proposed_state.len() as u64
             }
+            ObjectOperation::BindContractBalance { .. } => costs.bind_contract_balance,
+            ObjectOperation::CreateToken { .. } => costs.create_token,
+            ObjectOperation::EmitContractEvent { data, .. } => {
+                costs.emit_event + costs.constraint_validation_per_byte * data.len() as u64
+            }
+            ObjectOperation::IBCTransfer { .. } => costs.ibc_transfer,
+            ObjectOperation::ScheduleExecution { .. } => costs.schedule_execution,
         }
     }
 
@@ -305,6 +312,65 @@ impl SettlementEngine {
                     }
                 }
             }
+            ObjectOperation::BindContractBalance { contract_id, balance_id, schema_id, .. } => {
+                // Verify both contract and balance exist
+                store.get(contract_id).ok_or_else(|| RuntimeError::ObjectNotFound(*contract_id))?;
+                store.get(balance_id).ok_or_else(|| RuntimeError::ObjectNotFound(*balance_id))?;
+                // Verify contract has correct schema
+                let obj = store.get(contract_id).unwrap();
+                match obj.object_type() {
+                    crate::objects::base::ObjectType::Contract(sid) if sid == *schema_id => {}
+                    _ => return Err(RuntimeError::ContractConstraintViolation {
+                        schema_id: *schema_id,
+                        reason: "bind target is not a contract with matching schema".to_string(),
+                    }),
+                }
+            }
+            ObjectOperation::CreateToken { symbol, decimals, initial_supply, max_supply, .. } => {
+                if symbol.is_empty() || symbol.len() > 12 {
+                    return Err(RuntimeError::ConstraintViolation("symbol must be 1-12 chars".to_string()));
+                }
+                if *decimals > 18 {
+                    return Err(RuntimeError::ConstraintViolation("decimals must be <= 18".to_string()));
+                }
+                if let Some(max) = max_supply {
+                    if *initial_supply > *max {
+                        return Err(RuntimeError::ConstraintViolation("initial_supply > max_supply".to_string()));
+                    }
+                }
+            }
+            ObjectOperation::EmitContractEvent { contract_id, schema_id, data, .. } => {
+                // Verify the contract exists and matches schema
+                let obj = store.get(contract_id).ok_or_else(|| RuntimeError::ObjectNotFound(*contract_id))?;
+                match obj.object_type() {
+                    crate::objects::base::ObjectType::Contract(sid) if sid == *schema_id => {}
+                    _ => return Err(RuntimeError::ContractConstraintViolation {
+                        schema_id: *schema_id,
+                        reason: "event source is not a valid contract".to_string(),
+                    }),
+                }
+                if data.len() > 65536 {
+                    return Err(RuntimeError::ConstraintViolation("event data exceeds 64KB".to_string()));
+                }
+            }
+            ObjectOperation::IBCTransfer { source_contract, denom, amount, receiver, .. } => {
+                store.get(source_contract).ok_or_else(|| RuntimeError::ObjectNotFound(*source_contract))?;
+                if denom.is_empty() {
+                    return Err(RuntimeError::ConstraintViolation("IBC denom cannot be empty".to_string()));
+                }
+                if *amount == 0 {
+                    return Err(RuntimeError::ConstraintViolation("IBC amount must be > 0".to_string()));
+                }
+                if receiver.is_empty() {
+                    return Err(RuntimeError::ConstraintViolation("IBC receiver cannot be empty".to_string()));
+                }
+            }
+            ObjectOperation::ScheduleExecution { contract_id, execute_at_epoch, .. } => {
+                store.get(contract_id).ok_or_else(|| RuntimeError::ObjectNotFound(*contract_id))?;
+                if *execute_at_epoch == 0 {
+                    return Err(RuntimeError::ConstraintViolation("execute_at_epoch must be > 0".to_string()));
+                }
+            }
         }
         Ok(())
     }
@@ -372,18 +438,9 @@ impl SettlementEngine {
                 affected.push(*object_id);
             }
             ObjectOperation::ContractStateTransition { contract_id, schema_id: _, proposed_state } => {
-                // Apply the proposed state to the contract object in the
-                // canonical store. The constraint validator has already approved
-                // this transition during plan validation.
                 let obj = store.get_mut(contract_id).ok_or_else(|| {
                     RuntimeError::ObjectNotFound(*contract_id)
                 })?;
-                // Downcast to ContractObject to call set_state.
-                // The object is stored as a BoxedObject (Box<dyn Object>).
-                // We encode the proposed state into the object's internal bytes.
-                // Since we can't downcast trait objects directly, we update via
-                // a re-serialization approach: read the current encoded form,
-                // deserialize as ContractObject, update state, re-insert.
                 let encoded = obj.encode();
                 if let Ok(mut contract_obj) = bincode::deserialize::<crate::objects::types::ContractObject>(&encoded) {
                     contract_obj.set_state(proposed_state.clone());
@@ -395,6 +452,57 @@ impl SettlementEngine {
                         "failed to deserialize contract object for state update".to_string(),
                     ));
                 }
+            }
+            ObjectOperation::BindContractBalance { balance_id, .. } => {
+                // Binding is tracked in the ContractBalanceRegistry (external to store).
+                // The settlement engine records the balance as affected so its version
+                // increments, signaling the binding to downstream observers.
+                affected.push(*balance_id);
+            }
+            ObjectOperation::CreateToken { creator_contract, mint_authority_schema, symbol, decimals, initial_supply, max_supply } => {
+                // Create a new TokenObject in the store.
+                use crate::objects::types::TokenObject;
+                let req = crate::contracts::advanced::TokenCreationRequest {
+                    creator_contract: *creator_contract,
+                    mint_authority_schema: *mint_authority_schema,
+                    symbol: symbol.clone(),
+                    decimals: *decimals,
+                    initial_supply: *initial_supply,
+                    max_supply: *max_supply,
+                    metadata: std::collections::BTreeMap::new(),
+                };
+                let asset_id = req.compute_asset_id();
+                let token_obj_id = ObjectId(asset_id);
+
+                let mut token = TokenObject::new(
+                    token_obj_id,
+                    creator_contract.0,
+                    asset_id,
+                    symbol.clone(),
+                    *decimals,
+                    *initial_supply,
+                    0,
+                );
+                token.max_supply = *max_supply;
+                token.mint_authority = Some(creator_contract.0);
+                store.insert(Box::new(token));
+                affected.push(token_obj_id);
+                affected.push(*creator_contract);
+            }
+            ObjectOperation::EmitContractEvent { contract_id, .. } => {
+                // Events are collected in the receipt, not applied to store state.
+                // The settlement engine caller extracts events from the operation list.
+                // We record the contract as affected for version tracking.
+                affected.push(*contract_id);
+            }
+            ObjectOperation::IBCTransfer { source_contract, .. } => {
+                // IBC transfers are collected as hooks and forwarded to the Go chain.
+                // No direct state mutation — the Go chain handles escrow.
+                affected.push(*source_contract);
+            }
+            ObjectOperation::ScheduleExecution { contract_id, .. } => {
+                // Schedules are registered in the ScheduleRegistry (external to store).
+                affected.push(*contract_id);
             }
         }
         Ok(())

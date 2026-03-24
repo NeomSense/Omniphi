@@ -23,6 +23,16 @@ pub struct GasCosts {
     pub constraint_validation_base: u64,
     /// Per-byte gas for data passed to/from the constraint validator.
     pub constraint_validation_per_byte: u64,
+    /// Gas for binding a balance to a contract.
+    pub bind_contract_balance: u64,
+    /// Gas for creating a new token (token factory).
+    pub create_token: u64,
+    /// Gas for emitting a contract event.
+    pub emit_event: u64,
+    /// Gas for requesting an IBC transfer.
+    pub ibc_transfer: u64,
+    /// Gas for scheduling a future execution.
+    pub schedule_execution: u64,
 }
 
 impl GasCosts {
@@ -43,6 +53,11 @@ impl GasCosts {
             contract_state_write: 1_000,
             constraint_validation_base: 5_000,
             constraint_validation_per_byte: 5,
+            bind_contract_balance: 2_000,
+            create_token: 10_000,
+            emit_event: 500,
+            ibc_transfer: 5_000,
+            schedule_execution: 3_000,
         }
     }
 }
