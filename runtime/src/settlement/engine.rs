@@ -283,13 +283,26 @@ impl SettlementEngine {
                         });
                     }
                 }
-                // Verify proposed state doesn't exceed max — we check via
-                // ContractObject's max_state_bytes. For now validate non-empty.
+                // Verify proposed state is non-empty
                 if proposed_state.is_empty() {
                     return Err(RuntimeError::ContractConstraintViolation {
                         schema_id: *schema_id,
                         reason: "proposed_state cannot be empty".to_string(),
                     });
+                }
+                // Verify proposed state doesn't exceed max_state_bytes
+                let encoded = obj.encode();
+                if let Ok(contract_obj) = bincode::deserialize::<crate::objects::types::ContractObject>(&encoded) {
+                    if contract_obj.max_state_bytes > 0 && proposed_state.len() as u64 > contract_obj.max_state_bytes {
+                        return Err(RuntimeError::ContractConstraintViolation {
+                            schema_id: *schema_id,
+                            reason: format!(
+                                "proposed state {} bytes exceeds max_state_bytes {}",
+                                proposed_state.len(),
+                                contract_obj.max_state_bytes,
+                            ),
+                        });
+                    }
                 }
             }
         }

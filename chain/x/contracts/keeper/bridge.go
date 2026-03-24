@@ -2,16 +2,184 @@ package keeper
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	storetypes "cosmossdk.io/store/types"
 
 	"pos/x/contracts/types"
 )
+
+// BridgeValidationRequest is the JSON schema read from the validation_requests dir.
+type BridgeValidationRequest struct {
+	RequestID     string `json:"request_id"`
+	SchemaID      string `json:"schema_id"`
+	Method        string `json:"method"`
+	CurrentState  string `json:"current_state"`
+	ProposedState string `json:"proposed_state"`
+	Sender        string `json:"sender"`
+	Epoch         uint64 `json:"epoch"`
+}
+
+// BridgeValidationResponse is the JSON schema written to the validation_responses dir.
+type BridgeValidationResponse struct {
+	RequestID string `json:"request_id"`
+	Valid     bool   `json:"valid"`
+	Reason    string `json:"reason"`
+	GasUsed   uint64 `json:"gas_used"`
+}
+
+// ProcessValidationRequests polls the validation_requests directory, validates each
+// request against stored schema + Wasm, and writes responses. Called from EndBlocker.
+func (k Keeper) ProcessValidationRequests(ctx context.Context) int {
+	if k.bridgeDir == "" {
+		return 0
+	}
+
+	requestDir := filepath.Join(k.bridgeDir, "validation_requests")
+	responseDir := filepath.Join(k.bridgeDir, "validation_responses")
+
+	if err := os.MkdirAll(responseDir, 0o755); err != nil {
+		k.logger.Error("contracts.bridge: failed to create response dir", "error", err)
+		return 0
+	}
+
+	entries, err := os.ReadDir(requestDir)
+	if err != nil {
+		return 0
+	}
+
+	processed := 0
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+
+		reqPath := filepath.Join(requestDir, entry.Name())
+		data, err := os.ReadFile(reqPath)
+		if err != nil {
+			continue
+		}
+
+		var req BridgeValidationRequest
+		if err := json.Unmarshal(data, &req); err != nil {
+			_ = os.Remove(reqPath)
+			continue
+		}
+
+		resp := k.validateConstraintBridge(ctx, req)
+
+		respData, _ := json.Marshal(resp)
+		respPath := filepath.Join(responseDir, entry.Name())
+		if err := os.WriteFile(respPath, respData, 0o644); err != nil {
+			continue
+		}
+
+		_ = os.Remove(reqPath)
+		processed++
+
+		k.logger.Info("contracts.bridge: validated",
+			"request_id", req.RequestID,
+			"method", req.Method,
+			"valid", resp.Valid,
+		)
+	}
+
+	if processed > 0 {
+		sdkCtx := sdk.UnwrapSDKContext(ctx)
+		sdkCtx.EventManager().EmitEvent(sdk.NewEvent(
+			"contract_validations_processed",
+			sdk.NewAttribute("count", fmt.Sprintf("%d", processed)),
+		))
+	}
+
+	return processed
+}
+
+// validateConstraintBridge validates a constraint against stored schema and Wasm.
+func (k Keeper) validateConstraintBridge(ctx context.Context, req BridgeValidationRequest) BridgeValidationResponse {
+	schemaBytes, err := hex.DecodeString(req.SchemaID)
+	if err != nil || len(schemaBytes) != 32 {
+		return BridgeValidationResponse{RequestID: req.RequestID, Valid: false, Reason: "invalid schema_id"}
+	}
+	var schemaID [32]byte
+	copy(schemaID[:], schemaBytes)
+
+	schema, exists := k.GetSchema(ctx, schemaID)
+	if !exists {
+		return BridgeValidationResponse{RequestID: req.RequestID, Valid: false, Reason: "schema not found"}
+	}
+	if schema.Status != "ACTIVE" {
+		return BridgeValidationResponse{RequestID: req.RequestID, Valid: false, Reason: "schema not active"}
+	}
+
+	// Validate method
+	methodOK := false
+	for _, is := range schema.IntentSchemas {
+		if is.Method == req.Method {
+			methodOK = true
+			break
+		}
+	}
+	if !methodOK {
+		return BridgeValidationResponse{RequestID: req.RequestID, Valid: false, Reason: "method not in schema", GasUsed: 100}
+	}
+
+	// Validate state size
+	proposedState, err := hex.DecodeString(req.ProposedState)
+	if err != nil {
+		return BridgeValidationResponse{RequestID: req.RequestID, Valid: false, Reason: "invalid proposed_state hex"}
+	}
+	if uint64(len(proposedState)) > schema.MaxStateBytes {
+		return BridgeValidationResponse{RequestID: req.RequestID, Valid: false, Reason: "state exceeds max", GasUsed: 100}
+	}
+
+	// Verify Wasm
+	wasmBytes, wasmExists := k.GetWasm(ctx, schemaID)
+	if !wasmExists || len(wasmBytes) == 0 {
+		return BridgeValidationResponse{RequestID: req.RequestID, Valid: true, Reason: "structural only (no wasm)", GasUsed: 200}
+	}
+	wasmHash := sha256.Sum256(wasmBytes)
+	if hex.EncodeToString(wasmHash[:]) != schema.ValidatorHash {
+		return BridgeValidationResponse{RequestID: req.RequestID, Valid: false, Reason: "wasm hash mismatch"}
+	}
+
+	// Invoke Wasm if validator attached
+	if k.wasmValidator != nil {
+		if !k.wasmValidator.IsCompiled(schemaID) {
+			if _, err := k.wasmValidator.CompileAndCache(ctx, schemaID, wasmBytes); err != nil {
+				return BridgeValidationResponse{RequestID: req.RequestID, Valid: false, Reason: fmt.Sprintf("compile error: %v", err)}
+			}
+		}
+		currentState, _ := hex.DecodeString(req.CurrentState)
+		senderBz, _ := hex.DecodeString(req.Sender)
+		var sender [32]byte
+		if len(senderBz) == 32 {
+			copy(sender[:], senderBz)
+		}
+		result, err := k.wasmValidator.Validate(ctx, schemaID, proposedState, currentState, nil, req.Epoch, sender)
+		if err != nil {
+			return BridgeValidationResponse{RequestID: req.RequestID, Valid: false, Reason: fmt.Sprintf("wasm error: %v", err), GasUsed: 500}
+		}
+		gas := uint64(500) + uint64(len(proposedState))
+		if gas > schema.MaxGasPerCall {
+			gas = schema.MaxGasPerCall
+		}
+		return BridgeValidationResponse{RequestID: req.RequestID, Valid: result.Valid, Reason: result.Reason, GasUsed: gas}
+	}
+
+	gas := uint64(500) + uint64(len(proposedState))
+	if gas > schema.MaxGasPerCall {
+		gas = schema.MaxGasPerCall
+	}
+	return BridgeValidationResponse{RequestID: req.RequestID, Valid: true, Reason: "validated: structural + wasm hash", GasUsed: gas}
+}
 
 // ExportSchemasToDir writes all active contract schemas to JSON files in the
 // specified directory. PoSeq nodes poll this directory to import schemas.

@@ -554,7 +554,7 @@ fn candidate_plan_to_execution_plan(plan: &CandidatePlan) -> ExecutionPlan {
 }
 
 /// Convert a `CandidatePlan` `PlanAction` to an `ObjectOperation`.
-fn plan_action_to_operation(
+pub fn plan_action_to_operation(
     action: &crate::solver_market::market::PlanAction,
 ) -> ObjectOperation {
     use crate::solver_market::market::PlanActionType;

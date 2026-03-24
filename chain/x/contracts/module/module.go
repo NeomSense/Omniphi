@@ -1,6 +1,7 @@
 package module
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -21,9 +22,10 @@ import (
 )
 
 var (
-	_ module.AppModuleBasic = AppModule{}
-	_ module.HasGenesis     = AppModule{}
-	_ appmodule.AppModule   = AppModule{}
+	_ module.AppModuleBasic  = AppModule{}
+	_ module.HasGenesis      = AppModule{}
+	_ appmodule.AppModule    = AppModule{}
+	_ appmodule.HasEndBlocker = AppModule{}
 )
 
 // AppModule implements the Cosmos SDK AppModule interface for x/contracts.
@@ -94,6 +96,14 @@ func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.Raw
 		panic(fmt.Sprintf("failed to marshal contracts genesis: %v", err))
 	}
 	return bz
+}
+
+// ── EndBlocker ──────────────────────────────────────────────────────────────
+
+func (am AppModule) EndBlock(ctx context.Context) error {
+	// Process any pending contract validation requests from the bridge
+	am.keeper.ProcessValidationRequests(ctx)
+	return nil
 }
 
 // ── Services ────────────────────────────────────────────────────────────────

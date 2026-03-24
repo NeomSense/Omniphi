@@ -3,6 +3,7 @@
 //! To build a custom solver, implement the `SolverStrategy` trait.
 
 pub mod simple_transfer;
+pub mod contract_call;
 
 use omniphi_poseq::auction::types::{BundleCommitment, BundleReveal, ExecutionStep};
 

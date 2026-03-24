@@ -16,9 +16,11 @@ import (
 
 // Keeper manages the x/contracts module state.
 type Keeper struct {
-	storeService store.KVStoreService
-	logger       log.Logger
-	authority    string
+	storeService   store.KVStoreService
+	logger         log.Logger
+	authority      string
+	wasmValidator  *WasmValidator
+	bridgeDir      string // path to bridge directory for validation request/response exchange
 }
 
 func NewKeeper(
@@ -27,10 +29,27 @@ func NewKeeper(
 	authority string,
 ) Keeper {
 	return Keeper{
-		storeService: storeService,
-		logger:       logger,
-		authority:    authority,
+		storeService:  storeService,
+		logger:        logger,
+		authority:     authority,
+		wasmValidator: nil,
+		bridgeDir:     "",
 	}
+}
+
+// SetWasmValidator attaches a Wasm constraint validator to the keeper.
+func (k *Keeper) SetWasmValidator(wv *WasmValidator) {
+	k.wasmValidator = wv
+}
+
+// SetBridgeDir sets the path to the bridge directory for validation exchange.
+func (k *Keeper) SetBridgeDir(dir string) {
+	k.bridgeDir = dir
+}
+
+// GetBridgeDir returns the configured bridge directory.
+func (k Keeper) GetBridgeDir() string {
+	return k.bridgeDir
 }
 
 func (k Keeper) GetAuthority() string { return k.authority }

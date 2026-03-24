@@ -65,6 +65,8 @@ pub enum OperationType {
     Create,
     Destroy,
     Transfer,
+    /// Contract state transition — custom_data carries schema_id, method, proposed_state.
+    ContractCall,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
