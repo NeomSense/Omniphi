@@ -230,6 +230,7 @@ mod tests {
             version_transitions: vec![(ObjectId::new([10u8; 32]), 1, 2)],
             error: None,
             gas_used: 5000,
+            events: vec![],
         }
     }
 

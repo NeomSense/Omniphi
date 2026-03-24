@@ -84,6 +84,7 @@ mod tests {
             version_transitions: vec![],
             error: None,
             gas_used: 1000,
+            events: vec![],
         }
     }
 

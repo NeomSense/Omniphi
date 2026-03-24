@@ -313,11 +313,15 @@ mod tests {
             succeeded: 2,
             failed: 1,
             receipts: vec![
-                ExecutionReceipt { tx_id: [1u8; 32], success: true, affected_objects: vec![], version_transitions: vec![], error: None, gas_used: 1000 },
-                ExecutionReceipt { tx_id: [2u8; 32], success: true, affected_objects: vec![], version_transitions: vec![], error: None, gas_used: 2000 },
-                ExecutionReceipt { tx_id: [3u8; 32], success: false, affected_objects: vec![], version_transitions: vec![], error: Some("fail".into()), gas_used: 500 },
+                ExecutionReceipt { tx_id: [1u8; 32], success: true, affected_objects: vec![], version_transitions: vec![], error: None, gas_used: 1000, events: vec![] },
+                ExecutionReceipt { tx_id: [2u8; 32], success: true, affected_objects: vec![], version_transitions: vec![], error: None, gas_used: 2000, events: vec![] },
+                ExecutionReceipt { tx_id: [3u8; 32], success: false, affected_objects: vec![], version_transitions: vec![], error: Some("fail".into()), gas_used: 500, events: vec![] },
             ],
             state_root: [0xDD; 32],
+            ibc_hooks: vec![],
+            schedules: vec![],
+            balance_bindings: vec![],
+            all_events: vec![],
         };
 
         let result = ChainSettlementResult::from_base(&base, [0xAA; 32], [0xBB; 32], 1);

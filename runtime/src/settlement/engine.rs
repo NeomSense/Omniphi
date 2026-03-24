@@ -16,6 +16,8 @@ pub struct ExecutionReceipt {
     pub version_transitions: Vec<(ObjectId, ObjectVersion, ObjectVersion)>,
     pub error: Option<String>,
     pub gas_used: u64,
+    /// Events emitted by contract operations in this plan.
+    pub events: Vec<crate::contracts::advanced::ContractEvent>,
 }
 
 /// Aggregate result of executing all groups in an epoch.
@@ -28,6 +30,21 @@ pub struct SettlementResult {
     pub receipts: Vec<ExecutionReceipt>,
     /// Deterministic SHA256 of resulting store state.
     pub state_root: [u8; 32],
+    /// IBC transfer hooks collected during execution (forwarded to Go chain).
+    pub ibc_hooks: Vec<crate::contracts::advanced::IBCHook>,
+    /// Schedules registered during execution (added to ScheduleRegistry).
+    pub schedules: Vec<crate::contracts::advanced::ScheduledExecution>,
+    /// Balance bindings created during execution.
+    pub balance_bindings: Vec<crate::contracts::advanced::ContractBalance>,
+    /// All events across all plans (flattened for easy indexing).
+    pub all_events: Vec<crate::contracts::advanced::ContractEvent>,
+}
+
+/// Side effects collected from a single plan execution.
+struct PlanSideEffects {
+    ibc_hooks: Vec<crate::contracts::advanced::IBCHook>,
+    schedules: Vec<crate::contracts::advanced::ScheduledExecution>,
+    bindings: Vec<crate::contracts::advanced::ContractBalance>,
 }
 
 pub struct SettlementEngine;
@@ -47,18 +64,26 @@ impl SettlementEngine {
         let mut failed = 0usize;
         let total_plans: usize = groups.iter().map(|g| g.plans.len()).collect::<Vec<_>>().iter().sum();
 
+        // Aggregate side-effect collectors across all plans
+        let mut all_ibc_hooks: Vec<crate::contracts::advanced::IBCHook> = Vec::new();
+        let mut all_schedules: Vec<crate::contracts::advanced::ScheduledExecution> = Vec::new();
+        let mut all_bindings: Vec<crate::contracts::advanced::ContractBalance> = Vec::new();
+        let mut all_events: Vec<crate::contracts::advanced::ContractEvent> = Vec::new();
+
         // Groups must be executed in strictly ascending order
         let mut sorted_groups = groups;
         sorted_groups.sort_by_key(|g| g.group_index);
 
         for group in sorted_groups {
-            // Within a group, plans are conflict-free, but we must still apply
-            // them to a shared mutable store — so we execute sequentially and
-            // accumulate receipts.
             for plan in &group.plans {
-                let receipt = Self::apply_plan(plan, store);
+                let (receipt, side_effects) = Self::apply_plan_with_effects(plan, store, epoch);
                 if receipt.success {
                     succeeded += 1;
+                    // Only collect side effects from successful plans
+                    all_ibc_hooks.extend(side_effects.ibc_hooks);
+                    all_schedules.extend(side_effects.schedules);
+                    all_bindings.extend(side_effects.bindings);
+                    all_events.extend(receipt.events.clone());
                 } else {
                     failed += 1;
                 }
@@ -77,6 +102,10 @@ impl SettlementEngine {
             failed,
             receipts,
             state_root,
+            ibc_hooks: all_ibc_hooks,
+            schedules: all_schedules,
+            balance_bindings: all_bindings,
+            all_events,
         }
     }
 
@@ -167,7 +196,8 @@ impl SettlementEngine {
             version_transitions,
             error: None,
             gas_used: meter.consumed,
-        }) 
+            events: Vec::new(),
+        })
         };
 
         match execute_logic(&mut meter) {
@@ -178,9 +208,101 @@ impl SettlementEngine {
                 affected_objects: vec![],
                 version_transitions: vec![],
                 error: Some(e.to_string()),
-                gas_used: meter.consumed, // Capture actual gas used up to failure
+                gas_used: meter.consumed,
+                events: Vec::new(),
             },
         }
+    }
+
+    /// Applies a plan and collects side effects (events, IBC hooks, schedules, bindings).
+    fn apply_plan_with_effects(
+        plan: &ExecutionPlan,
+        store: &mut ObjectStore,
+        epoch: u64,
+    ) -> (ExecutionReceipt, PlanSideEffects) {
+        use crate::contracts::advanced::{ContractBalance, ContractEvent, IBCAction, IBCHook, ScheduledExecution};
+        use crate::resolution::planner::ObjectOperation;
+
+        let mut receipt = Self::apply_plan(plan, store);
+        let mut side_effects = PlanSideEffects {
+            ibc_hooks: Vec::new(),
+            schedules: Vec::new(),
+            bindings: Vec::new(),
+        };
+
+        if !receipt.success {
+            return (receipt, side_effects);
+        }
+
+        // Extract side effects from the operations of this plan.
+        // These were already validated and applied; now we collect the artifacts.
+        for op in &plan.operations {
+            match op {
+                ObjectOperation::EmitContractEvent { contract_id, schema_id, event_type, indexed, data } => {
+                    receipt.events.push(ContractEvent {
+                        contract_id: *contract_id,
+                        schema_id: *schema_id,
+                        event_type: event_type.clone(),
+                        indexed: indexed.clone(),
+                        data: data.clone(),
+                        epoch,
+                    });
+                }
+                ObjectOperation::IBCTransfer { source_contract, channel_id, port_id, denom, amount, receiver, timeout_secs } => {
+                    side_effects.ibc_hooks.push(IBCHook {
+                        source_contract: *source_contract,
+                        channel_id: channel_id.clone(),
+                        port_id: port_id.clone(),
+                        action: IBCAction::Transfer {
+                            denom: denom.clone(),
+                            amount: *amount,
+                            receiver: receiver.clone(),
+                        },
+                        timeout_secs: *timeout_secs,
+                    });
+                }
+                ObjectOperation::ScheduleExecution { contract_id, schema_id, method, params, execute_at_epoch, recurring, interval_epochs, max_recurrences } => {
+                    let schedule_id = ScheduledExecution::compute_id(contract_id, method, *execute_at_epoch);
+                    side_effects.schedules.push(ScheduledExecution {
+                        schedule_id,
+                        contract_id: *contract_id,
+                        schema_id: *schema_id,
+                        method: method.clone(),
+                        params: params.clone(),
+                        execute_at_epoch: *execute_at_epoch,
+                        recurring: *recurring,
+                        interval_epochs: *interval_epochs,
+                        max_recurrences: *max_recurrences,
+                        executed_count: 0,
+                        active: true,
+                    });
+                }
+                ObjectOperation::BindContractBalance { contract_id, balance_id, schema_id, asset_id, label } => {
+                    // Create a new BalanceObject for the contract if it doesn't exist
+                    if store.get(balance_id).is_none() {
+                        use crate::objects::types::BalanceObject;
+                        let balance = BalanceObject::new(
+                            *balance_id,
+                            contract_id.0, // owner = the contract
+                            *asset_id,
+                            0,             // initial amount = 0
+                            epoch,         // creation timestamp
+                        );
+                        store.insert(Box::new(balance));
+                    }
+                    side_effects.bindings.push(ContractBalance::new(
+                        *contract_id,
+                        *balance_id,
+                        *schema_id,
+                        *asset_id,
+                        label,
+                    ));
+                }
+                _ => {} // Other operations already applied in apply_op
+            }
+        }
+
+        (receipt, side_effects)
     }
 
     /// Returns the gas cost for a single operation (used in pre-flight metering).
