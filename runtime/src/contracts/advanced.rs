@@ -656,6 +656,575 @@ pub struct ExtendedValidationContext {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 9. TOKEN ALLOWANCES (ERC-20 approve/transferFrom equivalent)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// An allowance granting `spender` the right to debit up to `remaining`
+/// units of `asset_id` from `owner`'s balance.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Allowance {
+    pub owner: [u8; 32],
+    pub spender: [u8; 32],
+    pub asset_id: [u8; 32],
+    pub remaining: u128,
+}
+
+/// Registry of token allowances.
+#[derive(Debug, Clone, Default)]
+pub struct AllowanceRegistry {
+    /// Key: (owner, spender, asset_id) → Allowance
+    entries: BTreeMap<([u8; 32], [u8; 32], [u8; 32]), Allowance>,
+}
+
+impl AllowanceRegistry {
+    pub fn new() -> Self { AllowanceRegistry { entries: BTreeMap::new() } }
+
+    /// Set or replace an allowance. Setting to 0 revokes.
+    pub fn approve(&mut self, owner: [u8; 32], spender: [u8; 32], asset_id: [u8; 32], amount: u128) {
+        let key = (owner, spender, asset_id);
+        if amount == 0 {
+            self.entries.remove(&key);
+        } else {
+            self.entries.insert(key, Allowance { owner, spender, asset_id, remaining: amount });
+        }
+    }
+
+    /// Check the remaining allowance.
+    pub fn allowance(&self, owner: &[u8; 32], spender: &[u8; 32], asset_id: &[u8; 32]) -> u128 {
+        self.entries.get(&(*owner, *spender, *asset_id)).map(|a| a.remaining).unwrap_or(0)
+    }
+
+    /// Spend from an allowance. Returns Err if insufficient.
+    pub fn spend(&mut self, owner: &[u8; 32], spender: &[u8; 32], asset_id: &[u8; 32], amount: u128) -> Result<(), String> {
+        let key = (*owner, *spender, *asset_id);
+        let entry = self.entries.get_mut(&key)
+            .ok_or_else(|| "no allowance set".to_string())?;
+        if entry.remaining < amount {
+            return Err(format!("allowance {} < requested {}", entry.remaining, amount));
+        }
+        entry.remaining -= amount;
+        if entry.remaining == 0 {
+            self.entries.remove(&key);
+        }
+        Ok(())
+    }
+
+    /// Increase an existing allowance.
+    pub fn increase(&mut self, owner: [u8; 32], spender: [u8; 32], asset_id: [u8; 32], amount: u128) {
+        let key = (owner, spender, asset_id);
+        let current = self.entries.get(&key).map(|a| a.remaining).unwrap_or(0);
+        self.approve(owner, spender, asset_id, current.saturating_add(amount));
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 10. NON-FUNGIBLE TOKENS (ERC-721 equivalent)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A non-fungible token. Each instance has a unique `token_id` within its
+/// `collection_id`. Owns metadata URI and optional on-chain attributes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NonFungibleToken {
+    /// Unique ID of this specific NFT.
+    pub token_id: [u8; 32],
+    /// Collection this NFT belongs to.
+    pub collection_id: [u8; 32],
+    /// Current owner.
+    pub owner: [u8; 32],
+    /// Metadata URI (e.g., IPFS hash, HTTP URL).
+    pub metadata_uri: String,
+    /// On-chain attributes (key-value pairs for gaming/identity).
+    pub attributes: BTreeMap<String, String>,
+    /// Optional approved operator who can transfer this NFT.
+    pub approved: Option<[u8; 32]>,
+    /// Epoch at which this NFT was minted.
+    pub minted_at_epoch: u64,
+    /// Whether this NFT is frozen (non-transferable).
+    pub frozen: bool,
+}
+
+impl NonFungibleToken {
+    pub fn new(
+        token_id: [u8; 32],
+        collection_id: [u8; 32],
+        owner: [u8; 32],
+        metadata_uri: String,
+        epoch: u64,
+    ) -> Self {
+        NonFungibleToken {
+            token_id, collection_id, owner, metadata_uri,
+            attributes: BTreeMap::new(),
+            approved: None,
+            minted_at_epoch: epoch,
+            frozen: false,
+        }
+    }
+
+    /// Compute a deterministic NFT ID from collection + serial number.
+    pub fn compute_token_id(collection_id: &[u8; 32], serial: u64) -> [u8; 32] {
+        let mut h = Sha256::new();
+        h.update(b"OMNIPHI_NFT_V1");
+        h.update(collection_id);
+        h.update(&serial.to_be_bytes());
+        let r = h.finalize();
+        let mut id = [0u8; 32];
+        id.copy_from_slice(&r);
+        id
+    }
+
+    /// Transfer ownership. Fails if frozen or caller is not owner/approved.
+    pub fn transfer(&mut self, from: &[u8; 32], to: [u8; 32]) -> Result<(), String> {
+        if self.frozen {
+            return Err("NFT is frozen".to_string());
+        }
+        if &self.owner != from && self.approved.as_ref() != Some(from) {
+            return Err("not owner or approved".to_string());
+        }
+        self.owner = to;
+        self.approved = None; // clear approval on transfer
+        Ok(())
+    }
+
+    /// Approve an operator to transfer this NFT.
+    pub fn approve(&mut self, caller: &[u8; 32], operator: [u8; 32]) -> Result<(), String> {
+        if &self.owner != caller {
+            return Err("only owner can approve".to_string());
+        }
+        self.approved = Some(operator);
+        Ok(())
+    }
+}
+
+/// Registry of NFT collections and individual tokens.
+#[derive(Debug, Clone, Default)]
+pub struct NFTRegistry {
+    /// token_id → NonFungibleToken
+    pub tokens: BTreeMap<[u8; 32], NonFungibleToken>,
+    /// collection_id → next serial number (for auto-increment minting)
+    pub collection_serials: BTreeMap<[u8; 32], u64>,
+    /// owner → set of token_ids owned
+    pub owner_index: BTreeMap<[u8; 32], Vec<[u8; 32]>>,
+}
+
+impl NFTRegistry {
+    pub fn new() -> Self { NFTRegistry::default() }
+
+    /// Mint a new NFT in a collection. Returns the token_id.
+    pub fn mint(
+        &mut self,
+        collection_id: [u8; 32],
+        owner: [u8; 32],
+        metadata_uri: String,
+        epoch: u64,
+    ) -> [u8; 32] {
+        let serial = self.collection_serials.entry(collection_id).or_insert(0);
+        let token_id = NonFungibleToken::compute_token_id(&collection_id, *serial);
+        *serial += 1;
+
+        let nft = NonFungibleToken::new(token_id, collection_id, owner, metadata_uri, epoch);
+        self.tokens.insert(token_id, nft);
+        self.owner_index.entry(owner).or_default().push(token_id);
+        token_id
+    }
+
+    /// Transfer an NFT.
+    pub fn transfer(&mut self, token_id: &[u8; 32], from: &[u8; 32], to: [u8; 32]) -> Result<(), String> {
+        let nft = self.tokens.get_mut(token_id).ok_or("NFT not found")?;
+        nft.transfer(from, to)?;
+
+        // Update owner index
+        if let Some(ids) = self.owner_index.get_mut(from) {
+            ids.retain(|id| id != token_id);
+        }
+        self.owner_index.entry(to).or_default().push(*token_id);
+        Ok(())
+    }
+
+    /// Get an NFT by token_id.
+    pub fn get(&self, token_id: &[u8; 32]) -> Option<&NonFungibleToken> {
+        self.tokens.get(token_id)
+    }
+
+    /// Get all tokens owned by an address.
+    pub fn tokens_of(&self, owner: &[u8; 32]) -> Vec<[u8; 32]> {
+        self.owner_index.get(owner).cloned().unwrap_or_default()
+    }
+
+    /// Total supply of a collection.
+    pub fn collection_supply(&self, collection_id: &[u8; 32]) -> u64 {
+        self.collection_serials.get(collection_id).copied().unwrap_or(0)
+    }
+
+    /// Burn an NFT. Only owner can burn.
+    pub fn burn(&mut self, token_id: &[u8; 32], caller: &[u8; 32]) -> Result<(), String> {
+        let nft = self.tokens.get(token_id).ok_or("NFT not found")?;
+        if &nft.owner != caller {
+            return Err("only owner can burn".to_string());
+        }
+        let owner = nft.owner;
+        self.tokens.remove(token_id);
+        if let Some(ids) = self.owner_index.get_mut(&owner) {
+            ids.retain(|id| id != token_id);
+        }
+        Ok(())
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 11. STRUCTURED CONTRACT STORAGE
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Typed key-value storage layer over ContractObject's opaque state bytes.
+/// Instead of hand-serializing, contracts can use named fields with typed values.
+///
+/// Stored as the ContractObject.state field via bincode serialization of the
+/// inner BTreeMap.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ContractStorage {
+    fields: BTreeMap<String, StorageValue>,
+}
+
+/// A typed storage value (like an EVM storage slot, but named and typed).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum StorageValue {
+    Uint128(u128),
+    Int128(i128),
+    Bool(bool),
+    Bytes32([u8; 32]),
+    String(String),
+    Bytes(Vec<u8>),
+    /// Mapping: key → value (like Solidity `mapping(string => uint)`)
+    Map(BTreeMap<String, Box<StorageValue>>),
+    /// List of values (like Solidity arrays)
+    List(Vec<StorageValue>),
+}
+
+impl ContractStorage {
+    pub fn new() -> Self { ContractStorage { fields: BTreeMap::new() } }
+
+    pub fn set(&mut self, key: &str, value: StorageValue) {
+        self.fields.insert(key.to_string(), value);
+    }
+
+    pub fn get(&self, key: &str) -> Option<&StorageValue> {
+        self.fields.get(key)
+    }
+
+    pub fn get_uint128(&self, key: &str) -> Option<u128> {
+        match self.get(key)? { StorageValue::Uint128(v) => Some(*v), _ => None }
+    }
+
+    pub fn get_bool(&self, key: &str) -> Option<bool> {
+        match self.get(key)? { StorageValue::Bool(v) => Some(*v), _ => None }
+    }
+
+    pub fn get_string(&self, key: &str) -> Option<&str> {
+        match self.get(key)? { StorageValue::String(v) => Some(v.as_str()), _ => None }
+    }
+
+    pub fn get_bytes32(&self, key: &str) -> Option<&[u8; 32]> {
+        match self.get(key)? { StorageValue::Bytes32(v) => Some(v), _ => None }
+    }
+
+    /// Access a nested mapping: storage["balances"]["alice"] → value
+    pub fn get_map_entry(&self, map_key: &str, entry_key: &str) -> Option<&StorageValue> {
+        match self.get(map_key)? {
+            StorageValue::Map(m) => m.get(entry_key).map(|v| v.as_ref()),
+            _ => None,
+        }
+    }
+
+    /// Set a nested mapping entry.
+    pub fn set_map_entry(&mut self, map_key: &str, entry_key: &str, value: StorageValue) {
+        let map = self.fields.entry(map_key.to_string())
+            .or_insert_with(|| StorageValue::Map(BTreeMap::new()));
+        if let StorageValue::Map(m) = map {
+            m.insert(entry_key.to_string(), Box::new(value));
+        }
+    }
+
+    /// Serialize to bytes (for ContractObject.state).
+    pub fn to_bytes(&self) -> Vec<u8> {
+        bincode::serialize(self).unwrap_or_default()
+    }
+
+    /// Deserialize from bytes (from ContractObject.state).
+    pub fn from_bytes(data: &[u8]) -> Result<Self, String> {
+        bincode::deserialize(data).map_err(|e| format!("storage decode: {}", e))
+    }
+
+    /// Remove a key.
+    pub fn remove(&mut self, key: &str) -> bool {
+        self.fields.remove(key).is_some()
+    }
+
+    /// Number of top-level keys.
+    pub fn len(&self) -> usize {
+        self.fields.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.fields.is_empty()
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 12. META-TRANSACTIONS (gasless/relayed)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A meta-transaction wrapper allowing a relayer to pay gas on behalf of
+/// the original sender. The inner intent is signed by the sender; the
+/// relayer submits and pays fees.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetaTransaction {
+    /// The actual sender (signs the inner intent).
+    pub sender: [u8; 32],
+    /// The relayer paying gas (signs the outer envelope).
+    pub fee_payer: [u8; 32],
+    /// The inner intent transaction ID (links to real IntentTransaction).
+    pub inner_tx_id: [u8; 32],
+    /// Max fee the relayer is willing to pay.
+    pub relayer_max_fee: u64,
+    /// Optional relayer tip from the sender (incentive for relaying).
+    pub relayer_tip: u64,
+    /// Deadline epoch for this meta-tx (can differ from inner tx deadline).
+    pub deadline_epoch: u64,
+    /// Nonce to prevent replay of the same meta-tx.
+    pub nonce: u64,
+}
+
+impl MetaTransaction {
+    /// Compute a deterministic meta-tx ID.
+    pub fn compute_id(&self) -> [u8; 32] {
+        let mut h = Sha256::new();
+        h.update(b"OMNIPHI_META_TX_V1");
+        h.update(&self.sender);
+        h.update(&self.fee_payer);
+        h.update(&self.inner_tx_id);
+        h.update(&self.nonce.to_be_bytes());
+        let r = h.finalize();
+        let mut id = [0u8; 32];
+        id.copy_from_slice(&r);
+        id
+    }
+
+    /// Validate structural correctness.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.sender == [0u8; 32] { return Err("sender is zero".to_string()); }
+        if self.fee_payer == [0u8; 32] { return Err("fee_payer is zero".to_string()); }
+        if self.sender == self.fee_payer { return Err("sender and fee_payer must differ".to_string()); }
+        if self.relayer_max_fee == 0 { return Err("relayer_max_fee must be > 0".to_string()); }
+        Ok(())
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 13. VRF RANDOMNESS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Deterministic, verifiable randomness derived from epoch and contract state.
+/// Not a true VRF (no private key involved), but provides deterministic
+/// unpredictable-to-users randomness that all validators agree on.
+///
+/// Security: The seed is unknown until the epoch is finalized, so it cannot
+/// be manipulated by a single proposer. A full VRF integration (BLS-based)
+/// can replace this with the same interface.
+#[derive(Debug, Clone)]
+pub struct EpochRandomness {
+    /// The finalized epoch whose state_root seeds this randomness.
+    pub epoch: u64,
+    /// State root of the epoch (committed before randomness is derived).
+    pub state_root: [u8; 32],
+}
+
+impl EpochRandomness {
+    pub fn new(epoch: u64, state_root: [u8; 32]) -> Self {
+        EpochRandomness { epoch, state_root }
+    }
+
+    /// Derive a deterministic random value for a given domain.
+    /// Different domains produce independent random streams.
+    pub fn random_bytes32(&self, domain: &str) -> [u8; 32] {
+        let mut h = Sha256::new();
+        h.update(b"OMNIPHI_VRF_V1");
+        h.update(&self.epoch.to_be_bytes());
+        h.update(&self.state_root);
+        h.update(domain.as_bytes());
+        let r = h.finalize();
+        let mut out = [0u8; 32];
+        out.copy_from_slice(&r);
+        out
+    }
+
+    /// Derive a random u64 in range [0, max).
+    pub fn random_u64(&self, domain: &str, max: u64) -> u64 {
+        if max == 0 { return 0; }
+        let bytes = self.random_bytes32(domain);
+        let raw = u64::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]]);
+        raw % max
+    }
+
+    /// Derive a random u128 in range [0, max).
+    pub fn random_u128(&self, domain: &str, max: u128) -> u128 {
+        if max == 0 { return 0; }
+        let bytes = self.random_bytes32(domain);
+        let raw = u128::from_be_bytes([
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+            bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15],
+        ]);
+        raw % max
+    }
+
+    /// Derive a seeded random for a specific contract + nonce.
+    /// Useful for per-contract randomness (e.g., lottery draws).
+    pub fn contract_random(&self, contract_id: &[u8; 32], nonce: u64) -> [u8; 32] {
+        let domain = format!("contract:{}:nonce:{}", hex::encode(&contract_id[..8]), nonce);
+        self.random_bytes32(&domain)
+    }
+
+    /// Shuffle a list deterministically using Fisher-Yates with epoch randomness.
+    pub fn shuffle<T: Clone>(&self, domain: &str, items: &[T]) -> Vec<T> {
+        let mut result = items.to_vec();
+        let n = result.len();
+        for i in (1..n).rev() {
+            let sub_domain = format!("{}:shuffle:{}", domain, i);
+            let j = self.random_u64(&sub_domain, (i + 1) as u64) as usize;
+            result.swap(i, j);
+        }
+        result
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 14. COMMIT-REVEAL SCHEME
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A commit-reveal record for sealed-bid auctions, private voting, etc.
+///
+/// Phase 1 (Commit): User submits `commitment = SHA256(secret || value || salt)`.
+/// Phase 2 (Reveal): User submits `(value, salt)`. System verifies hash matches.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommitRevealRecord {
+    /// Unique ID for this commit-reveal instance.
+    pub id: [u8; 32],
+    /// The commitment hash (submitted in commit phase).
+    pub commitment: [u8; 32],
+    /// The revealed value (None until reveal phase).
+    pub revealed_value: Option<Vec<u8>>,
+    /// The salt used (None until reveal phase).
+    pub revealed_salt: Option<Vec<u8>>,
+    /// Who committed.
+    pub committer: [u8; 32],
+    /// Epoch when commit was submitted.
+    pub commit_epoch: u64,
+    /// Deadline epoch for reveal (after this, commit expires).
+    pub reveal_deadline_epoch: u64,
+    /// Whether the reveal has been validated.
+    pub revealed: bool,
+}
+
+impl CommitRevealRecord {
+    /// Compute the expected commitment hash from value + salt.
+    pub fn compute_commitment(value: &[u8], salt: &[u8]) -> [u8; 32] {
+        let mut h = Sha256::new();
+        h.update(b"OMNIPHI_COMMIT_V1");
+        h.update(value);
+        h.update(salt);
+        let r = h.finalize();
+        let mut out = [0u8; 32];
+        out.copy_from_slice(&r);
+        out
+    }
+
+    /// Create a new commit phase record.
+    pub fn commit(
+        committer: [u8; 32],
+        commitment: [u8; 32],
+        commit_epoch: u64,
+        reveal_deadline_epoch: u64,
+    ) -> Self {
+        let mut h = Sha256::new();
+        h.update(b"OMNIPHI_CR_ID_V1");
+        h.update(&committer);
+        h.update(&commitment);
+        h.update(&commit_epoch.to_be_bytes());
+        let r = h.finalize();
+        let mut id = [0u8; 32];
+        id.copy_from_slice(&r);
+
+        CommitRevealRecord {
+            id,
+            commitment,
+            revealed_value: None,
+            revealed_salt: None,
+            committer,
+            commit_epoch,
+            reveal_deadline_epoch,
+            revealed: false,
+        }
+    }
+
+    /// Attempt to reveal. Returns Ok(()) if hash matches, Err otherwise.
+    pub fn reveal(&mut self, value: Vec<u8>, salt: Vec<u8>, current_epoch: u64) -> Result<(), String> {
+        if self.revealed {
+            return Err("already revealed".to_string());
+        }
+        if current_epoch > self.reveal_deadline_epoch {
+            return Err(format!("reveal deadline passed (deadline={}, now={})", self.reveal_deadline_epoch, current_epoch));
+        }
+        let expected = Self::compute_commitment(&value, &salt);
+        if expected != self.commitment {
+            return Err("commitment mismatch: hash(value || salt) != commitment".to_string());
+        }
+        self.revealed_value = Some(value);
+        self.revealed_salt = Some(salt);
+        self.revealed = true;
+        Ok(())
+    }
+
+    /// Check if the reveal deadline has passed without reveal.
+    pub fn is_expired(&self, current_epoch: u64) -> bool {
+        !self.revealed && current_epoch > self.reveal_deadline_epoch
+    }
+}
+
+/// Registry of active commit-reveal instances.
+#[derive(Debug, Clone, Default)]
+pub struct CommitRevealRegistry {
+    pub records: BTreeMap<[u8; 32], CommitRevealRecord>,
+}
+
+impl CommitRevealRegistry {
+    pub fn new() -> Self { CommitRevealRegistry::default() }
+
+    pub fn commit(&mut self, record: CommitRevealRecord) -> Result<[u8; 32], String> {
+        let id = record.id;
+        if self.records.contains_key(&id) {
+            return Err("duplicate commit".to_string());
+        }
+        self.records.insert(id, record);
+        Ok(id)
+    }
+
+    pub fn reveal(&mut self, id: &[u8; 32], value: Vec<u8>, salt: Vec<u8>, current_epoch: u64) -> Result<&CommitRevealRecord, String> {
+        let record = self.records.get_mut(id).ok_or("commit not found")?;
+        record.reveal(value, salt, current_epoch)?;
+        Ok(self.records.get(id).unwrap())
+    }
+
+    pub fn get(&self, id: &[u8; 32]) -> Option<&CommitRevealRecord> {
+        self.records.get(id)
+    }
+
+    /// Prune expired unrevealed commits.
+    pub fn prune_expired(&mut self, current_epoch: u64) -> usize {
+        let before = self.records.len();
+        self.records.retain(|_, r| !r.is_expired(current_epoch));
+        before - self.records.len()
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TESTS
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -971,5 +1540,326 @@ mod tests {
         assert_eq!(registry.get_due(20).len(), 1);
         assert!(registry.cancel(&sid));
         assert!(registry.get_due(20).is_empty());
+    }
+
+    // ── Feature 9: Token Allowances ──────────────────────────────────────
+
+    #[test]
+    fn test_allowance_approve_and_spend() {
+        let mut reg = AllowanceRegistry::new();
+        let owner = [1u8; 32];
+        let spender = [2u8; 32];
+        let asset = [0xAA; 32];
+
+        reg.approve(owner, spender, asset, 1000);
+        assert_eq!(reg.allowance(&owner, &spender, &asset), 1000);
+
+        reg.spend(&owner, &spender, &asset, 400).unwrap();
+        assert_eq!(reg.allowance(&owner, &spender, &asset), 600);
+
+        assert!(reg.spend(&owner, &spender, &asset, 700).is_err());
+        assert_eq!(reg.allowance(&owner, &spender, &asset), 600);
+
+        reg.spend(&owner, &spender, &asset, 600).unwrap();
+        assert_eq!(reg.allowance(&owner, &spender, &asset), 0);
+    }
+
+    #[test]
+    fn test_allowance_revoke() {
+        let mut reg = AllowanceRegistry::new();
+        let owner = [1u8; 32];
+        let spender = [2u8; 32];
+        let asset = [0xAA; 32];
+
+        reg.approve(owner, spender, asset, 500);
+        assert_eq!(reg.allowance(&owner, &spender, &asset), 500);
+
+        reg.approve(owner, spender, asset, 0); // revoke
+        assert_eq!(reg.allowance(&owner, &spender, &asset), 0);
+        assert!(reg.spend(&owner, &spender, &asset, 1).is_err());
+    }
+
+    #[test]
+    fn test_allowance_increase() {
+        let mut reg = AllowanceRegistry::new();
+        let owner = [1u8; 32];
+        let spender = [2u8; 32];
+        let asset = [0xAA; 32];
+
+        reg.approve(owner, spender, asset, 100);
+        reg.increase(owner, spender, asset, 200);
+        assert_eq!(reg.allowance(&owner, &spender, &asset), 300);
+    }
+
+    // ── Feature 10: NFTs ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_nft_mint_and_transfer() {
+        let mut reg = NFTRegistry::new();
+        let collection = [0xCC; 32];
+        let alice = [1u8; 32];
+        let bob = [2u8; 32];
+
+        let tid = reg.mint(collection, alice, "ipfs://meta1".to_string(), 1);
+        assert_eq!(reg.collection_supply(&collection), 1);
+        assert_eq!(reg.tokens_of(&alice).len(), 1);
+
+        reg.transfer(&tid, &alice, bob).unwrap();
+        assert_eq!(reg.tokens_of(&alice).len(), 0);
+        assert_eq!(reg.tokens_of(&bob).len(), 1);
+        assert_eq!(reg.get(&tid).unwrap().owner, bob);
+    }
+
+    #[test]
+    fn test_nft_approval_and_transfer() {
+        let mut reg = NFTRegistry::new();
+        let collection = [0xCC; 32];
+        let alice = [1u8; 32];
+        let operator = [3u8; 32];
+        let bob = [2u8; 32];
+
+        let tid = reg.mint(collection, alice, "ipfs://meta2".to_string(), 1);
+
+        // Operator can't transfer without approval
+        assert!(reg.transfer(&tid, &operator, bob).is_err());
+
+        // Approve operator
+        reg.tokens.get_mut(&tid).unwrap().approve(&alice, operator).unwrap();
+
+        // Now operator can transfer
+        reg.transfer(&tid, &operator, bob).unwrap();
+        assert_eq!(reg.get(&tid).unwrap().owner, bob);
+        assert!(reg.get(&tid).unwrap().approved.is_none()); // cleared on transfer
+    }
+
+    #[test]
+    fn test_nft_burn() {
+        let mut reg = NFTRegistry::new();
+        let collection = [0xCC; 32];
+        let alice = [1u8; 32];
+
+        let tid = reg.mint(collection, alice, "ipfs://burn".to_string(), 1);
+        assert!(reg.get(&tid).is_some());
+
+        reg.burn(&tid, &alice).unwrap();
+        assert!(reg.get(&tid).is_none());
+        assert!(reg.tokens_of(&alice).is_empty());
+    }
+
+    #[test]
+    fn test_nft_frozen() {
+        let mut reg = NFTRegistry::new();
+        let collection = [0xCC; 32];
+        let alice = [1u8; 32];
+        let bob = [2u8; 32];
+
+        let tid = reg.mint(collection, alice, "ipfs://frozen".to_string(), 1);
+        reg.tokens.get_mut(&tid).unwrap().frozen = true;
+
+        assert!(reg.transfer(&tid, &alice, bob).is_err());
+    }
+
+    // ── Feature 11: Structured Storage ───────────────────────────────────
+
+    #[test]
+    fn test_structured_storage_basic() {
+        let mut s = ContractStorage::new();
+        s.set("total_supply", StorageValue::Uint128(1_000_000));
+        s.set("name", StorageValue::String("MyToken".to_string()));
+        s.set("paused", StorageValue::Bool(false));
+
+        assert_eq!(s.get_uint128("total_supply"), Some(1_000_000));
+        assert_eq!(s.get_string("name"), Some("MyToken"));
+        assert_eq!(s.get_bool("paused"), Some(false));
+        assert_eq!(s.len(), 3);
+    }
+
+    #[test]
+    fn test_structured_storage_mapping() {
+        let mut s = ContractStorage::new();
+        s.set_map_entry("balances", "alice", StorageValue::Uint128(500));
+        s.set_map_entry("balances", "bob", StorageValue::Uint128(300));
+
+        assert_eq!(
+            s.get_map_entry("balances", "alice"),
+            Some(&StorageValue::Uint128(500))
+        );
+        assert_eq!(
+            s.get_map_entry("balances", "bob"),
+            Some(&StorageValue::Uint128(300))
+        );
+        assert!(s.get_map_entry("balances", "charlie").is_none());
+    }
+
+    #[test]
+    fn test_structured_storage_roundtrip() {
+        let mut s = ContractStorage::new();
+        s.set("counter", StorageValue::Uint128(42));
+        s.set_map_entry("data", "key1", StorageValue::String("val1".to_string()));
+
+        let bytes = s.to_bytes();
+        let restored = ContractStorage::from_bytes(&bytes).unwrap();
+        assert_eq!(restored.get_uint128("counter"), Some(42));
+        assert_eq!(
+            restored.get_map_entry("data", "key1"),
+            Some(&StorageValue::String("val1".to_string()))
+        );
+    }
+
+    // ── Feature 12: Meta-Transactions ────────────────────────────────────
+
+    #[test]
+    fn test_meta_transaction_validation() {
+        let mt = MetaTransaction {
+            sender: [1u8; 32],
+            fee_payer: [2u8; 32],
+            inner_tx_id: [0xAA; 32],
+            relayer_max_fee: 1000,
+            relayer_tip: 50,
+            deadline_epoch: 100,
+            nonce: 1,
+        };
+        assert!(mt.validate().is_ok());
+
+        let bad = MetaTransaction { sender: [0u8; 32], ..mt.clone() };
+        assert!(bad.validate().is_err());
+
+        let same = MetaTransaction { fee_payer: [1u8; 32], ..mt.clone() };
+        assert!(same.validate().is_err()); // sender == fee_payer
+
+        let zero_fee = MetaTransaction { relayer_max_fee: 0, ..mt };
+        assert!(zero_fee.validate().is_err());
+    }
+
+    #[test]
+    fn test_meta_transaction_id_deterministic() {
+        let mt = MetaTransaction {
+            sender: [1u8; 32], fee_payer: [2u8; 32], inner_tx_id: [0xAA; 32],
+            relayer_max_fee: 1000, relayer_tip: 0, deadline_epoch: 50, nonce: 1,
+        };
+        let id1 = mt.compute_id();
+        let id2 = mt.compute_id();
+        assert_eq!(id1, id2);
+
+        let mt2 = MetaTransaction { nonce: 2, ..mt };
+        assert_ne!(id1, mt2.compute_id());
+    }
+
+    // ── Feature 13: VRF Randomness ───────────────────────────────────────
+
+    #[test]
+    fn test_epoch_randomness_deterministic() {
+        let rng = EpochRandomness::new(42, [0xAB; 32]);
+        let a = rng.random_bytes32("lottery");
+        let b = rng.random_bytes32("lottery");
+        assert_eq!(a, b); // same input → same output
+
+        let c = rng.random_bytes32("auction");
+        assert_ne!(a, c); // different domain → different output
+    }
+
+    #[test]
+    fn test_epoch_randomness_range() {
+        let rng = EpochRandomness::new(100, [0xCD; 32]);
+        for i in 0..100 {
+            let v = rng.random_u64(&format!("test_{}", i), 10);
+            assert!(v < 10);
+        }
+    }
+
+    #[test]
+    fn test_epoch_randomness_shuffle() {
+        let rng = EpochRandomness::new(7, [0xEF; 32]);
+        let items = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let shuffled = rng.shuffle("deck", &items);
+        assert_eq!(shuffled.len(), items.len());
+
+        // Same epoch + domain → same shuffle
+        let shuffled2 = rng.shuffle("deck", &items);
+        assert_eq!(shuffled, shuffled2);
+
+        // Different domain → different shuffle
+        let shuffled3 = rng.shuffle("other", &items);
+        assert_ne!(shuffled, shuffled3);
+    }
+
+    #[test]
+    fn test_contract_random() {
+        let rng = EpochRandomness::new(50, [0x11; 32]);
+        let cid = [0xCC; 32];
+        let r1 = rng.contract_random(&cid, 0);
+        let r2 = rng.contract_random(&cid, 1);
+        assert_ne!(r1, r2); // different nonce → different random
+    }
+
+    // ── Feature 14: Commit-Reveal ────────────────────────────────────────
+
+    #[test]
+    fn test_commit_reveal_happy_path() {
+        let mut reg = CommitRevealRegistry::new();
+        let committer = [1u8; 32];
+        let value = b"my_bid_100".to_vec();
+        let salt = b"random_salt_xyz".to_vec();
+
+        let commitment = CommitRevealRecord::compute_commitment(&value, &salt);
+        let record = CommitRevealRecord::commit(committer, commitment, 10, 20);
+        let id = reg.commit(record).unwrap();
+
+        // Before reveal
+        assert!(!reg.get(&id).unwrap().revealed);
+
+        // Reveal at epoch 15 (within deadline)
+        let revealed = reg.reveal(&id, value.clone(), salt.clone(), 15).unwrap();
+        assert!(revealed.revealed);
+        assert_eq!(revealed.revealed_value.as_ref().unwrap(), &value);
+    }
+
+    #[test]
+    fn test_commit_reveal_wrong_value() {
+        let mut reg = CommitRevealRegistry::new();
+        let committer = [1u8; 32];
+        let value = b"real_value".to_vec();
+        let salt = b"salt".to_vec();
+        let wrong_value = b"fake_value".to_vec();
+
+        let commitment = CommitRevealRecord::compute_commitment(&value, &salt);
+        let record = CommitRevealRecord::commit(committer, commitment, 10, 20);
+        let id = reg.commit(record).unwrap();
+
+        assert!(reg.reveal(&id, wrong_value, salt, 15).is_err());
+    }
+
+    #[test]
+    fn test_commit_reveal_expired() {
+        let mut reg = CommitRevealRegistry::new();
+        let committer = [1u8; 32];
+        let value = b"value".to_vec();
+        let salt = b"salt".to_vec();
+
+        let commitment = CommitRevealRecord::compute_commitment(&value, &salt);
+        let record = CommitRevealRecord::commit(committer, commitment, 10, 20);
+        let id = reg.commit(record).unwrap();
+
+        // Try to reveal after deadline
+        assert!(reg.reveal(&id, value, salt, 25).is_err());
+
+        // Prune expired
+        assert_eq!(reg.prune_expired(25), 1);
+        assert!(reg.get(&id).is_none());
+    }
+
+    #[test]
+    fn test_commit_reveal_no_double_reveal() {
+        let mut reg = CommitRevealRegistry::new();
+        let committer = [1u8; 32];
+        let value = b"value".to_vec();
+        let salt = b"salt".to_vec();
+
+        let commitment = CommitRevealRecord::compute_commitment(&value, &salt);
+        let record = CommitRevealRecord::commit(committer, commitment, 10, 20);
+        let id = reg.commit(record).unwrap();
+
+        reg.reveal(&id, value.clone(), salt.clone(), 15).unwrap();
+        assert!(reg.reveal(&id, value, salt, 16).is_err()); // already revealed
     }
 }
