@@ -606,6 +606,18 @@ pub fn plan_action_to_operation(
                     schema_id,
                     proposed_state,
                 }
+            } else if let Some(new_owner_hex) = action.metadata.get("new_owner") {
+                // TransferOwnership action
+                let mut new_owner = [0u8; 32];
+                if let Ok(bytes) = hex::decode(new_owner_hex) {
+                    if bytes.len() == 32 {
+                        new_owner.copy_from_slice(&bytes);
+                    }
+                }
+                ObjectOperation::TransferOwnership {
+                    object_id: action.target_object,
+                    new_owner,
+                }
             } else {
                 ObjectOperation::UpdateVersion {
                     object_id: action.target_object,
@@ -656,6 +668,16 @@ fn operation_to_plan_action(
             target_object: *balance_id,
             amount: Some(*amount),
             metadata: BTreeMap::new(),
+        },
+        ObjectOperation::TransferOwnership { object_id, new_owner } => {
+            let mut metadata = BTreeMap::new();
+            metadata.insert("new_owner".to_string(), hex::encode(new_owner));
+            PlanAction {
+                action_type: PlanActionType::Custom("transfer_ownership".to_string()),
+                target_object: *object_id,
+                amount: None,
+                metadata,
+            }
         },
         ObjectOperation::UpdateVersion { object_id } => PlanAction {
             action_type: PlanActionType::Custom("update_version".to_string()),

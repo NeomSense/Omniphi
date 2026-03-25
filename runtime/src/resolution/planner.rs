@@ -19,6 +19,8 @@ pub enum ObjectOperation {
     LockBalance { balance_id: ObjectId, amount: u128 },
     UnlockBalance { balance_id: ObjectId, amount: u128 },
     UpdateVersion { object_id: ObjectId },
+    /// Transfer ownership of an object to a new owner.
+    TransferOwnership { object_id: ObjectId, new_owner: [u8; 32] },
     /// Apply a proposed state transition to a contract object.
     /// The constraint validator has already approved this transition.
     ContractStateTransition {
@@ -146,6 +148,7 @@ fn estimate_gas(ops: &[ObjectOperation], costs: &GasCosts) -> u64 {
             ObjectOperation::LockBalance { .. } => costs.lock_balance,
             ObjectOperation::UnlockBalance { .. } => costs.unlock_balance,
             ObjectOperation::UpdateVersion { .. } => costs.update_version,
+            ObjectOperation::TransferOwnership { .. } => costs.update_version,
             ObjectOperation::ContractStateTransition { proposed_state, .. } => {
                 costs.contract_state_write
                     + costs.constraint_validation_base

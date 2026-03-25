@@ -314,6 +314,7 @@ impl SettlementEngine {
             ObjectOperation::LockBalance { .. } => costs.lock_balance,
             ObjectOperation::UnlockBalance { .. } => costs.unlock_balance,
             ObjectOperation::UpdateVersion { .. } => costs.update_version,
+            ObjectOperation::TransferOwnership { .. } => costs.update_version,
             ObjectOperation::ContractStateTransition { proposed_state, .. } => {
                 costs.contract_state_write
                     + costs.constraint_validation_base
@@ -383,6 +384,17 @@ impl SettlementEngine {
                     return Err(RuntimeError::ConstraintViolation(
                         "unlock amount exceeds locked_amount".to_string(),
                     ));
+                }
+            }
+            ObjectOperation::TransferOwnership { object_id, new_owner } => {
+                let obj = store.get(object_id).ok_or_else(|| {
+                    RuntimeError::ObjectNotFound(*object_id)
+                })?;
+                if *new_owner == [0u8; 32] {
+                    return Err(RuntimeError::InvalidIntent("new_owner cannot be zero".to_string()));
+                }
+                if obj.meta().owner == *new_owner {
+                    return Err(RuntimeError::InvalidIntent("new_owner is already the owner".to_string()));
                 }
             }
             ObjectOperation::UpdateVersion { object_id } => {
@@ -554,6 +566,24 @@ impl SettlementEngine {
                     RuntimeError::ConstraintViolation("unlock exceeds locked_amount".to_string())
                 })?;
                 affected.push(*balance_id);
+            }
+            ObjectOperation::TransferOwnership { object_id, new_owner } => {
+                let obj = store.get_mut(object_id).ok_or_else(|| {
+                    RuntimeError::ObjectNotFound(*object_id)
+                })?;
+                obj.meta_mut().owner = *new_owner;
+                // Also update typed overlays so sync doesn't overwrite
+                if let Some(b) = store.find_balance_by_id_mut(object_id) {
+                    b.meta.owner = *new_owner;
+                    b.owner = *new_owner;
+                }
+                if let Some(p) = store.find_pool_by_id_mut(object_id) {
+                    p.meta.owner = *new_owner;
+                }
+                if let Some(v) = store.get_vault_mut(object_id) {
+                    v.meta.owner = *new_owner;
+                }
+                affected.push(*object_id);
             }
             ObjectOperation::UpdateVersion { object_id } => {
                 // Version increment is handled in the outer loop; just record as affected
