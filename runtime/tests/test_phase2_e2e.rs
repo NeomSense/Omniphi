@@ -11,7 +11,7 @@
 
 use omniphi_runtime::attribution::record::SolverAttributionRecord;
 use omniphi_runtime::capabilities::checker::{Capability, CapabilitySet};
-use omniphi_runtime::intents::base::{IntentTransaction, IntentType, IntentConstraints, ExecutionMode};
+use omniphi_runtime::intents::base::{IntentTransaction, IntentType, IntentConstraints, ExecutionMode, FeePolicy, SponsorshipLimits};
 use omniphi_runtime::intents::types::{SwapIntent, TransferIntent, YieldAllocateIntent};
 use omniphi_runtime::objects::base::ObjectId;
 use omniphi_runtime::objects::types::{BalanceObject, LiquidityPoolObject, VaultObject, WalletObject};
@@ -136,6 +136,10 @@ fn make_swap_intent(tx_byte: u8, max_fee: u64) -> IntentTransaction {
         target_objects: vec![],
         constraints: IntentConstraints::default(),
         execution_mode: ExecutionMode::BestEffort,
+            sponsor: None,
+            sponsor_signature: None,
+            sponsorship_limits: SponsorshipLimits::default(),
+            fee_policy: FeePolicy::SenderPays,
     }
 }
 
@@ -157,6 +161,10 @@ fn make_yield_intent(tx_byte: u8, vault_id: ObjectId) -> IntentTransaction {
         target_objects: vec![],
         constraints: IntentConstraints::default(),
         execution_mode: ExecutionMode::BestEffort,
+            sponsor: None,
+            sponsor_signature: None,
+            sponsorship_limits: SponsorshipLimits::default(),
+            fee_policy: FeePolicy::SenderPays,
     }
 }
 
@@ -366,6 +374,10 @@ fn test_fallback_to_internal_resolver() {
         target_objects: vec![],
         constraints: IntentConstraints::default(),
         execution_mode: ExecutionMode::BestEffort,
+            sponsor: None,
+            sponsor_signature: None,
+            sponsorship_limits: SponsorshipLimits::default(),
+            fee_policy: FeePolicy::SenderPays,
     };
     let intent_id = intent.tx_id;
 

@@ -4,8 +4,9 @@
 //! constraint violations, deterministic validation, admission pipeline.
 
 use omniphi_runtime::intents::base::{
-    AdmissionResult, ContractCallIntent, ContractConstraints, ExecutionMode,
+    AdmissionResult, ContractCallIntent, ContractConstraints, ExecutionMode, FeePolicy,
     IntentAdmissionPipeline, IntentConstraints, IntentTransaction, IntentType, NonceTracker,
+    SponsorshipLimits,
 };
 use omniphi_runtime::intents::types::TransferIntent;
 use omniphi_runtime::objects::base::ObjectId;
@@ -44,6 +45,10 @@ fn make_signed_transfer(seed: &[u8; 32], nonce: u64, epoch: u64) -> IntentTransa
         target_objects: vec![],
         constraints: IntentConstraints::default(),
         execution_mode: ExecutionMode::BestEffort,
+            sponsor: None,
+            sponsor_signature: None,
+            sponsorship_limits: SponsorshipLimits::default(),
+            fee_policy: FeePolicy::SenderPays,
     };
     tx.signature = tx.sign(seed);
     tx
@@ -328,6 +333,10 @@ fn test_zero_sender_rejected() {
         target_objects: vec![],
         constraints: IntentConstraints::default(),
         execution_mode: ExecutionMode::BestEffort,
+            sponsor: None,
+            sponsor_signature: None,
+            sponsorship_limits: SponsorshipLimits::default(),
+            fee_policy: FeePolicy::SenderPays,
     };
 
     assert!(tx.validate().is_err());
@@ -349,6 +358,10 @@ fn test_zero_max_fee_rejected() {
         target_objects: vec![],
         constraints: IntentConstraints::default(),
         execution_mode: ExecutionMode::BestEffort,
+            sponsor: None,
+            sponsor_signature: None,
+            sponsorship_limits: SponsorshipLimits::default(),
+            fee_policy: FeePolicy::SenderPays,
     };
 
     assert!(tx.validate().is_err());

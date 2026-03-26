@@ -1,6 +1,6 @@
 use omniphi_runtime::capabilities::checker::CapabilitySet;
 use omniphi_runtime::errors::RuntimeError;
-use omniphi_runtime::intents::base::{IntentTransaction, IntentType, IntentConstraints, ExecutionMode};
+use omniphi_runtime::intents::base::{IntentTransaction, IntentType, IntentConstraints, ExecutionMode, FeePolicy, SponsorshipLimits};
 use omniphi_runtime::intents::types::{SwapIntent, TransferIntent};
 use omniphi_runtime::objects::base::ObjectId;
 use omniphi_runtime::objects::types::{BalanceObject, LiquidityPoolObject};
@@ -47,6 +47,10 @@ fn make_transfer_tx(
         target_objects: vec![],
         constraints: IntentConstraints::default(),
         execution_mode: ExecutionMode::BestEffort,
+            sponsor: None,
+            sponsor_signature: None,
+            sponsorship_limits: SponsorshipLimits::default(),
+            fee_policy: FeePolicy::SenderPays,
     }
 }
 
@@ -76,6 +80,10 @@ fn make_swap_tx(
         target_objects: vec![],
         constraints: IntentConstraints::default(),
         execution_mode: ExecutionMode::BestEffort,
+            sponsor: None,
+            sponsor_signature: None,
+            sponsorship_limits: SponsorshipLimits::default(),
+            fee_policy: FeePolicy::SenderPays,
     }
 }
 

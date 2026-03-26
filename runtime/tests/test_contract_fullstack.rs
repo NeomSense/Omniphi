@@ -11,7 +11,7 @@ use omniphi_runtime::settlement::engine::SettlementEngine;
 use omniphi_runtime::state::store::ObjectStore;
 use omniphi_runtime::capabilities::checker::Capability;
 use omniphi_runtime::solver_market::market::{PlanAction, PlanActionType};
-use omniphi_runtime::intents::base::{IntentTransaction, IntentType, IntentConstraints, ExecutionMode};
+use omniphi_runtime::intents::base::{IntentTransaction, IntentType, IntentConstraints, ExecutionMode, FeePolicy, SponsorshipLimits};
 use std::collections::BTreeMap;
 
 fn sid(name: &str) -> SchemaId {
@@ -194,6 +194,10 @@ fn test_ed25519_signature_roundtrip() {
         target_objects: vec![],
         constraints: IntentConstraints::default(),
         execution_mode: ExecutionMode::BestEffort,
+            sponsor: None,
+            sponsor_signature: None,
+            sponsorship_limits: SponsorshipLimits::default(),
+            fee_policy: FeePolicy::SenderPays,
     };
 
     tx.signature = tx.sign(&seed);

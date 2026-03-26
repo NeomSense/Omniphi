@@ -29,7 +29,7 @@ use sha2::{Sha256, Digest};
 
 use crate::capabilities::registry::CapabilityRegistry;
 use crate::errors::RuntimeError;
-use crate::intents::base::{IntentTransaction, IntentType, IntentConstraints, ExecutionMode};
+use crate::intents::base::{IntentTransaction, IntentType, IntentConstraints, ExecutionMode, FeePolicy, SponsorshipLimits};
 use crate::intents::types::TransferIntent;
 use crate::poseq::interface::{OrderedBatch, PoSeqRuntime};
 use crate::poseq::mempool::IntentMempool;
@@ -530,6 +530,10 @@ impl RuntimeBatchIngester {
                     target_objects: vec![],
                     constraints: IntentConstraints::default(),
                     execution_mode: ExecutionMode::BestEffort,
+            sponsor: None,
+            sponsor_signature: None,
+            sponsorship_limits: SponsorshipLimits::default(),
+            fee_policy: FeePolicy::SenderPays,
                 }
             })
             .collect()

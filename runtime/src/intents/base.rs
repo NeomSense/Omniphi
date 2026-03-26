@@ -78,6 +78,38 @@ pub struct IntentConstraints {
     pub path_hints: Vec<String>,
 }
 
+/// Fee policy for sponsored intents — who pays what.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FeePolicy {
+    /// Sender pays all fees (default, no sponsorship).
+    SenderPays,
+    /// Sponsor pays all fees.
+    SponsorPays,
+    /// Sponsor pays up to the limit; sender pays the remainder.
+    SponsorThenSender,
+}
+
+impl Default for FeePolicy {
+    fn default() -> Self { FeePolicy::SenderPays }
+}
+
+/// Limits on what a sponsor is willing to cover.
+#[derive(Debug, Clone, Default)]
+pub struct SponsorshipLimits {
+    /// Maximum gas units the sponsor will pay for.
+    pub max_gas: Option<u64>,
+    /// Maximum fee amount (in base denomination) the sponsor will cover.
+    pub max_fee_amount: Option<u64>,
+    /// Restrict sponsorship to these intent types only.
+    /// Empty = all intent types allowed.
+    pub allowed_intent_types: Vec<String>,
+    /// Restrict sponsorship to intents touching only these objects.
+    /// Empty = no object restriction.
+    pub allowed_objects: Vec<ObjectId>,
+    /// Epoch after which sponsorship is no longer valid.
+    pub expiration_epoch: Option<u64>,
+}
+
 /// A fully described, signed intent transaction.
 #[derive(Debug, Clone)]
 pub struct IntentTransaction {
@@ -95,6 +127,18 @@ pub struct IntentTransaction {
     pub constraints: IntentConstraints,
     /// How the solver should execute this intent.
     pub execution_mode: ExecutionMode,
+
+    // ── Sponsorship fields ──────────────────────────────────────────────
+    /// Sponsor's Ed25519 public key (32 bytes). When set, this party
+    /// agrees to pay fees on behalf of the sender.
+    pub sponsor: Option<[u8; 32]>,
+    /// Sponsor's Ed25519 signature over the sponsorship payload.
+    /// Covers: tx_id, sender, max_fee, sponsor, and sponsorship_limits hash.
+    pub sponsor_signature: Option<[u8; 64]>,
+    /// Limits on what the sponsor is willing to cover.
+    pub sponsorship_limits: SponsorshipLimits,
+    /// Who pays execution fees.
+    pub fee_policy: FeePolicy,
 }
 
 impl IntentTransaction {
@@ -334,6 +378,109 @@ impl IntentTransaction {
         let payload = self.signing_payload();
         let sig = key.sign(&payload);
         sig.to_bytes()
+    }
+
+    // ── Sponsorship methods ────────────────────────────────────────────
+
+    /// Compute the sponsorship payload that the sponsor signs.
+    ///
+    /// payload = SHA256("OMNIPHI_SPONSOR_V1" || tx_id || sender || max_fee_be
+    ///                   || sponsor || limits_hash)
+    ///
+    /// This is SEPARATE from the intent signing payload so the sponsor
+    /// cannot forge intent content, and the sender cannot forge sponsorship.
+    pub fn sponsorship_payload(&self) -> [u8; 32] {
+        let mut h = Sha256::new();
+        h.update(b"OMNIPHI_SPONSOR_V1");
+        h.update(&self.tx_id);
+        h.update(&self.sender);
+        h.update(&self.max_fee.to_be_bytes());
+        if let Some(ref s) = self.sponsor {
+            h.update(s);
+        }
+        // Hash the limits deterministically
+        h.update(&self.sponsorship_limits_hash());
+        let r = h.finalize();
+        let mut out = [0u8; 32];
+        out.copy_from_slice(&r);
+        out
+    }
+
+    /// Deterministic hash of sponsorship limits for inclusion in the
+    /// sponsorship payload.
+    fn sponsorship_limits_hash(&self) -> [u8; 32] {
+        let mut h = Sha256::new();
+        h.update(b"OMNIPHI_SPONSOR_LIMITS_V1");
+        if let Some(g) = self.sponsorship_limits.max_gas {
+            h.update(&g.to_be_bytes());
+        }
+        if let Some(f) = self.sponsorship_limits.max_fee_amount {
+            h.update(&f.to_be_bytes());
+        }
+        for t in &self.sponsorship_limits.allowed_intent_types {
+            h.update(t.as_bytes());
+        }
+        for o in &self.sponsorship_limits.allowed_objects {
+            h.update(&o.0);
+        }
+        if let Some(e) = self.sponsorship_limits.expiration_epoch {
+            h.update(&e.to_be_bytes());
+        }
+        let r = h.finalize();
+        let mut out = [0u8; 32];
+        out.copy_from_slice(&r);
+        out
+    }
+
+    /// Verify the sponsor's Ed25519 signature over the sponsorship payload.
+    pub fn verify_sponsor_signature(&self) -> bool {
+        use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+
+        let sponsor = match self.sponsor {
+            Some(s) => s,
+            None => return false,
+        };
+        let sig_bytes = match self.sponsor_signature {
+            Some(s) => s,
+            None => return false,
+        };
+
+        let pubkey = match VerifyingKey::from_bytes(&sponsor) {
+            Ok(k) => k,
+            Err(_) => return false,
+        };
+        let sig = match Signature::from_slice(&sig_bytes) {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+
+        let payload = self.sponsorship_payload();
+        pubkey.verify(&payload, &sig).is_ok()
+    }
+
+    /// Sign the sponsorship payload with the sponsor's Ed25519 key.
+    /// Returns the 64-byte sponsor signature.
+    pub fn sign_sponsorship(&self, sponsor_key: &[u8; 32]) -> [u8; 64] {
+        use ed25519_dalek::{Signer, SigningKey};
+
+        let key = SigningKey::from_bytes(sponsor_key);
+        let payload = self.sponsorship_payload();
+        let sig = key.sign(&payload);
+        sig.to_bytes()
+    }
+
+    /// Returns true if this intent is sponsored (has both sponsor and signature).
+    pub fn is_sponsored(&self) -> bool {
+        self.sponsor.is_some() && self.sponsor_signature.is_some()
+    }
+
+    /// Returns the address that should be charged for fees.
+    pub fn fee_payer(&self) -> [u8; 32] {
+        match self.fee_policy {
+            FeePolicy::SenderPays => self.sender,
+            FeePolicy::SponsorPays => self.sponsor.unwrap_or(self.sender),
+            FeePolicy::SponsorThenSender => self.sponsor.unwrap_or(self.sender),
+        }
     }
 
     /// Compute a test-only placeholder signature (for backward compatibility

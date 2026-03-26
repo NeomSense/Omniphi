@@ -64,7 +64,7 @@ pub use errors::RuntimeError;
 pub use gas::{GasCost, GasCosts, GasMeter};
 pub use intents::{IntentTransaction, IntentType, SwapIntent, TransferIntent,
                   TreasuryRebalanceIntent, YieldAllocateIntent, RouteLiquidityIntent};
-pub use intents::base::{ExecutionMode, IntentConstraints, NonceTracker, AdmissionResult, IntentAdmissionPipeline};
+pub use intents::base::{ExecutionMode, IntentConstraints, NonceTracker, AdmissionResult, IntentAdmissionPipeline, FeePolicy, SponsorshipLimits};
 pub use objects::{AccessMode, BalanceObject, BoxedObject, GovernanceProposalObject,
                   IdentityObject, LiquidityPoolObject, Object, ObjectAccess, ObjectId,
                   ObjectMeta, ObjectType, ObjectVersion, ProposalStatus, TokenObject,

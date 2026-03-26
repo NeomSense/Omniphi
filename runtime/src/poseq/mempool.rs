@@ -4,7 +4,7 @@
 //! Submissions are added via RPC/gossip before sequencing; the ingestion
 //! layer looks up real payloads by submission_id after PoSeq orders them.
 
-use crate::intents::base::IntentTransaction;
+use crate::intents::base::{IntentTransaction, FeePolicy, SponsorshipLimits};
 use std::collections::BTreeMap;
 
 /// Mempool holding pending intent transactions indexed by their submission ID.
@@ -101,6 +101,10 @@ mod tests {
             target_objects: vec![],
             constraints: IntentConstraints::default(),
             execution_mode: ExecutionMode::BestEffort,
+            sponsor: None,
+            sponsor_signature: None,
+            sponsorship_limits: SponsorshipLimits::default(),
+            fee_policy: FeePolicy::SenderPays,
         }
     }
 

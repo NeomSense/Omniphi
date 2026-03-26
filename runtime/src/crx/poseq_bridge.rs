@@ -5,7 +5,7 @@ use crate::crx::plan_builder::CausalPlanBuilder;
 use crate::crx::rights_capsule::RightsCapsule;
 use crate::crx::settlement::{CRXSettlementEngine, CRXSettlementRecord};
 use crate::errors::RuntimeError;
-use crate::intents::base::{IntentTransaction, IntentType, IntentConstraints, ExecutionMode};
+use crate::intents::base::{IntentTransaction, IntentType, IntentConstraints, ExecutionMode, FeePolicy, SponsorshipLimits};
 use crate::intents::types::TransferIntent;
 use crate::objects::base::BoxedObject;
 use crate::plan_validation::validator::PlanValidator;
@@ -181,6 +181,10 @@ impl PoSeqCRXBridge {
             target_objects: vec![],
             constraints: IntentConstraints::default(),
             execution_mode: ExecutionMode::BestEffort,
+            sponsor: None,
+            sponsor_signature: None,
+            sponsorship_limits: SponsorshipLimits::default(),
+            fee_policy: FeePolicy::SenderPays,
         }
     }
 

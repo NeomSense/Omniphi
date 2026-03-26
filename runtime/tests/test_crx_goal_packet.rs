@@ -4,7 +4,7 @@ use omniphi_runtime::{
         PartialFailurePolicy, RiskTier, SettlementStrictness,
     },
     IntentTransaction, IntentType, TransferIntent,
-    IntentConstraints, ExecutionMode,
+    IntentConstraints, ExecutionMode, FeePolicy, SponsorshipLimits,
 };
 use std::collections::BTreeMap;
 
@@ -132,6 +132,10 @@ fn test_goal_packet_from_intent() {
         target_objects: vec![],
         constraints: IntentConstraints::default(),
         execution_mode: ExecutionMode::BestEffort,
+            sponsor: None,
+            sponsor_signature: None,
+            sponsorship_limits: SponsorshipLimits::default(),
+            fee_policy: FeePolicy::SenderPays,
     };
 
     let packet = goal_packet_from_intent(&intent, 100);
@@ -170,6 +174,10 @@ fn test_goal_packet_from_intent_swap() {
         target_objects: vec![],
         constraints: IntentConstraints::default(),
         execution_mode: ExecutionMode::BestEffort,
+            sponsor: None,
+            sponsor_signature: None,
+            sponsorship_limits: SponsorshipLimits::default(),
+            fee_policy: FeePolicy::SenderPays,
     };
 
     let packet = goal_packet_from_intent(&intent, 100);

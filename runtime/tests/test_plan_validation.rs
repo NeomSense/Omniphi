@@ -1,5 +1,5 @@
 use omniphi_runtime::capabilities::checker::CapabilitySet;
-use omniphi_runtime::intents::base::{IntentTransaction, IntentType, IntentConstraints, ExecutionMode};
+use omniphi_runtime::intents::base::{IntentTransaction, IntentType, IntentConstraints, ExecutionMode, FeePolicy, SponsorshipLimits};
 use omniphi_runtime::intents::types::SwapIntent;
 use omniphi_runtime::objects::base::ObjectId;
 use omniphi_runtime::objects::types::BalanceObject;
@@ -80,6 +80,10 @@ fn make_swap_intent(max_fee: u64) -> IntentTransaction {
         target_objects: vec![],
         constraints: IntentConstraints::default(),
         execution_mode: ExecutionMode::BestEffort,
+            sponsor: None,
+            sponsor_signature: None,
+            sponsorship_limits: SponsorshipLimits::default(),
+            fee_policy: FeePolicy::SenderPays,
     }
 }
 
