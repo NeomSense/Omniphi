@@ -37,6 +37,9 @@ pub mod contracts;
 // Phase 7: Deterministic Randomness Engine
 pub mod randomness;
 
+// Phase 8: Programmable Ownership Objects
+pub mod ownership;
+
 // Phase 6: Intent-Based Execution Architecture
 pub mod verification;
 pub mod disputes;
