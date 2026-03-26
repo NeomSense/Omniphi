@@ -34,6 +34,9 @@ pub use safety::*;
 // Phase 5: Intent Contracts (OIC)
 pub mod contracts;
 
+// Phase 7: Deterministic Randomness Engine
+pub mod randomness;
+
 // Phase 6: Intent-Based Execution Architecture
 pub mod verification;
 pub mod disputes;
