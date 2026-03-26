@@ -18,13 +18,141 @@ pub struct IntentSchema {
     pub required_capabilities: Vec<Capability>,
 }
 
+/// Supported primitive types for schema fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FieldType {
+    Uint128,
+    Int128,
+    Bool,
+    Bytes32,
+    String,
+    Bytes,
+    Map,
+    List,
+}
+
+/// A single field definition in an object schema.
+#[derive(Debug, Clone)]
+pub struct FieldDefinition {
+    /// Field name (must be unique within schema).
+    pub name: String,
+    /// Expected type.
+    pub field_type: FieldType,
+    /// Whether this field must be present in every valid state.
+    pub required: bool,
+    /// Default value if field is absent (only for optional fields).
+    pub default: Option<crate::contracts::advanced::StorageValue>,
+}
+
 /// Describes the object schema for a contract's state.
 #[derive(Debug, Clone)]
 pub struct ObjectSchema {
     /// Human-readable name for the contract type (e.g., "Escrow").
     pub name: String,
-    /// Field names in the contract state (informational, state is opaque bytes).
+    /// Typed field definitions with required/optional and defaults.
+    pub fields: Vec<FieldDefinition>,
+    /// Convenience: field names only (derived from fields).
     pub field_names: Vec<String>,
+}
+
+impl ObjectSchema {
+    /// Create a schema from field definitions.
+    pub fn new(name: &str, fields: Vec<FieldDefinition>) -> Self {
+        let field_names = fields.iter().map(|f| f.name.clone()).collect();
+        ObjectSchema { name: name.to_string(), fields, field_names }
+    }
+
+    /// Validate a ContractStorage state against this schema.
+    /// Returns Ok(()) if all required fields present and types match.
+    pub fn validate_state(&self, storage: &crate::contracts::advanced::ContractStorage) -> Result<(), String> {
+        use crate::contracts::advanced::StorageValue;
+
+        for field in &self.fields {
+            match storage.get(&field.name) {
+                Some(val) => {
+                    // Type check
+                    let matches = match (&field.field_type, val) {
+                        (FieldType::Uint128, StorageValue::Uint128(_)) => true,
+                        (FieldType::Int128, StorageValue::Int128(_)) => true,
+                        (FieldType::Bool, StorageValue::Bool(_)) => true,
+                        (FieldType::Bytes32, StorageValue::Bytes32(_)) => true,
+                        (FieldType::String, StorageValue::String(_)) => true,
+                        (FieldType::Bytes, StorageValue::Bytes(_)) => true,
+                        (FieldType::Map, StorageValue::Map(_)) => true,
+                        (FieldType::List, StorageValue::List(_)) => true,
+                        _ => false,
+                    };
+                    if !matches {
+                        return Err(format!(
+                            "field '{}': expected type {:?}, got {:?}",
+                            field.name, field.field_type, val
+                        ));
+                    }
+                }
+                None => {
+                    if field.required {
+                        return Err(format!("missing required field '{}'", field.name));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Apply default values for missing optional fields.
+    pub fn apply_defaults(&self, storage: &mut crate::contracts::advanced::ContractStorage) {
+        for field in &self.fields {
+            if !field.required {
+                if storage.get(&field.name).is_none() {
+                    if let Some(ref default) = field.default {
+                        storage.set(&field.name, default.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    /// Check backward compatibility: new_schema must be a superset of self.
+    /// All existing required fields must still exist with the same type.
+    /// New fields must be optional (to not break existing state).
+    pub fn is_compatible_upgrade(&self, new_schema: &ObjectSchema) -> Result<(), String> {
+        // Every field in old schema must exist in new schema with same type
+        for old_field in &self.fields {
+            let new_field = new_schema.fields.iter().find(|f| f.name == old_field.name);
+            match new_field {
+                Some(nf) => {
+                    if nf.field_type != old_field.field_type {
+                        return Err(format!(
+                            "field '{}' type changed from {:?} to {:?}",
+                            old_field.name, old_field.field_type, nf.field_type
+                        ));
+                    }
+                }
+                None => {
+                    if old_field.required {
+                        return Err(format!(
+                            "required field '{}' removed in new schema",
+                            old_field.name
+                        ));
+                    }
+                    // Optional fields can be removed
+                }
+            }
+        }
+
+        // New required fields are not allowed (breaks existing state)
+        for new_field in &new_schema.fields {
+            let existed = self.fields.iter().any(|f| f.name == new_field.name);
+            if !existed && new_field.required {
+                return Err(format!(
+                    "new required field '{}' breaks backward compatibility (must be optional with default)",
+                    new_field.name
+                ));
+            }
+        }
+
+        Ok(())
+    }
 }
 
 /// A registered contract schema.
@@ -74,23 +202,38 @@ impl ContractSchemaRegistry {
         Self::default()
     }
 
-    /// Register a new schema. Returns error if schema_id already exists
-    /// with a different version (use `upgrade` for version bumps).
+    /// Register a new schema. Returns error if schema_id already exists.
     pub fn register(&mut self, schema: ContractSchema) -> Result<(), String> {
-        if let Some(existing) = self.schemas.get(&schema.schema_id) {
-            if existing.version >= schema.version {
-                return Err(format!(
-                    "schema {} already registered at version {}, cannot register version {}",
-                    hex::encode(schema.schema_id),
-                    existing.version,
-                    schema.version,
-                ));
-            }
+        if self.schemas.contains_key(&schema.schema_id) {
+            return Err(format!(
+                "schema {} already registered (use upgrade for new versions)",
+                hex::encode(schema.schema_id),
+            ));
         }
         let deployer = schema.deployer;
         let id = schema.schema_id;
         self.schemas.insert(id, schema);
         self.by_deployer.entry(deployer).or_default().push(id);
+        Ok(())
+    }
+
+    /// Upgrade a schema to a new version. Validates backward compatibility.
+    pub fn upgrade(&mut self, schema: ContractSchema) -> Result<(), String> {
+        let existing = self.schemas.get(&schema.schema_id).ok_or_else(|| {
+            format!("schema {} not found (use register for new schemas)", hex::encode(schema.schema_id))
+        })?;
+
+        if schema.version <= existing.version {
+            return Err(format!(
+                "schema {} version {} <= existing version {}",
+                hex::encode(schema.schema_id), schema.version, existing.version,
+            ));
+        }
+
+        // Check backward compatibility
+        existing.object_schema.is_compatible_upgrade(&schema.object_schema)?;
+
+        self.schemas.insert(schema.schema_id, schema);
         Ok(())
     }
 

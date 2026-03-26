@@ -633,6 +633,37 @@ impl ContractObject {
     pub fn state_size(&self) -> u64 {
         self.state.len() as u64
     }
+
+    /// Validate new state against a schema, then persist if valid.
+    /// This is the schema-enforced mutation path — use instead of raw `set_state`
+    /// when a schema is available.
+    pub fn validate_and_set_state(
+        &mut self,
+        new_state: &crate::contracts::advanced::ContractStorage,
+        schema: &crate::contracts::schema::ObjectSchema,
+    ) -> Result<(), String> {
+        // Validate against schema
+        schema.validate_state(new_state)?;
+
+        // Size check
+        let bytes = new_state.to_bytes();
+        if bytes.len() as u64 > self.max_state_bytes {
+            return Err(format!(
+                "state size {} exceeds max {} bytes",
+                bytes.len(), self.max_state_bytes
+            ));
+        }
+
+        // Persist
+        self.set_state(bytes);
+        Ok(())
+    }
+
+    /// Read state as typed ContractStorage. Returns Err if state is not valid
+    /// ContractStorage encoding (e.g., legacy opaque bytes).
+    pub fn read_typed_state(&self) -> Result<crate::contracts::advanced::ContractStorage, String> {
+        crate::contracts::advanced::ContractStorage::from_bytes(&self.state)
+    }
 }
 
 impl Object for ContractObject {

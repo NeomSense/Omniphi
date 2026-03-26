@@ -220,10 +220,7 @@ fn test_schema_registry() {
         schema_id,
         deployer: [1u8; 32],
         version: 1,
-        object_schema: ObjectSchema {
-            name: "Escrow".to_string(),
-            field_names: vec!["status".to_string(), "amount".to_string()],
-        },
+        object_schema: ObjectSchema::new("Escrow", vec![]),
         intent_schemas: vec![IntentSchema {
             method: "fund".to_string(),
             param_names: vec!["amount".to_string()],
