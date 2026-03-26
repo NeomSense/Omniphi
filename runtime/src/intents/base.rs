@@ -44,6 +44,40 @@ pub enum IntentType {
     ContractCall(ContractCallIntent),
 }
 
+/// How the intent should be executed by solvers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionMode {
+    /// Best effort — solver picks optimal plan (default).
+    BestEffort,
+    /// Exact — solver must match constraints precisely or reject.
+    Exact,
+    /// Fill-or-kill — execute fully or not at all (no partial fills).
+    FillOrKill,
+    /// Partial — allow partial execution if constraints allow.
+    Partial,
+}
+
+impl Default for ExecutionMode {
+    fn default() -> Self { ExecutionMode::BestEffort }
+}
+
+/// Universal constraints applicable to any intent type.
+#[derive(Debug, Clone, Default)]
+pub struct IntentConstraints {
+    /// Maximum amount the sender is willing to spend (any asset).
+    pub max_spend: Option<u128>,
+    /// Minimum amount the sender expects to receive (any asset).
+    pub min_received: Option<u128>,
+    /// Maximum slippage in basis points (0-10000).
+    pub max_slippage_bps: Option<u32>,
+    /// Restrict execution to these specific object IDs only.
+    pub allowed_objects: Vec<ObjectId>,
+    /// Require these exact object versions (stale-state protection).
+    pub required_versions: Vec<(ObjectId, u64)>,
+    /// Execution path hints for solvers (informational, not enforced).
+    pub path_hints: Vec<String>,
+}
+
 /// A fully described, signed intent transaction.
 #[derive(Debug, Clone)]
 pub struct IntentTransaction {
@@ -53,9 +87,14 @@ pub struct IntentTransaction {
     pub max_fee: u64,
     pub deadline_epoch: u64,
     pub nonce: u64,
-    /// Placeholder — signature verification is out of scope for the runtime engine.
     pub signature: [u8; 64],
     pub metadata: BTreeMap<String, String>,
+    /// Objects this intent will touch (explicit declaration for access control).
+    pub target_objects: Vec<ObjectId>,
+    /// Universal constraints checked during admission.
+    pub constraints: IntentConstraints,
+    /// How the solver should execute this intent.
+    pub execution_mode: ExecutionMode,
 }
 
 impl IntentTransaction {
@@ -311,5 +350,137 @@ impl IntentTransaction {
         let mut sig = [0u8; 64];
         sig[0..32].copy_from_slice(&r);
         sig
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NONCE TRACKER — Replay Protection
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Tracks per-sender nonces to prevent replay attacks.
+#[derive(Debug, Clone, Default)]
+pub struct NonceTracker {
+    nonces: BTreeMap<[u8; 32], u64>,
+}
+
+impl NonceTracker {
+    pub fn new() -> Self { NonceTracker::default() }
+
+    pub fn expected_nonce(&self, sender: &[u8; 32]) -> u64 {
+        self.nonces.get(sender).copied().unwrap_or(0)
+    }
+
+    pub fn is_valid(&self, sender: &[u8; 32], nonce: u64) -> bool {
+        nonce == self.expected_nonce(sender)
+    }
+
+    pub fn advance(&mut self, sender: &[u8; 32], nonce: u64) -> Result<(), String> {
+        let expected = self.expected_nonce(sender);
+        if nonce != expected {
+            return Err(format!("nonce mismatch: expected {}, got {}", expected, nonce));
+        }
+        self.nonces.insert(*sender, nonce + 1);
+        Ok(())
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INTENT ADMISSION PIPELINE
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub enum AdmissionResult {
+    Accepted,
+    Rejected(String),
+}
+
+/// Full intent admission pipeline: structural → signature → expiry → nonce → objects → constraints.
+pub struct IntentAdmissionPipeline {
+    pub nonce_tracker: NonceTracker,
+    pub current_epoch: u64,
+    pub verify_signatures: bool,
+}
+
+impl IntentAdmissionPipeline {
+    pub fn new(current_epoch: u64) -> Self {
+        IntentAdmissionPipeline {
+            nonce_tracker: NonceTracker::new(),
+            current_epoch,
+            verify_signatures: true,
+        }
+    }
+
+    pub fn admit(
+        &mut self,
+        tx: &IntentTransaction,
+        store: &crate::state::store::ObjectStore,
+    ) -> AdmissionResult {
+        // 1. Structural
+        if let Err(e) = tx.validate() {
+            return AdmissionResult::Rejected(format!("structural: {}", e));
+        }
+
+        // 2. Signature
+        if self.verify_signatures && !tx.verify_signature() {
+            return AdmissionResult::Rejected("invalid Ed25519 signature".to_string());
+        }
+
+        // 3. Expiration
+        if tx.deadline_epoch < self.current_epoch {
+            return AdmissionResult::Rejected(format!(
+                "expired: deadline {} < current {}", tx.deadline_epoch, self.current_epoch
+            ));
+        }
+
+        // 4. Nonce
+        if !self.nonce_tracker.is_valid(&tx.sender, tx.nonce) {
+            let expected = self.nonce_tracker.expected_nonce(&tx.sender);
+            return AdmissionResult::Rejected(format!(
+                "nonce: expected {}, got {}", expected, tx.nonce
+            ));
+        }
+
+        // 5. Object access
+        for obj_id in &tx.target_objects {
+            if store.get(obj_id).is_none() {
+                return AdmissionResult::Rejected(format!("target object {} not found", obj_id));
+            }
+        }
+
+        // 6. Constraints
+        if let Some(max_slippage) = tx.constraints.max_slippage_bps {
+            if max_slippage > 10000 {
+                return AdmissionResult::Rejected("constraint: max_slippage_bps > 10000".to_string());
+            }
+        }
+        for (obj_id, required_ver) in &tx.constraints.required_versions {
+            match store.get(obj_id) {
+                Some(obj) if obj.meta().version != *required_ver => {
+                    return AdmissionResult::Rejected(format!(
+                        "constraint: object {} version {} != required {}",
+                        obj_id, obj.meta().version, required_ver
+                    ));
+                }
+                None => {
+                    return AdmissionResult::Rejected(format!(
+                        "constraint: required_version object {} not found", obj_id
+                    ));
+                }
+                _ => {}
+            }
+        }
+        if !tx.constraints.allowed_objects.is_empty() {
+            for obj_id in &tx.target_objects {
+                if !tx.constraints.allowed_objects.contains(obj_id) {
+                    return AdmissionResult::Rejected(format!(
+                        "constraint: target {} not in allowed_objects", obj_id
+                    ));
+                }
+            }
+        }
+
+        // All passed — advance nonce
+        let _ = self.nonce_tracker.advance(&tx.sender, tx.nonce);
+        AdmissionResult::Accepted
     }
 }

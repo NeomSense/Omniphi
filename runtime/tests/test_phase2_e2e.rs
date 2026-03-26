@@ -11,7 +11,7 @@
 
 use omniphi_runtime::attribution::record::SolverAttributionRecord;
 use omniphi_runtime::capabilities::checker::{Capability, CapabilitySet};
-use omniphi_runtime::intents::base::{IntentTransaction, IntentType};
+use omniphi_runtime::intents::base::{IntentTransaction, IntentType, IntentConstraints, ExecutionMode};
 use omniphi_runtime::intents::types::{SwapIntent, TransferIntent, YieldAllocateIntent};
 use omniphi_runtime::objects::base::ObjectId;
 use omniphi_runtime::objects::types::{BalanceObject, LiquidityPoolObject, VaultObject, WalletObject};
@@ -133,6 +133,9 @@ fn make_swap_intent(tx_byte: u8, max_fee: u64) -> IntentTransaction {
         nonce: tx_byte as u64,
         signature: [0u8; 64],
         metadata: BTreeMap::new(),
+        target_objects: vec![],
+        constraints: IntentConstraints::default(),
+        execution_mode: ExecutionMode::BestEffort,
     }
 }
 
@@ -151,6 +154,9 @@ fn make_yield_intent(tx_byte: u8, vault_id: ObjectId) -> IntentTransaction {
         nonce: tx_byte as u64,
         signature: [0u8; 64],
         metadata: BTreeMap::new(),
+        target_objects: vec![],
+        constraints: IntentConstraints::default(),
+        execution_mode: ExecutionMode::BestEffort,
     }
 }
 
@@ -357,6 +363,9 @@ fn test_fallback_to_internal_resolver() {
         nonce: 1,
         signature: [0u8; 64],
         metadata: BTreeMap::new(),
+        target_objects: vec![],
+        constraints: IntentConstraints::default(),
+        execution_mode: ExecutionMode::BestEffort,
     };
     let intent_id = intent.tx_id;
 

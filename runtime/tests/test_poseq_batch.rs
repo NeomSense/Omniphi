@@ -1,4 +1,4 @@
-use omniphi_runtime::intents::base::{IntentTransaction, IntentType};
+use omniphi_runtime::intents::base::{IntentTransaction, IntentType, IntentConstraints, ExecutionMode};
 use omniphi_runtime::intents::types::{SwapIntent, TransferIntent};
 use omniphi_runtime::objects::base::ObjectId;
 use omniphi_runtime::objects::types::{BalanceObject, LiquidityPoolObject, WalletObject};
@@ -82,6 +82,9 @@ fn test_full_e2e_batch_with_three_intents() {
         nonce: 1,
         signature: [0u8; 64],
         metadata: BTreeMap::new(),
+        target_objects: vec![],
+        constraints: IntentConstraints::default(),
+        execution_mode: ExecutionMode::BestEffort,
     };
 
     // Intent 2: Bob transfers 5,000 asset_a to Carol
@@ -99,6 +102,9 @@ fn test_full_e2e_batch_with_three_intents() {
         nonce: 1,
         signature: [0u8; 64],
         metadata: BTreeMap::new(),
+        target_objects: vec![],
+        constraints: IntentConstraints::default(),
+        execution_mode: ExecutionMode::BestEffort,
     };
 
     // Intent 3: Alice swaps 1,000 asset_a → asset_b
@@ -118,6 +124,9 @@ fn test_full_e2e_batch_with_three_intents() {
         nonce: 2,
         signature: [0u8; 64],
         metadata: BTreeMap::new(),
+        target_objects: vec![],
+        constraints: IntentConstraints::default(),
+        execution_mode: ExecutionMode::BestEffort,
     };
 
     let batch = OrderedBatch {
@@ -209,6 +218,9 @@ fn test_batch_skips_invalid_intents() {
         nonce: 1,
         signature: [0u8; 64],
         metadata: BTreeMap::new(),
+        target_objects: vec![],
+        constraints: IntentConstraints::default(),
+        execution_mode: ExecutionMode::BestEffort,
     };
 
     // Invalid tx: zero amount
@@ -226,6 +238,9 @@ fn test_batch_skips_invalid_intents() {
         nonce: 2,
         signature: [0u8; 64],
         metadata: BTreeMap::new(),
+        target_objects: vec![],
+        constraints: IntentConstraints::default(),
+        execution_mode: ExecutionMode::BestEffort,
     };
 
     let batch = OrderedBatch {
@@ -299,6 +314,9 @@ fn test_state_root_deterministic_across_identical_batches() {
             nonce: 1,
             signature: [0u8; 64],
             metadata: BTreeMap::new(),
+            target_objects: vec![],
+            constraints: IntentConstraints::default(),
+            execution_mode: ExecutionMode::BestEffort,
         }],
     };
 

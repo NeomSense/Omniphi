@@ -29,7 +29,7 @@ use sha2::{Sha256, Digest};
 
 use crate::capabilities::registry::CapabilityRegistry;
 use crate::errors::RuntimeError;
-use crate::intents::base::{IntentTransaction, IntentType};
+use crate::intents::base::{IntentTransaction, IntentType, IntentConstraints, ExecutionMode};
 use crate::intents::types::TransferIntent;
 use crate::poseq::interface::{OrderedBatch, PoSeqRuntime};
 use crate::poseq::mempool::IntentMempool;
@@ -527,6 +527,9 @@ impl RuntimeBatchIngester {
                     deadline_epoch: envelope.epoch + 10,
                     signature: [0u8; 64],
                     metadata: BTreeMap::new(),
+                    target_objects: vec![],
+                    constraints: IntentConstraints::default(),
+                    execution_mode: ExecutionMode::BestEffort,
                 }
             })
             .collect()

@@ -1,5 +1,5 @@
 use omniphi_runtime::capabilities::checker::CapabilitySet;
-use omniphi_runtime::intents::base::{IntentTransaction, IntentType};
+use omniphi_runtime::intents::base::{IntentTransaction, IntentType, IntentConstraints, ExecutionMode};
 use omniphi_runtime::intents::types::SwapIntent;
 use omniphi_runtime::objects::base::ObjectId;
 use omniphi_runtime::objects::types::BalanceObject;
@@ -72,6 +72,9 @@ fn make_swap_intent(max_fee: u64) -> IntentTransaction {
         nonce: 1,
         signature: [0u8; 64],
         metadata: BTreeMap::new(),
+        target_objects: vec![],
+        constraints: IntentConstraints::default(),
+        execution_mode: ExecutionMode::BestEffort,
     }
 }
 

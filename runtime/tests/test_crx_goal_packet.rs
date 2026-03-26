@@ -4,6 +4,7 @@ use omniphi_runtime::{
         PartialFailurePolicy, RiskTier, SettlementStrictness,
     },
     IntentTransaction, IntentType, TransferIntent,
+    IntentConstraints, ExecutionMode,
 };
 use std::collections::BTreeMap;
 
@@ -128,6 +129,9 @@ fn test_goal_packet_from_intent() {
         nonce: 7,
         signature: [0u8; 64],
         metadata: BTreeMap::new(),
+        target_objects: vec![],
+        constraints: IntentConstraints::default(),
+        execution_mode: ExecutionMode::BestEffort,
     };
 
     let packet = goal_packet_from_intent(&intent, 100);
@@ -163,6 +167,9 @@ fn test_goal_packet_from_intent_swap() {
         nonce: 8,
         signature: [0u8; 64],
         metadata: BTreeMap::new(),
+        target_objects: vec![],
+        constraints: IntentConstraints::default(),
+        execution_mode: ExecutionMode::BestEffort,
     };
 
     let packet = goal_packet_from_intent(&intent, 100);

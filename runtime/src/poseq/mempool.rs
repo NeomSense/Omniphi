@@ -70,7 +70,7 @@ impl Default for IntentMempool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intents::base::IntentType;
+    use crate::intents::base::{IntentType, IntentConstraints, ExecutionMode};
     use crate::intents::types::TransferIntent;
     use std::collections::BTreeMap;
 
@@ -98,6 +98,9 @@ mod tests {
             deadline_epoch: 100,
             signature: [0u8; 64],
             metadata: BTreeMap::new(),
+            target_objects: vec![],
+            constraints: IntentConstraints::default(),
+            execution_mode: ExecutionMode::BestEffort,
         }
     }
 

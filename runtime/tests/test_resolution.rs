@@ -1,6 +1,6 @@
 use omniphi_runtime::capabilities::checker::CapabilitySet;
 use omniphi_runtime::errors::RuntimeError;
-use omniphi_runtime::intents::base::{IntentTransaction, IntentType};
+use omniphi_runtime::intents::base::{IntentTransaction, IntentType, IntentConstraints, ExecutionMode};
 use omniphi_runtime::intents::types::{SwapIntent, TransferIntent};
 use omniphi_runtime::objects::base::ObjectId;
 use omniphi_runtime::objects::types::{BalanceObject, LiquidityPoolObject};
@@ -44,6 +44,9 @@ fn make_transfer_tx(
         nonce: 1,
         signature: [0u8; 64],
         metadata: BTreeMap::new(),
+        target_objects: vec![],
+        constraints: IntentConstraints::default(),
+        execution_mode: ExecutionMode::BestEffort,
     }
 }
 
@@ -70,6 +73,9 @@ fn make_swap_tx(
         nonce: 1,
         signature: [0u8; 64],
         metadata: BTreeMap::new(),
+        target_objects: vec![],
+        constraints: IntentConstraints::default(),
+        execution_mode: ExecutionMode::BestEffort,
     }
 }
 
