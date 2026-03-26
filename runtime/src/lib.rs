@@ -40,6 +40,9 @@ pub mod randomness;
 // Phase 8: Programmable Ownership Objects
 pub mod ownership;
 
+// Phase 9: Explainability Engine
+pub mod explainability;
+
 // Phase 6: Intent-Based Execution Architecture
 pub mod verification;
 pub mod disputes;
