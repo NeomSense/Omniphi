@@ -1,5 +1,6 @@
 pub mod actions;
 pub mod blast_radius;
+pub mod deterministic;
 pub mod domain_profiles;
 pub mod incidents;
 pub mod kernel;
