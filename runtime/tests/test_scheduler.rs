@@ -303,3 +303,131 @@ fn test_conflict_detection_exhaustive() {
         );
     }
 }
+
+// ──────────────────────────────────────────────
+// Deterministic schedule reproducibility
+// ──────────────────────────────────────────────
+
+#[test]
+fn test_deterministic_schedule_reproducibility() {
+    // Same plans in same order must always produce identical grouping.
+    let make_plans = || {
+        vec![
+            make_plan(1, vec![
+                ObjectAccess { object_id: id(1), mode: AccessMode::ReadWrite },
+                ObjectAccess { object_id: id(2), mode: AccessMode::ReadWrite },
+            ]),
+            make_plan(2, vec![
+                ObjectAccess { object_id: id(2), mode: AccessMode::ReadOnly },
+                ObjectAccess { object_id: id(3), mode: AccessMode::ReadWrite },
+            ]),
+            make_plan(3, vec![
+                ObjectAccess { object_id: id(4), mode: AccessMode::ReadWrite },
+                ObjectAccess { object_id: id(5), mode: AccessMode::ReadWrite },
+            ]),
+            make_plan(4, vec![
+                ObjectAccess { object_id: id(3), mode: AccessMode::ReadWrite },
+                ObjectAccess { object_id: id(6), mode: AccessMode::ReadWrite },
+            ]),
+        ]
+    };
+
+    let groups_a = ParallelScheduler::schedule(make_plans());
+    let groups_b = ParallelScheduler::schedule(make_plans());
+
+    assert_eq!(groups_a.len(), groups_b.len(), "same number of groups");
+    for (ga, gb) in groups_a.iter().zip(groups_b.iter()) {
+        assert_eq!(ga.group_index, gb.group_index);
+        assert_eq!(ga.plans.len(), gb.plans.len());
+        for (pa, pb) in ga.plans.iter().zip(gb.plans.iter()) {
+            assert_eq!(pa.tx_id, pb.tx_id, "plans within each group must be in same order");
+        }
+    }
+}
+
+// ──────────────────────────────────────────────
+// Large-scale: 10 plans with mixed conflicts
+// ──────────────────────────────────────────────
+
+#[test]
+fn test_large_scale_mixed_conflicts() {
+    // 10 plans:
+    // Plans 1-5 each write a unique object (no mutual conflicts) → 1 group
+    // Plans 6-10 all write object 100 (pairwise WW conflicts) → 5 groups
+    let mut plans = vec![];
+    for i in 1..=5u8 {
+        plans.push(make_plan(i, vec![
+            ObjectAccess { object_id: id(i), mode: AccessMode::ReadWrite },
+        ]));
+    }
+    let shared = id(100);
+    for i in 6..=10u8 {
+        plans.push(make_plan(i, vec![
+            ObjectAccess { object_id: shared, mode: AccessMode::ReadWrite },
+        ]));
+    }
+
+    let groups = ParallelScheduler::schedule(plans);
+
+    // All 10 plans must be present
+    let total: usize = groups.iter().map(|g| g.plans.len()).sum();
+    assert_eq!(total, 10);
+
+    // Plans 6-10 must each be in a different group (they all conflict via object 100)
+    let find_group = |target: [u8; 32]| -> usize {
+        for g in &groups {
+            if g.plans.iter().any(|p| p.tx_id == target) {
+                return g.group_index;
+            }
+        }
+        panic!("tx not found");
+    };
+
+    let g6 = find_group(txid(6));
+    let g7 = find_group(txid(7));
+    let g8 = find_group(txid(8));
+    let g9 = find_group(txid(9));
+    let g10 = find_group(txid(10));
+
+    // All must be in different groups
+    let mut group_set = std::collections::BTreeSet::new();
+    group_set.insert(g6);
+    group_set.insert(g7);
+    group_set.insert(g8);
+    group_set.insert(g9);
+    group_set.insert(g10);
+    assert_eq!(group_set.len(), 5, "5 mutually conflicting plans must be in 5 different groups");
+
+    // Plans 1-5 can share groups with non-conflicting plans
+    // (they don't touch object 100, so they can go in any group)
+}
+
+// ──────────────────────────────────────────────
+// Read-write asymmetry: a reads, b writes same object
+// ──────────────────────────────────────────────
+
+#[test]
+fn test_rw_asymmetry_serialized() {
+    // Plan A reads object 1, Plan B writes object 1
+    // This is a RW conflict — B must come after A (or in separate group)
+    let a = make_plan(1, vec![ObjectAccess { object_id: id(1), mode: AccessMode::ReadOnly }]);
+    let b = make_plan(2, vec![ObjectAccess { object_id: id(1), mode: AccessMode::ReadWrite }]);
+
+    let groups = ParallelScheduler::schedule(vec![a, b]);
+    assert_eq!(groups.len(), 2, "read-then-write must be serialized into 2 groups");
+}
+
+// ──────────────────────────────────────────────
+// Single plan always produces exactly 1 group
+// ──────────────────────────────────────────────
+
+#[test]
+fn test_single_plan_one_group() {
+    let plan = make_plan(1, vec![
+        ObjectAccess { object_id: id(1), mode: AccessMode::ReadWrite },
+    ]);
+    let groups = ParallelScheduler::schedule(vec![plan]);
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].plans.len(), 1);
+    assert_eq!(groups[0].group_index, 0);
+}
