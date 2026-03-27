@@ -80,21 +80,9 @@ fn make_intent(sender: [u8; 32], nonce: u64, amount: u128, fee: u64) -> IntentTr
     }
 }
 
-fn balance_oid(owner: &[u8; 32], asset_id: &[u8; 32]) -> ObjectId {
-    use sha2::{Digest, Sha256};
-    let mut h = Sha256::new();
-    h.update(b"OMNIPHI_BALANCE_OBJ");
-    h.update(owner);
-    h.update(asset_id);
-    let r = h.finalize();
-    let mut id = [0u8; 32];
-    id.copy_from_slice(&r);
-    ObjectId(id)
-}
-
 fn store_with_balance(owner: [u8; 32], asset_id: [u8; 32], amount: u128) -> ObjectStore {
     let mut store = ObjectStore::new();
-    let obj_id = balance_oid(&owner, &asset_id);
+    let obj_id = PreviewGenerator::balance_object_id(&owner, &asset_id);
     let bal = BalanceObject::new(obj_id, owner, asset_id, amount, 1);
     store.insert(Box::new(bal));
     store

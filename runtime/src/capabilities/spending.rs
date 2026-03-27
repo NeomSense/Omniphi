@@ -205,6 +205,9 @@ pub struct SpendCapabilityRegistry {
     by_grant: BTreeMap<([u8; 32], [u8; 32], [u8; 32]), Vec<[u8; 32]>>,
     /// owner → list of capability_ids (for revocation lookup)
     by_owner: BTreeMap<[u8; 32], Vec<[u8; 32]>>,
+    /// expiration_epoch → list of capability_ids expiring at that epoch.
+    /// Enables O(batch) expiration instead of full-scan.
+    by_expiration: BTreeMap<u64, Vec<[u8; 32]>>,
     /// Monotonic nonce per owner for deterministic ID generation
     owner_nonces: BTreeMap<[u8; 32], u64>,
 }
@@ -235,6 +238,7 @@ impl SpendCapabilityRegistry {
         // Index
         self.by_grant.entry((owner, spender, asset_id)).or_default().push(id);
         self.by_owner.entry(owner).or_default().push(id);
+        self.by_expiration.entry(expiration_epoch).or_default().push(id);
         self.capabilities.insert(id, cap);
 
         Ok(id)
@@ -309,13 +313,26 @@ impl SpendCapabilityRegistry {
         count
     }
 
-    /// Expire all capabilities past their deadline.
+    /// Expire capabilities past their deadline using the epoch index.
+    /// Only scans capabilities in epochs up to `current_epoch`, not the full set.
     pub fn expire_stale(&mut self, current_epoch: u64) -> usize {
         let mut count = 0;
-        for cap in self.capabilities.values_mut() {
-            if cap.status == SpendCapabilityStatus::Active && current_epoch >= cap.expiration_epoch {
-                cap.status = SpendCapabilityStatus::Expired;
-                count += 1;
+        // Collect epochs that have passed
+        let expired_epochs: Vec<u64> = self.by_expiration
+            .range(..=current_epoch)
+            .map(|(&e, _)| e)
+            .collect();
+
+        for epoch in &expired_epochs {
+            if let Some(ids) = self.by_expiration.get(epoch) {
+                for id in ids {
+                    if let Some(cap) = self.capabilities.get_mut(id) {
+                        if cap.status == SpendCapabilityStatus::Active {
+                            cap.status = SpendCapabilityStatus::Expired;
+                            count += 1;
+                        }
+                    }
+                }
             }
         }
         count

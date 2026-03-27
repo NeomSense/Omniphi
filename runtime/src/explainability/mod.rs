@@ -508,7 +508,7 @@ impl PreviewGenerator {
     }
 
     /// Derive a deterministic balance object ID from (owner, asset_id).
-    fn balance_object_id(owner: &[u8; 32], asset_id: &[u8; 32]) -> ObjectId {
+    pub fn balance_object_id(owner: &[u8; 32], asset_id: &[u8; 32]) -> ObjectId {
         use sha2::{Digest, Sha256};
         let mut h = Sha256::new();
         h.update(b"OMNIPHI_BALANCE_OBJ");

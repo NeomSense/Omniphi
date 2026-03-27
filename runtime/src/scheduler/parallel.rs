@@ -46,12 +46,30 @@ impl ParallelScheduler {
             return vec![];
         }
 
-        // Build conflict graph
+        // Build conflict graph using write-set index.
+        // Instead of O(n^2) all-pairs, index which plans touch each object,
+        // then only check pairs that share at least one object.
         let mut graph = ConflictGraph::new();
-        for i in 0..plans.len() {
-            for j in (i + 1)..plans.len() {
-                if Self::conflicts(&plans[i], &plans[j]) {
-                    graph.add_conflict(plans[i].tx_id, plans[j].tx_id);
+
+        // object_id → list of (plan_index, access_mode)
+        let mut object_plans: BTreeMap<&ObjectId, Vec<(usize, AccessMode)>> = BTreeMap::new();
+        for (idx, plan) in plans.iter().enumerate() {
+            for acc in &plan.object_access {
+                object_plans.entry(&acc.object_id).or_default().push((idx, acc.mode));
+            }
+        }
+
+        // For each object touched by multiple plans, check conflict rules
+        for (_obj_id, plan_refs) in &object_plans {
+            if plan_refs.len() < 2 { continue; }
+            for i in 0..plan_refs.len() {
+                for j in (i + 1)..plan_refs.len() {
+                    let (pi, mode_i) = &plan_refs[i];
+                    let (pj, mode_j) = &plan_refs[j];
+                    // RR = no conflict; any write involvement = conflict
+                    if *mode_i == AccessMode::ReadWrite || *mode_j == AccessMode::ReadWrite {
+                        graph.add_conflict(plans[*pi].tx_id, plans[*pj].tx_id);
+                    }
                 }
             }
         }

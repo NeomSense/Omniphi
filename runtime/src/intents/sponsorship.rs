@@ -4,7 +4,7 @@
 //! pays execution fees on behalf of the intent sender.
 
 use crate::intents::base::{FeePolicy, IntentTransaction, IntentType};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Result of sponsorship validation.
 #[derive(Debug, Clone)]
@@ -19,27 +19,57 @@ pub struct SponsorshipValidation {
 /// Tracks sponsor nonces to prevent replay.
 #[derive(Debug, Clone, Default)]
 pub struct SponsorReplayTracker {
-    /// Set of (sponsor, tx_id) pairs that have been seen.
-    seen: BTreeSet<([u8; 32], [u8; 32])>,
+    /// (sponsor, tx_id) → epoch when recorded.
+    seen: BTreeMap<([u8; 32], [u8; 32]), u64>,
+    /// epoch → list of (sponsor, tx_id) keys added in that epoch.
+    by_epoch: BTreeMap<u64, Vec<([u8; 32], [u8; 32])>>,
 }
 
 impl SponsorReplayTracker {
     pub fn new() -> Self { SponsorReplayTracker::default() }
 
     /// Returns true if this (sponsor, tx_id) pair has NOT been seen before.
-    /// Marks it as seen if new.
-    pub fn check_and_mark(&mut self, sponsor: &[u8; 32], tx_id: &[u8; 32]) -> bool {
-        self.seen.insert((*sponsor, *tx_id))
+    /// Marks it as seen at the given epoch.
+    pub fn check_and_mark(&mut self, sponsor: &[u8; 32], tx_id: &[u8; 32], epoch: u64) -> bool {
+        let key = (*sponsor, *tx_id);
+        if self.seen.contains_key(&key) {
+            return false; // replay
+        }
+        self.seen.insert(key, epoch);
+        self.by_epoch.entry(epoch).or_default().push(key);
+        true
+    }
+
+    /// Backward-compatible: check_and_mark without epoch (uses epoch 0).
+    pub fn check_and_mark_untracked(&mut self, sponsor: &[u8; 32], tx_id: &[u8; 32]) -> bool {
+        self.check_and_mark(sponsor, tx_id, 0)
     }
 
     /// Check without marking (read-only).
     pub fn is_replay(&self, sponsor: &[u8; 32], tx_id: &[u8; 32]) -> bool {
-        self.seen.contains(&(*sponsor, *tx_id))
+        self.seen.contains_key(&(*sponsor, *tx_id))
     }
 
-    /// Prune entries — in production, prune by epoch window.
+    /// Prune entries from epochs strictly before `before_epoch`.
+    /// Returns the number of entries removed.
+    pub fn prune(&mut self, before_epoch: u64) -> usize {
+        let mut removed = 0;
+        let old_epochs: Vec<u64> = self.by_epoch.range(..before_epoch).map(|(&e, _)| e).collect();
+        for epoch in old_epochs {
+            if let Some(keys) = self.by_epoch.remove(&epoch) {
+                for key in &keys {
+                    self.seen.remove(key);
+                    removed += 1;
+                }
+            }
+        }
+        removed
+    }
+
+    /// Remove all entries.
     pub fn clear(&mut self) {
         self.seen.clear();
+        self.by_epoch.clear();
     }
 
     pub fn len(&self) -> usize { self.seen.len() }
@@ -98,7 +128,7 @@ impl SponsorshipValidator {
         }
 
         // Step 4: Replay protection
-        if !replay_tracker.check_and_mark(&sponsor, &tx.tx_id) {
+        if !replay_tracker.check_and_mark(&sponsor, &tx.tx_id, current_epoch) {
             return Self::reject("sponsor replay: this (sponsor, tx_id) pair was already used");
         }
 
@@ -529,5 +559,35 @@ mod tests {
         assert!(result.valid);
         assert_eq!(result.sponsor_pays_amount, 50);  // Sponsor covers all (under cap)
         assert_eq!(result.sender_pays_amount, 0);
+    }
+
+    // ── Test 15: epoch-based replay pruning ──────────────────
+
+    #[test]
+    fn test_replay_tracker_epoch_pruning() {
+        let mut tracker = SponsorReplayTracker::new();
+
+        let s1 = [1u8; 32];
+        let tx1 = [0x10; 32];
+        let tx2 = [0x20; 32];
+        let tx3 = [0x30; 32];
+
+        tracker.check_and_mark(&s1, &tx1, 5);   // epoch 5
+        tracker.check_and_mark(&s1, &tx2, 10);  // epoch 10
+        tracker.check_and_mark(&s1, &tx3, 15);  // epoch 15
+        assert_eq!(tracker.len(), 3);
+
+        // Prune epochs < 10 → removes tx1 (epoch 5)
+        let removed = tracker.prune(10);
+        assert_eq!(removed, 1);
+        assert_eq!(tracker.len(), 2);
+        assert!(!tracker.is_replay(&s1, &tx1)); // pruned
+        assert!(tracker.is_replay(&s1, &tx2));  // kept
+        assert!(tracker.is_replay(&s1, &tx3));  // kept
+
+        // Prune epochs < 20 → removes tx2 (10) and tx3 (15)
+        let removed = tracker.prune(20);
+        assert_eq!(removed, 2);
+        assert_eq!(tracker.len(), 0);
     }
 }

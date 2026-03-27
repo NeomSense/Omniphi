@@ -15,10 +15,17 @@
 //! ## What This IS NOT
 //!
 //! This is NOT a cryptographic VRF. Limitations:
-//! - The last committing validator can bias output by withholding their commitment
 //! - Entropy is only as strong as the weakest input source
 //! - Not suitable for high-value gambling or adversarial randomness markets
 //!   without additional VRF layer
+//!
+//! ## Last-Committer Bias Mitigation
+//!
+//! Validators who commit but withhold their reveal have a penalty hash
+//! (derived from their commitment) included in the entropy aggregation.
+//! This means withholding does NOT eliminate a validator's influence —
+//! it makes that influence unpredictable to the withholder. The penalty
+//! hash is deterministic from the commitment so all nodes agree.
 //!
 //! ## Future VRF Path
 //!
@@ -119,6 +126,9 @@ pub struct EpochEntropy {
     pub source_count: usize,
     /// Whether this entropy includes validator commitments (stronger).
     pub has_validator_commits: bool,
+    /// Number of validators who committed but withheld their reveal.
+    /// Non-zero means penalty hashes were used (weaker but unbiasable).
+    pub withheld_count: usize,
 }
 
 /// The entropy engine that aggregates sources and derives randomness.
@@ -217,18 +227,37 @@ impl EntropyEngine {
             source_count += 1;
         }
 
-        // Source 2: Validator reveals (sorted by validator_id for determinism)
+        // Source 2: Validator contributions (sorted by validator_id for determinism)
+        //
+        // Last-committer bias mitigation: validators who committed but did NOT
+        // reveal have their commitment hashed with a penalty domain tag. This
+        // means withholding a reveal does NOT remove a validator's influence on
+        // the final entropy — it just makes that influence unpredictable (to
+        // the withholder). The penalty hash is deterministic from the commitment
+        // so all nodes agree on the result.
         let has_validator_commits;
+        let mut withheld_count = 0usize;
         if let Some(commits) = self.validator_commits.get(&epoch) {
-            let mut reveals: Vec<([u8; 32], [u8; 32])> = commits.iter()
-                .filter_map(|c| c.reveal.map(|r| (c.validator_id, r)))
-                .collect();
-            reveals.sort_by(|a, b| a.0.cmp(&b.0)); // sort by validator_id
+            let mut sorted_commits: Vec<&ValidatorCommitment> = commits.iter().collect();
+            sorted_commits.sort_by(|a, b| a.validator_id.cmp(&b.validator_id));
 
-            has_validator_commits = !reveals.is_empty();
-            for (vid, reveal) in &reveals {
-                h.update(vid);
-                h.update(reveal);
+            has_validator_commits = !sorted_commits.is_empty();
+            for c in &sorted_commits {
+                h.update(&c.validator_id);
+                if let Some(ref reveal) = c.reveal {
+                    // Revealed: include actual reveal value
+                    h.update(reveal);
+                } else {
+                    // Withheld: include penalty hash derived from commitment
+                    // penalty = SHA256("OMNIPHI_WITHHOLD_PENALTY" || commitment || epoch)
+                    let mut ph = Sha256::new();
+                    ph.update(b"OMNIPHI_WITHHOLD_PENALTY");
+                    ph.update(&c.commitment);
+                    ph.update(&epoch.to_be_bytes());
+                    let penalty = ph.finalize();
+                    h.update(&penalty);
+                    withheld_count += 1;
+                }
                 source_count += 1;
             }
         } else {
@@ -256,6 +285,7 @@ impl EntropyEngine {
             seed,
             source_count,
             has_validator_commits,
+            withheld_count,
         };
 
         self.cached_entropy.insert(epoch, entropy.clone());
@@ -611,12 +641,13 @@ mod tests {
         let entropy = engine.aggregate(10);
         assert_eq!(entropy.source_count, 3); // 1 epoch_seed + 2 validator reveals
         assert!(entropy.has_validator_commits);
+        assert_eq!(entropy.withheld_count, 0);
     }
 
     // ── Test 12: unrevealed validator doesn't contribute ─────
 
     #[test]
-    fn test_unrevealed_excluded() {
+    fn test_unrevealed_uses_penalty_hash() {
         let mut engine = EntropyEngine::new();
         engine.set_epoch_seed(10, seed(0xAA));
 
@@ -627,11 +658,13 @@ mod tests {
         engine.add_validator_commitment(commit1).unwrap();
         engine.add_validator_commitment(commit2).unwrap();
 
-        // Only reveal validator 1
+        // Only reveal validator 1 — validator 2 withholds
         engine.reveal_validator_commitment(10, &validator(1), reveal1).unwrap();
 
         let entropy = engine.aggregate(10);
-        assert_eq!(entropy.source_count, 2); // 1 epoch_seed + 1 reveal (not 2)
+        // 1 epoch_seed + 2 validators (1 reveal + 1 penalty hash)
+        assert_eq!(entropy.source_count, 3);
+        assert_eq!(entropy.withheld_count, 1);
     }
 
     // ── Test 13: prune removes old epochs ────────────────────

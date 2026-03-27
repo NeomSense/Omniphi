@@ -150,6 +150,8 @@ pub struct EncryptedIntentRegistry {
     intents: BTreeMap<[u8; 32], EncryptedIntent>,
     /// (submitter, nonce) → commitment (for replay detection)
     by_submitter_nonce: BTreeMap<([u8; 32], u64), [u8; 32]>,
+    /// O(1) counter of pending intents (maintained on every state transition).
+    pending: usize,
 }
 
 impl EncryptedIntentRegistry {
@@ -172,6 +174,7 @@ impl EncryptedIntentRegistry {
 
         self.by_submitter_nonce.insert(key, commitment);
         self.intents.insert(commitment, ei);
+        self.pending += 1;
         Ok(commitment)
     }
 
@@ -210,6 +213,7 @@ impl EncryptedIntentRegistry {
         // Step 3: Check reveal deadline
         if current_epoch > ei.reveal_deadline {
             ei.status = EncryptedIntentStatus::Expired;
+            self.pending = self.pending.saturating_sub(1);
             return Err(format!(
                 "reveal deadline {} passed (current epoch: {})",
                 ei.reveal_deadline, current_epoch
@@ -219,6 +223,7 @@ impl EncryptedIntentRegistry {
         // Step 4: Submitter must match revealed sender
         if reveal.plaintext_intent.sender != ei.submitter {
             ei.status = EncryptedIntentStatus::Rejected;
+            self.pending = self.pending.saturating_sub(1);
             return Err("revealed intent sender does not match submitter".to_string());
         }
 
@@ -229,11 +234,13 @@ impl EncryptedIntentRegistry {
         );
         if expected_commitment != reveal.commitment {
             ei.status = EncryptedIntentStatus::Rejected;
+            self.pending = self.pending.saturating_sub(1);
             return Err("commitment mismatch: revealed intent does not match original commitment".to_string());
         }
 
         // Success: transition to Revealed
         ei.status = EncryptedIntentStatus::Revealed;
+        self.pending = self.pending.saturating_sub(1);
         Ok(reveal.plaintext_intent.clone())
     }
 
@@ -247,6 +254,7 @@ impl EncryptedIntentRegistry {
                 count += 1;
             }
         }
+        self.pending = self.pending.saturating_sub(count);
         count
     }
 
@@ -256,6 +264,9 @@ impl EncryptedIntentRegistry {
         self.intents.retain(|_, ei| {
             ei.status == EncryptedIntentStatus::Pending || ei.submitted_at_epoch >= before_epoch
         });
+        // Recount pending after prune (pending entries may have been removed too)
+        self.pending = self.intents.values()
+            .filter(|ei| ei.status == EncryptedIntentStatus::Pending).count();
         before - self.intents.len()
     }
 
@@ -267,10 +278,8 @@ impl EncryptedIntentRegistry {
     /// Total number of encrypted intents (all statuses).
     pub fn count(&self) -> usize { self.intents.len() }
 
-    /// Number of pending (unrevealed) intents.
-    pub fn pending_count(&self) -> usize {
-        self.intents.values().filter(|ei| ei.status == EncryptedIntentStatus::Pending).count()
-    }
+    /// Number of pending (unrevealed) intents. O(1).
+    pub fn pending_count(&self) -> usize { self.pending }
 }
 
 #[cfg(test)]
