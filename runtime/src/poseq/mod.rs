@@ -1,3 +1,4 @@
+pub mod grpc_bridge;
 pub mod interface;
 pub mod ingestion;
 pub mod mempool;

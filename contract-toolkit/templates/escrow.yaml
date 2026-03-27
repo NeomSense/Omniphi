@@ -1,0 +1,202 @@
+# Escrow — Omniphi Intent Contract Example
+#
+# A two-party escrow with arbiter-controlled release and refund.
+# Demonstrates multi-role access control, state machine transitions,
+# and cross-referencing constraints.
+#
+# Usage:
+#   omniphi-contracts init my-escrow --template escrow
+#   cd my-escrow
+#   omniphi-contracts build
+#   omniphi-contracts test
+#
+# State Machine:
+#   EMPTY --deposit--> DEPOSITED --release--> RELEASED (terminal)
+#                           |
+#                           +----refund---> REFUNDED (terminal)
+
+name: Escrow
+version: "1.0.0"
+description: >
+  A two-party escrow contract with arbiter control. A sender deposits funds
+  designating a recipient and an arbiter. The arbiter can release funds to
+  the recipient or refund them to the sender. Once released or refunded,
+  the escrow is final and cannot be changed.
+
+intents:
+  - name: deposit
+    description: >
+      Deposit funds into the escrow. Sets up the escrow with sender, recipient,
+      arbiter, and amount. Can only be called once (when deposited is false).
+    params:
+      - name: sender
+        param_type: Address
+        required: true
+        description: The address depositing funds
+      - name: amount
+        param_type: Uint128
+        required: true
+        description: The amount to escrow
+      - name: recipient
+        param_type: Address
+        required: true
+        description: The intended recipient of the funds
+      - name: arbiter
+        param_type: Address
+        required: true
+        description: The arbiter who can release or refund
+      - name: deadline_epoch
+        param_type: Uint128
+        required: false
+        description: Optional epoch deadline for auto-refund eligibility
+    preconditions:
+      - "deposited == false (escrow is empty)"
+    postconditions:
+      - "deposited == true"
+      - "sender, recipient, arbiter fields are set"
+      - "amount > 0"
+
+  - name: release
+    description: >
+      Release escrowed funds to the recipient. Only the arbiter can authorize
+      this action. The escrow must be in the deposited state and not already
+      released or refunded.
+    params:
+      - name: arbiter
+        param_type: Address
+        required: true
+        description: The arbiter authorizing the release (must match stored arbiter)
+    preconditions:
+      - "deposited == true"
+      - "released == false"
+      - "refunded == false"
+      - "caller is the arbiter"
+    postconditions:
+      - "released == true"
+      - "amount unchanged"
+
+  - name: refund
+    description: >
+      Refund escrowed funds to the original sender. Only the arbiter can
+      authorize this action. The escrow must be in the deposited state
+      and not already released or refunded.
+    params:
+      - name: arbiter
+        param_type: Address
+        required: true
+        description: The arbiter authorizing the refund (must match stored arbiter)
+    preconditions:
+      - "deposited == true"
+      - "released == false"
+      - "refunded == false"
+      - "caller is the arbiter"
+    postconditions:
+      - "refunded == true"
+      - "amount unchanged"
+
+state_fields:
+  - name: deposited
+    field_type: Bool
+    default_value: "false"
+    description: Whether funds have been deposited into the escrow
+
+  - name: released
+    field_type: Bool
+    default_value: "false"
+    description: Whether funds have been released to the recipient
+
+  - name: refunded
+    field_type: Bool
+    default_value: "false"
+    description: Whether funds have been refunded to the sender
+
+  - name: arbiter
+    field_type: Address
+    description: The arbiter address who controls release/refund
+
+  - name: sender
+    field_type: Address
+    description: The depositor's address
+
+  - name: recipient
+    field_type: Address
+    description: The recipient's address
+
+  - name: amount
+    field_type: Uint128
+    default_value: "0"
+    description: The escrowed amount
+
+  - name: deadline_epoch
+    field_type: Uint128
+    default_value: "0"
+    description: Epoch deadline after which the sender can self-refund
+
+constraints:
+  # Access control: only arbiter can release
+  - name: only_arbiter_release
+    constraint_type: OwnershipCheck
+    params:
+      object_field: arbiter
+    applies_to:
+      - release
+
+  # Access control: only arbiter can refund
+  - name: only_arbiter_refund
+    constraint_type: OwnershipCheck
+    params:
+      object_field: arbiter
+    applies_to:
+      - refund
+
+  # State machine: cannot release if already refunded
+  - name: not_already_refunded
+    constraint_type: StateCheck
+    params:
+      field: refunded
+      op: eq
+      value: "false"
+    applies_to:
+      - release
+
+  # State machine: cannot refund if already released
+  - name: not_already_released
+    constraint_type: StateCheck
+    params:
+      field: released
+      op: eq
+      value: "false"
+    applies_to:
+      - refund
+
+  # Deposit guard: cannot deposit twice
+  - name: not_already_deposited
+    constraint_type: StateCheck
+    params:
+      field: deposited
+      op: eq
+      value: "false"
+    applies_to:
+      - deposit
+
+  # Must be deposited before release or refund
+  - name: must_be_deposited_for_release
+    constraint_type: StateCheck
+    params:
+      field: deposited
+      op: eq
+      value: "true"
+    applies_to:
+      - release
+
+  - name: must_be_deposited_for_refund
+    constraint_type: StateCheck
+    params:
+      field: deposited
+      op: eq
+      value: "true"
+    applies_to:
+      - refund
+
+max_gas_per_call: 500000
+max_state_bytes: 8192

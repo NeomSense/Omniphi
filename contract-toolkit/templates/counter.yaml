@@ -1,0 +1,95 @@
+# Counter — Omniphi Intent Contract Example
+#
+# A simple counter that can be incremented or decremented.
+# Demonstrates basic state fields, constraints, and intent definitions.
+#
+# Usage:
+#   omniphi-contracts init my-counter --template counter
+#   cd my-counter
+#   omniphi-contracts build
+#   omniphi-contracts test
+
+name: Counter
+version: "1.0.0"
+description: >
+  A minimal counter contract demonstrating the Omniphi Intent Contract system.
+  The counter holds a single Uint128 value that can be incremented or decremented.
+  A StateCheck constraint ensures the counter never goes below zero.
+
+intents:
+  - name: increment
+    description: >
+      Increase the counter by a given amount. Any address can call this intent.
+      The solver must produce a state transition where count increases by exactly
+      the specified amount.
+    params:
+      - name: amount
+        param_type: Uint128
+        required: true
+        description: The amount to add to the counter (must be > 0)
+    postconditions:
+      - "count increases by exactly amount"
+      - "no other state fields change"
+
+  - name: decrement
+    description: >
+      Decrease the counter by a given amount. The precondition ensures the caller
+      cannot subtract more than the current count (enforced by the non_negative_count
+      constraint).
+    params:
+      - name: amount
+        param_type: Uint128
+        required: true
+        description: The amount to subtract from the counter (must be > 0)
+    preconditions:
+      - "count >= amount (enforced by non_negative_count constraint)"
+    postconditions:
+      - "count decreases by exactly amount"
+      - "no other state fields change"
+
+  - name: reset
+    description: >
+      Reset the counter to zero. Only the contract owner can call this intent.
+    params: []
+    preconditions:
+      - "caller is the contract owner"
+    postconditions:
+      - "count == 0"
+
+state_fields:
+  - name: count
+    field_type: Uint128
+    default_value: "0"
+    description: The current counter value
+
+  - name: owner
+    field_type: Address
+    description: >
+      The address that deployed this contract. Set during initialization
+      and cannot be changed.
+
+  - name: last_updated_epoch
+    field_type: Uint128
+    default_value: "0"
+    description: The epoch at which the counter was last modified
+
+constraints:
+  - name: non_negative_count
+    constraint_type: StateCheck
+    params:
+      field: count
+      op: gte
+      value: "0"
+    applies_to:
+      - decrement
+      - reset
+
+  - name: owner_only_reset
+    constraint_type: OwnershipCheck
+    params:
+      object_field: owner
+    applies_to:
+      - reset
+
+max_gas_per_call: 500000
+max_state_bytes: 4096

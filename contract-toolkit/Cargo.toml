@@ -1,0 +1,18 @@
+[package]
+name = "omniphi-contracts"
+version = "0.1.0"
+edition = "2021"
+description = "CLI toolkit for building, testing, and deploying Omniphi Intent Contracts"
+license = "MIT"
+
+[[bin]]
+name = "omniphi-contracts"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+sha2 = "0.10"
+toml = "0.8"
