@@ -227,8 +227,7 @@ func (k Keeper) DistributeEmissions(ctx context.Context, totalAmount math.Int) e
 		}
 	}
 
-	// Mint to PoC module
-	// TODO: Integrate with PoC keeper when available
+	// Mint to PoC module (PoC keeper wired via SetPocKeeper in app.go)
 	if pocAmount.IsPositive() {
 		pocCoins := sdk.NewCoins(sdk.NewCoin(types.BondDenom, pocAmount))
 		if err := k.bankKeeper.MintCoins(ctx, types.ModuleName, pocCoins); err != nil {
