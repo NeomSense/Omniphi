@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "omniphi"
+version = "0.1.0"
+description = "Python SDK for the Omniphi blockchain"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [
+    { name = "Omniphi Contributors" },
+]
+keywords = ["blockchain", "cosmos-sdk", "omniphi", "proof-of-contribution"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+dependencies = [
+    "httpx>=0.24.0",
+    "bech32>=1.2.0",
+    "mnemonic>=0.20",
+    "ecdsa>=0.18.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "respx>=0.20",
+]
+
+[project.urls]
+Homepage = "https://github.com/omniphi/omniphi"
+Documentation = "https://docs.omniphi.network/sdk/python"
+Repository = "https://github.com/omniphi/omniphi"
+
+[tool.hatch.build.targets.wheel]
+packages = ["omniphi"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

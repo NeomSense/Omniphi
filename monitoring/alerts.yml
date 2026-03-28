@@ -1,0 +1,414 @@
+---
+# Omniphi Validator — Prometheus Alerting Rules
+# Deploy to: /etc/prometheus/rules/omniphi_alerts.yml
+# Reload Prometheus after deployment: kill -HUP $(pidof prometheus)
+
+groups:
+  # ===========================================================================
+  # Chain Health
+  # ===========================================================================
+  - name: omniphi.chain_health
+    interval: 15s
+    rules:
+      - alert: ChainHalted
+        expr: |
+          (time() - max(cometbft_consensus_latest_block_time)) > 30
+        for: 30s
+        labels:
+          severity: critical
+          chain: omniphi
+          component: consensus
+        annotations:
+          summary: "Omniphi chain has halted — no new blocks for >30 seconds"
+          description: |
+            The latest block timestamp is {{ $value | humanizeDuration }} behind wall clock.
+            Possible causes: validator set offline, consensus bug, network partition.
+            Runbook:
+              1. Check `posd status` on all validators
+              2. Review CometBFT logs: journalctl -u posd -n 200
+              3. Check peer connectivity: `curl localhost:26657/net_info`
+              4. If >1/3 voting power offline, coordinate restart with other operators
+
+      - alert: HighBlockLatency
+        expr: |
+          rate(cometbft_consensus_block_interval_seconds_sum[5m])
+          / rate(cometbft_consensus_block_interval_seconds_count[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+          chain: omniphi
+          component: consensus
+        annotations:
+          summary: "Average block time exceeds 10 seconds"
+          description: |
+            Current average block interval is {{ $value | printf "%.1f" }}s (expected ~6s).
+            This may indicate network congestion, slow validators, or mempool pressure.
+            Runbook:
+              1. Check mempool size: `curl localhost:26657/unconfirmed_txs`
+              2. Review consensus round durations in Grafana
+              3. Check if a single validator is delaying prevotes/precommits
+
+      - alert: LowPeerCount
+        expr: |
+          cometbft_p2p_peers < 3
+        for: 2m
+        labels:
+          severity: warning
+          chain: omniphi
+          component: p2p
+        annotations:
+          summary: "Connected peer count is critically low ({{ $value }} peers)"
+          description: |
+            Node has fewer than 3 peers. Risk of network isolation and missed blocks.
+            Runbook:
+              1. Check firewall rules (ports 26656, 26657)
+              2. Verify seed/persistent peers in config.toml
+              3. Run `curl localhost:26657/net_info | jq '.result.n_peers'`
+              4. Restart node if peer discovery is stuck
+
+  # ===========================================================================
+  # Validator
+  # ===========================================================================
+  - name: omniphi.validator
+    interval: 15s
+    rules:
+      - alert: ValidatorJailed
+        expr: |
+          cometbft_consensus_validator_jailed == 1
+        for: 0s
+        labels:
+          severity: critical
+          chain: omniphi
+          component: validator
+        annotations:
+          summary: "Validator has been jailed"
+          description: |
+            This validator is jailed and no longer signing blocks or earning rewards.
+            Immediate action required to unjail.
+            Runbook:
+              1. Check slashing reason: `posd query slashing signing-info <conspubkey>`
+              2. Diagnose root cause (downtime vs double sign)
+              3. If downtime: fix the issue, then unjail: `posd tx slashing unjail --from validator`
+              4. If double sign: CRITICAL — investigate key management, do NOT unjail without full audit
+
+      - alert: MissedBlocks
+        expr: |
+          (cometbft_consensus_validator_missed_blocks
+           / cometbft_consensus_validator_signing_window) > 0.10
+        for: 1m
+        labels:
+          severity: warning
+          chain: omniphi
+          component: validator
+        annotations:
+          summary: "Validator missed >10% of blocks in signing window"
+          description: |
+            Missed block ratio is {{ $value | printf "%.2f" }} ({{ $value | printf "%.0f" }}%).
+            If this continues, the validator will be jailed for downtime.
+            Runbook:
+              1. Check node sync status: `posd status | jq '.SyncInfo'`
+              2. Review system resources (CPU, memory, disk I/O)
+              3. Verify network connectivity to peers
+              4. Check for CometBFT WAL corruption in ~/.pos/data/
+
+      - alert: LowUptime
+        expr: |
+          avg_over_time(up{job="omniphi-validator"}[1h]) < 0.95
+        for: 5m
+        labels:
+          severity: warning
+          chain: omniphi
+          component: validator
+        annotations:
+          summary: "Validator uptime below 95% in the last hour"
+          description: |
+            Process uptime is {{ $value | printf "%.2f" }} ({{ $value | humanizePercentage }}).
+            Frequent restarts or crashes are degrading availability.
+            Runbook:
+              1. Check systemd service status: `systemctl status posd`
+              2. Review crash logs: `journalctl -u posd --since '1 hour ago'`
+              3. Check for OOM kills: `dmesg | grep -i oom`
+              4. Verify disk space is not exhausted
+
+      - alert: ValidatorNotSigning
+        expr: |
+          changes(cometbft_consensus_validator_last_signed_height[5m]) == 0
+          and cometbft_consensus_validator_jailed == 0
+        for: 5m
+        labels:
+          severity: critical
+          chain: omniphi
+          component: validator
+        annotations:
+          summary: "Validator has not signed any blocks in the last 5 minutes"
+          description: |
+            The last signed height has not advanced in 5 minutes, but the validator
+            is not jailed. This may indicate the node is out of sync or the private
+            key signer (e.g., Horcrux, TMKMS) has failed.
+            Runbook:
+              1. Check catching_up status: `posd status | jq '.SyncInfo.catching_up'`
+              2. Verify signer process is running
+              3. Check signer logs for connection errors
+              4. Verify priv_validator_key.json exists and is readable
+
+  # ===========================================================================
+  # Consensus
+  # ===========================================================================
+  - name: omniphi.consensus
+    interval: 15s
+    rules:
+      - alert: ConsensusRoundTooLong
+        expr: |
+          cometbft_consensus_round_duration_seconds > 30
+        for: 1m
+        labels:
+          severity: warning
+          chain: omniphi
+          component: consensus
+        annotations:
+          summary: "Consensus round taking >30 seconds"
+          description: |
+            Current round has been running for {{ $value | printf "%.0f" }}s.
+            Prolonged rounds indicate validator disagreement or network latency.
+            Runbook:
+              1. Check which validators are missing prevotes/precommits
+              2. Review gossip latency in CometBFT metrics
+              3. Check for Byzantine validator behavior in logs
+              4. Monitor whether the round eventually completes or escalates
+
+      - alert: TooManyRounds
+        expr: |
+          avg_over_time(cometbft_consensus_rounds[5m]) > 3
+        for: 5m
+        labels:
+          severity: warning
+          chain: omniphi
+          component: consensus
+        annotations:
+          summary: "Average consensus rounds per block exceeds 3"
+          description: |
+            Blocks are requiring {{ $value | printf "%.1f" }} rounds on average.
+            This indicates persistent proposer failures or network partitions.
+            Runbook:
+              1. Identify failing proposers from consensus logs
+              2. Check proposer node health and connectivity
+              3. Review timeout parameters in config.toml
+              4. Consider adjusting timeout_propose if network latency is high
+
+  # ===========================================================================
+  # System Resources
+  # ===========================================================================
+  - name: omniphi.resources
+    interval: 30s
+    rules:
+      - alert: HighMemoryUsage
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.80
+        for: 5m
+        labels:
+          severity: warning
+          chain: omniphi
+          component: system
+        annotations:
+          summary: "Memory usage exceeds 80%"
+          description: |
+            Current memory utilization is {{ $value | humanizePercentage }}.
+            If memory exhaustion occurs, the kernel OOM killer may terminate posd.
+            Runbook:
+              1. Check top memory consumers: `top -o %MEM`
+              2. Review posd memory usage: `ps aux | grep posd`
+              3. Consider pruning state: adjust pruning settings in app.toml
+              4. If persistent, increase system RAM or add swap
+
+      - alert: HighDiskUsage
+        expr: |
+          (1 - (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})) > 0.85
+        for: 5m
+        labels:
+          severity: critical
+          chain: omniphi
+          component: system
+        annotations:
+          summary: "Disk usage exceeds 85%"
+          description: |
+            Root filesystem is {{ $value | humanizePercentage }} full.
+            Chain data grows continuously; disk exhaustion will halt the node.
+            Runbook:
+              1. Check disk usage breakdown: `du -sh ~/.pos/data/*`
+              2. Enable aggressive pruning in app.toml if not already set
+              3. Remove old snapshots or WAL archives
+              4. Plan disk expansion or migrate to larger volume
+
+      - alert: HighCPU
+        expr: |
+          (1 - rate(node_cpu_seconds_total{mode="idle"}[5m])) > 0.90
+        for: 5m
+        labels:
+          severity: warning
+          chain: omniphi
+          component: system
+        annotations:
+          summary: "CPU usage exceeds 90% for >5 minutes"
+          description: |
+            Sustained high CPU at {{ $value | humanizePercentage }}.
+            This may cause the validator to miss prevote/precommit deadlines.
+            Runbook:
+              1. Profile CPU usage: `top`, `perf top`
+              2. Check for runaway goroutines: `curl localhost:6060/debug/pprof/goroutine?debug=1`
+              3. Review state sync or IAVL compaction activity
+              4. If during upgrades, this may be transient — monitor for resolution
+
+  # ===========================================================================
+  # PoSeq Bridge
+  # ===========================================================================
+  - name: omniphi.bridge
+    interval: 30s
+    rules:
+      - alert: BridgeBatchLag
+        expr: |
+          omniphi_poseq_head_batch_index - omniphi_poseq_delivered_batch_index > 5
+        for: 2m
+        labels:
+          severity: warning
+          chain: omniphi
+          component: bridge
+        annotations:
+          summary: "PoSeq bridge batch delivery is lagging by >5 batches"
+          description: |
+            Head batch index is {{ with printf "omniphi_poseq_head_batch_index" }}{{ . }}{{ end }},
+            delivered is {{ with printf "omniphi_poseq_delivered_batch_index" }}{{ . }}{{ end }}.
+            Delivery lag: {{ $value }} batches.
+            Runbook:
+              1. Check bridge relayer status and logs
+              2. Verify L2/execution layer is producing batches
+              3. Check for sequencer downtime or reorgs
+              4. If persistent, manually trigger batch delivery
+
+      - alert: BridgeAckTimeout
+        expr: |
+          (time() - omniphi_poseq_last_ack_timestamp) > 120
+        for: 1m
+        labels:
+          severity: critical
+          chain: omniphi
+          component: bridge
+        annotations:
+          summary: "No bridge ACK received in >2 minutes"
+          description: |
+            Last bridge acknowledgement was {{ $value | humanizeDuration }} ago.
+            This indicates the bridge relayer or counterparty chain may be down.
+            Runbook:
+              1. Check relayer process: `systemctl status omniphi-relayer`
+              2. Verify counterparty chain liveness
+              3. Check relayer wallet balance (gas funds)
+              4. Inspect relayer logs for RPC errors or nonce issues
+              5. Restart relayer if stuck; if chain-side, escalate
+
+  # ===========================================================================
+  # Safety Engine (Guard Module)
+  # ===========================================================================
+  - name: omniphi.safety
+    interval: 15s
+    rules:
+      - alert: ObjectFrozen
+        expr: |
+          increase(omniphi_guard_objects_frozen_total[5m]) > 0
+        for: 0s
+        labels:
+          severity: critical
+          chain: omniphi
+          component: safety
+        annotations:
+          summary: "Safety engine froze an object in the last 5 minutes"
+          description: |
+            {{ $value }} object(s) were frozen by the guard safety engine.
+            This is a protective measure triggered by anomalous behavior.
+            Runbook:
+              1. Query frozen objects: `posd query guard risk-report`
+              2. Identify the object and triggering condition
+              3. Review recent transactions involving the frozen object
+              4. If false positive, submit governance proposal to unfreeze
+              5. If genuine threat, investigate source and consider broader action
+
+      - alert: PathBlocked
+        expr: |
+          increase(omniphi_guard_paths_blocked_total[5m]) > 0
+        for: 0s
+        labels:
+          severity: critical
+          chain: omniphi
+          component: safety
+        annotations:
+          summary: "Safety engine blocked an execution path"
+          description: |
+            {{ $value }} execution path(s) were blocked by the guard module.
+            The 4-gate pipeline (VISIBILITY > SHOCK_ABSORBER > CONDITIONAL_EXECUTION > READY)
+            rejected the operation.
+            Runbook:
+              1. Query blocked operations: `posd query guard risk-report`
+              2. Identify the blocked message type and risk tier
+              3. Check if the operation exceeds risk thresholds
+              4. Review advisory links for related security reports
+              5. If legitimate, adjust risk parameters via governance
+
+      - alert: InvariantViolation
+        expr: |
+          increase(omniphi_guard_invariant_violations_total[5m]) > 0
+        for: 0s
+        labels:
+          severity: critical
+          chain: omniphi
+          component: safety
+        annotations:
+          summary: "Balance invariant violation detected"
+          description: |
+            {{ $value }} invariant violation(s) detected in the last 5 minutes.
+            This is the most severe safety alert — it indicates the chain state
+            may be inconsistent.
+            Runbook:
+              1. IMMEDIATELY check chain state: `posd query guard risk-report`
+              2. Review EndBlocker logs for invariant details
+              3. Check if the violation is in a specific module (bank, staking, etc.)
+              4. Consider halting the chain if the violation is confirmed
+              5. Coordinate with the validator set for emergency governance action
+              6. Preserve all logs and state snapshots for forensic analysis
+
+      - alert: AbnormalOutflow
+        expr: |
+          omniphi_guard_epoch_outflow > omniphi_guard_max_epoch_outflow * 0.80
+        for: 1m
+        labels:
+          severity: warning
+          chain: omniphi
+          component: safety
+        annotations:
+          summary: "Epoch outflow approaching threshold (>80% of max)"
+          description: |
+            Current epoch outflow is approaching the configured maximum.
+            At 100%, the guard module will block further outbound transfers.
+            Runbook:
+              1. Query current outflow: `posd query guard risk-report`
+              2. Identify large transfers driving the outflow
+              3. Check if a bridge drain or exploit is in progress
+              4. If legitimate high-volume period, consider temporary threshold increase via governance
+              5. If suspicious, freeze affected objects immediately
+
+      - alert: AbnormalOutflowCritical
+        expr: |
+          omniphi_guard_epoch_outflow > omniphi_guard_max_epoch_outflow
+        for: 0s
+        labels:
+          severity: critical
+          chain: omniphi
+          component: safety
+        annotations:
+          summary: "Epoch outflow has exceeded the maximum threshold"
+          description: |
+            Epoch outflow has breached the configured maximum. The guard module
+            should be actively blocking further outbound transfers.
+            Runbook:
+              1. Verify guard module is blocking: `posd query guard risk-report`
+              2. Check for bypass attempts in transaction logs
+              3. Identify all addresses involved in outflow
+              4. Coordinate emergency response with validator set
+              5. Consider emergency governance halt if guard is not blocking

@@ -1,0 +1,1837 @@
+openapi: "3.0.3"
+info:
+  title: Omniphi Blockchain REST API
+  description: |
+    REST API for the Omniphi blockchain, built on the Cosmos SDK.
+
+    This API is served by the application's built-in REST server (default port 1317).
+    It exposes both standard Cosmos SDK endpoints and Omniphi-specific custom module
+    endpoints for Proof-of-Contribution (PoC), Proof-of-Rank (PoR), PoSeq bridging,
+    tokenomics, fee market, guard/safety, timelock governance, reward multipliers,
+    reputation governance, royalty tokens, and Universal Connectivity Interface (UCI).
+
+    **Authentication:** None required for read endpoints. Transaction broadcasting
+    requires a signed transaction body.
+
+    **Pagination:** List endpoints support Cosmos SDK pagination via `pagination.key`,
+    `pagination.offset`, `pagination.limit`, `pagination.count_total`, and
+    `pagination.reverse` query parameters.
+  version: "1.0.0"
+  contact:
+    name: Omniphi Team
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: http://localhost:1317
+    description: Local development node
+  - url: https://api.omniphi.network
+    description: Public mainnet API
+
+tags:
+  - name: Bank
+    description: Cosmos Bank module -- balances and supply
+  - name: Staking
+    description: Cosmos Staking module -- validators and delegations
+  - name: Governance
+    description: Cosmos Governance module -- proposals
+  - name: Transactions
+    description: Transaction broadcasting
+  - name: PoC
+    description: Proof-of-Contribution module -- contributions and credits
+  - name: PoR
+    description: Proof-of-Rank module -- registered applications
+  - name: PoSeq
+    description: PoSeq bridging module -- checkpoints and epoch state
+  - name: Tokenomics
+    description: Tokenomics module -- supply and inflation
+  - name: FeeMarket
+    description: Fee market module -- dynamic fee parameters
+  - name: Guard
+    description: Guard/safety module -- risk assessment and parameters
+  - name: Timelock
+    description: Timelock governance module -- queued operations
+  - name: RewardMult
+    description: Reward multiplier module -- validator multipliers
+  - name: RepGov
+    description: Reputation governance module -- voter weights
+  - name: Royalty
+    description: Royalty token module -- programmable ownership objects
+  - name: UCI
+    description: Universal Connectivity Interface -- DePIN adapters
+
+paths:
+  # ---------------------------------------------------------------------------
+  # Cosmos Bank
+  # ---------------------------------------------------------------------------
+  /cosmos/bank/v1beta1/balances/{address}:
+    get:
+      operationId: BankBalances
+      tags: [Bank]
+      summary: Query all balances for an address
+      description: Returns all coin balances held by the given account address.
+      parameters:
+        - $ref: "#/components/parameters/Address"
+        - $ref: "#/components/parameters/PaginationKey"
+        - $ref: "#/components/parameters/PaginationOffset"
+        - $ref: "#/components/parameters/PaginationLimit"
+        - $ref: "#/components/parameters/PaginationCountTotal"
+        - $ref: "#/components/parameters/PaginationReverse"
+      responses:
+        "200":
+          description: Successful balance query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BalancesResponse"
+              example:
+                balances:
+                  - denom: uomni
+                    amount: "1000000000"
+                  - denom: stake
+                    amount: "500000000"
+                pagination:
+                  next_key: null
+                  total: "2"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /cosmos/bank/v1beta1/supply:
+    get:
+      operationId: BankSupply
+      tags: [Bank]
+      summary: Query total supply of all coins
+      description: Returns the total supply of all denominations in the chain.
+      parameters:
+        - $ref: "#/components/parameters/PaginationKey"
+        - $ref: "#/components/parameters/PaginationOffset"
+        - $ref: "#/components/parameters/PaginationLimit"
+        - $ref: "#/components/parameters/PaginationCountTotal"
+        - $ref: "#/components/parameters/PaginationReverse"
+      responses:
+        "200":
+          description: Successful supply query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupplyResponse"
+              example:
+                supply:
+                  - denom: uomni
+                    amount: "100000000000000"
+                  - denom: stake
+                    amount: "50000000000000"
+                pagination:
+                  next_key: null
+                  total: "2"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ---------------------------------------------------------------------------
+  # Cosmos Staking
+  # ---------------------------------------------------------------------------
+  /cosmos/staking/v1beta1/validators:
+    get:
+      operationId: StakingValidators
+      tags: [Staking]
+      summary: Query all validators
+      description: Returns the full validator set, optionally filtered by status.
+      parameters:
+        - name: status
+          in: query
+          description: "Filter by validator status: BOND_STATUS_BONDED, BOND_STATUS_UNBONDED, BOND_STATUS_UNBONDING"
+          schema:
+            type: string
+            enum:
+              - BOND_STATUS_BONDED
+              - BOND_STATUS_UNBONDED
+              - BOND_STATUS_UNBONDING
+        - $ref: "#/components/parameters/PaginationKey"
+        - $ref: "#/components/parameters/PaginationOffset"
+        - $ref: "#/components/parameters/PaginationLimit"
+        - $ref: "#/components/parameters/PaginationCountTotal"
+        - $ref: "#/components/parameters/PaginationReverse"
+      responses:
+        "200":
+          description: Successful validator query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidatorsResponse"
+              example:
+                validators:
+                  - operator_address: omnivaloper1abc123...
+                    consensus_pubkey:
+                      "@type": /cosmos.crypto.ed25519.PubKey
+                      key: "base64pubkey..."
+                    jailed: false
+                    status: BOND_STATUS_BONDED
+                    tokens: "10000000000"
+                    delegator_shares: "10000000000.000000000000000000"
+                    description:
+                      moniker: "omniphi-validator-1"
+                      identity: ""
+                      website: "https://omniphi.network"
+                      security_contact: "security@omniphi.network"
+                      details: "Primary Omniphi validator"
+                    commission:
+                      commission_rates:
+                        rate: "0.100000000000000000"
+                        max_rate: "0.200000000000000000"
+                        max_change_rate: "0.010000000000000000"
+                      update_time: "2026-01-01T00:00:00Z"
+                    min_self_delegation: "1"
+                pagination:
+                  next_key: null
+                  total: "1"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /cosmos/staking/v1beta1/delegations/{delegator_addr}:
+    get:
+      operationId: StakingDelegations
+      tags: [Staking]
+      summary: Query all delegations for a delegator
+      description: Returns all active delegations from a given delegator address.
+      parameters:
+        - name: delegator_addr
+          in: path
+          required: true
+          description: Bech32-encoded delegator account address (omni1...)
+          schema:
+            type: string
+            example: "omni1abc123def456..."
+        - $ref: "#/components/parameters/PaginationKey"
+        - $ref: "#/components/parameters/PaginationOffset"
+        - $ref: "#/components/parameters/PaginationLimit"
+        - $ref: "#/components/parameters/PaginationCountTotal"
+        - $ref: "#/components/parameters/PaginationReverse"
+      responses:
+        "200":
+          description: Successful delegations query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DelegationsResponse"
+              example:
+                delegation_responses:
+                  - delegation:
+                      delegator_address: "omni1abc123..."
+                      validator_address: "omnivaloper1abc123..."
+                      shares: "10000000000.000000000000000000"
+                    balance:
+                      denom: uomni
+                      amount: "10000000000"
+                pagination:
+                  next_key: null
+                  total: "1"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ---------------------------------------------------------------------------
+  # Cosmos Governance
+  # ---------------------------------------------------------------------------
+  /cosmos/gov/v1/proposals:
+    get:
+      operationId: GovProposals
+      tags: [Governance]
+      summary: Query all proposals
+      description: Returns all governance proposals, optionally filtered by status.
+      parameters:
+        - name: proposal_status
+          in: query
+          description: Filter by proposal status
+          schema:
+            type: string
+            enum:
+              - PROPOSAL_STATUS_DEPOSIT_PERIOD
+              - PROPOSAL_STATUS_VOTING_PERIOD
+              - PROPOSAL_STATUS_PASSED
+              - PROPOSAL_STATUS_REJECTED
+              - PROPOSAL_STATUS_FAILED
+        - name: voter
+          in: query
+          description: Filter proposals by voter address
+          schema:
+            type: string
+        - name: depositor
+          in: query
+          description: Filter proposals by depositor address
+          schema:
+            type: string
+        - $ref: "#/components/parameters/PaginationKey"
+        - $ref: "#/components/parameters/PaginationOffset"
+        - $ref: "#/components/parameters/PaginationLimit"
+        - $ref: "#/components/parameters/PaginationCountTotal"
+        - $ref: "#/components/parameters/PaginationReverse"
+      responses:
+        "200":
+          description: Successful proposals query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProposalsResponse"
+              example:
+                proposals:
+                  - id: "1"
+                    messages:
+                      - "@type": /cosmos.gov.v1.MsgExecLegacyContent
+                    status: PROPOSAL_STATUS_PASSED
+                    final_tally_result:
+                      yes_count: "100000000"
+                      abstain_count: "0"
+                      no_count: "0"
+                      no_with_veto_count: "0"
+                    submit_time: "2026-01-15T10:00:00Z"
+                    deposit_end_time: "2026-01-17T10:00:00Z"
+                    total_deposit:
+                      - denom: uomni
+                        amount: "10000000"
+                    voting_start_time: "2026-01-15T10:00:00Z"
+                    voting_end_time: "2026-01-15T10:05:00Z"
+                    title: "Enable Guard Timelock Integration"
+                    summary: "Enable timelock_integration_enabled flag in guard module"
+                pagination:
+                  next_key: null
+                  total: "1"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ---------------------------------------------------------------------------
+  # Transactions
+  # ---------------------------------------------------------------------------
+  /cosmos/tx/v1beta1/txs:
+    post:
+      operationId: BroadcastTx
+      tags: [Transactions]
+      summary: Broadcast a signed transaction
+      description: |
+        Broadcasts a signed transaction to the network. The transaction must be
+        serialized and signed before submission. Supports BROADCAST_MODE_SYNC,
+        BROADCAST_MODE_ASYNC, and BROADCAST_MODE_BLOCK.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BroadcastTxRequest"
+            example:
+              tx_bytes: "CpIBCo8BChwvY29zbW9zLmJhbmsudjFiZXRhMS5Nc2dTZW5k..."
+              mode: BROADCAST_MODE_SYNC
+      responses:
+        "200":
+          description: Transaction broadcast response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BroadcastTxResponse"
+              example:
+                tx_response:
+                  height: "12345"
+                  txhash: "A1B2C3D4E5F6..."
+                  codespace: ""
+                  code: 0
+                  data: ""
+                  raw_log: "[]"
+                  logs: []
+                  info: ""
+                  gas_wanted: "200000"
+                  gas_used: "150000"
+                  timestamp: "2026-03-27T12:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ---------------------------------------------------------------------------
+  # PoC Module (Proof-of-Contribution)
+  # ---------------------------------------------------------------------------
+  /pos/poc/v1/contributions:
+    get:
+      operationId: PoCContributions
+      tags: [PoC]
+      summary: List all contributions
+      description: |
+        Returns all recorded contributions across all addresses. Contributions
+        represent verified work performed by participants that earns PoC credits.
+      parameters:
+        - $ref: "#/components/parameters/PaginationKey"
+        - $ref: "#/components/parameters/PaginationOffset"
+        - $ref: "#/components/parameters/PaginationLimit"
+        - $ref: "#/components/parameters/PaginationCountTotal"
+        - $ref: "#/components/parameters/PaginationReverse"
+      responses:
+        "200":
+          description: Successful contributions list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContributionsResponse"
+              example:
+                contributions:
+                  - id: "1"
+                    contributor: "omni1abc123..."
+                    contribution_type: "code_review"
+                    amount: "500"
+                    epoch: "42"
+                    timestamp: "2026-03-20T08:30:00Z"
+                    metadata: "PR #123 review"
+                  - id: "2"
+                    contributor: "omni1def456..."
+                    contribution_type: "validation"
+                    amount: "1000"
+                    epoch: "42"
+                    timestamp: "2026-03-20T09:15:00Z"
+                    metadata: "Block validation epoch 42"
+                pagination:
+                  next_key: null
+                  total: "2"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /pos/poc/v1/contribution/{id}:
+    get:
+      operationId: PoCContribution
+      tags: [PoC]
+      summary: Get a contribution by ID
+      description: Returns the details of a single contribution record.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique contribution identifier
+          schema:
+            type: string
+            example: "1"
+      responses:
+        "200":
+          description: Successful contribution query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContributionResponse"
+              example:
+                contribution:
+                  id: "1"
+                  contributor: "omni1abc123..."
+                  contribution_type: "code_review"
+                  amount: "500"
+                  epoch: "42"
+                  timestamp: "2026-03-20T08:30:00Z"
+                  metadata: "PR #123 review"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /pos/poc/v1/credits/{address}:
+    get:
+      operationId: PoCCredits
+      tags: [PoC]
+      summary: Get PoC credits for an address
+      description: |
+        Returns the accumulated Proof-of-Contribution credits for a given address.
+        Credits are earned through verified contributions and influence staking rewards
+        via the reward multiplier module.
+      parameters:
+        - $ref: "#/components/parameters/Address"
+      responses:
+        "200":
+          description: Successful credits query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreditsResponse"
+              example:
+                address: "omni1abc123..."
+                total_credits: "15000"
+                epoch_credits: "500"
+                last_contribution_epoch: "42"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ---------------------------------------------------------------------------
+  # PoR Module (Proof-of-Rank)
+  # ---------------------------------------------------------------------------
+  /pos/por/v1/apps:
+    get:
+      operationId: PoRApps
+      tags: [PoR]
+      summary: List registered applications
+      description: |
+        Returns all applications registered in the Proof-of-Rank system. Each
+        application has a rank score computed from its usage metrics and community
+        governance votes.
+      parameters:
+        - $ref: "#/components/parameters/PaginationKey"
+        - $ref: "#/components/parameters/PaginationOffset"
+        - $ref: "#/components/parameters/PaginationLimit"
+        - $ref: "#/components/parameters/PaginationCountTotal"
+        - $ref: "#/components/parameters/PaginationReverse"
+      responses:
+        "200":
+          description: Successful apps list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppsResponse"
+              example:
+                apps:
+                  - app_id: "app-001"
+                    name: "OmniSwap DEX"
+                    owner: "omni1abc123..."
+                    rank_score: "8500"
+                    status: "active"
+                    registered_at: "2026-02-01T00:00:00Z"
+                    metadata:
+                      description: "Decentralized exchange on Omniphi"
+                      website: "https://omniswap.io"
+                pagination:
+                  next_key: null
+                  total: "1"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /pos/por/v1/app/{app_id}:
+    get:
+      operationId: PoRApp
+      tags: [PoR]
+      summary: Get application details
+      description: Returns full details for a single registered application.
+      parameters:
+        - name: app_id
+          in: path
+          required: true
+          description: Unique application identifier
+          schema:
+            type: string
+            example: "app-001"
+      responses:
+        "200":
+          description: Successful app query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppResponse"
+              example:
+                app:
+                  app_id: "app-001"
+                  name: "OmniSwap DEX"
+                  owner: "omni1abc123..."
+                  rank_score: "8500"
+                  status: "active"
+                  registered_at: "2026-02-01T00:00:00Z"
+                  usage_metrics:
+                    total_transactions: "125000"
+                    unique_users: "3400"
+                    total_volume: "50000000000"
+                  metadata:
+                    description: "Decentralized exchange on Omniphi"
+                    website: "https://omniswap.io"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ---------------------------------------------------------------------------
+  # PoSeq Module (Bridging / Checkpoints)
+  # ---------------------------------------------------------------------------
+  /pos/poseq/v1/checkpoint/{epoch}:
+    get:
+      operationId: PoSeqCheckpoint
+      tags: [PoSeq]
+      summary: Get checkpoint for a given epoch
+      description: |
+        Returns the PoSeq bridge checkpoint for a specific epoch. Checkpoints
+        anchor batch state transitions between the Omniphi chain and connected
+        execution layers.
+      parameters:
+        - name: epoch
+          in: path
+          required: true
+          description: Epoch number
+          schema:
+            type: string
+            example: "42"
+      responses:
+        "200":
+          description: Successful checkpoint query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckpointResponse"
+              example:
+                checkpoint:
+                  epoch: "42"
+                  state_root: "0xabc123def456..."
+                  batch_index: "156"
+                  timestamp: "2026-03-20T08:00:00Z"
+                  status: "finalized"
+                  signatures_count: "15"
+                  total_validators: "20"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /pos/poseq/v1/epoch_state:
+    get:
+      operationId: PoSeqEpochState
+      tags: [PoSeq]
+      summary: Get current epoch state
+      description: |
+        Returns the current epoch state including the active epoch number,
+        pending batch count, and bridge status.
+      responses:
+        "200":
+          description: Successful epoch state query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EpochStateResponse"
+              example:
+                current_epoch: "43"
+                epoch_start_height: "125000"
+                epoch_start_time: "2026-03-20T08:00:00Z"
+                pending_batches: "3"
+                last_finalized_epoch: "42"
+                bridge_status: "active"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ---------------------------------------------------------------------------
+  # Tokenomics Module
+  # ---------------------------------------------------------------------------
+  /pos/tokenomics/v1/supply:
+    get:
+      operationId: TokenomicsSupply
+      tags: [Tokenomics]
+      summary: Get token supply information
+      description: |
+        Returns detailed token supply information including total, circulating,
+        staked, and burned amounts for the OMNI token.
+      responses:
+        "200":
+          description: Successful supply query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenSupplyResponse"
+              example:
+                total_supply: "100000000000000"
+                circulating_supply: "45000000000000"
+                staked_supply: "40000000000000"
+                burned_supply: "5000000000000"
+                community_pool: "10000000000000"
+                denom: "uomni"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /pos/tokenomics/v1/inflation:
+    get:
+      operationId: TokenomicsInflation
+      tags: [Tokenomics]
+      summary: Get current inflation rate
+      description: |
+        Returns the current inflation rate and related tokenomics parameters
+        governing emission schedule.
+      responses:
+        "200":
+          description: Successful inflation query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InflationResponse"
+              example:
+                current_inflation_rate: "0.050000000000000000"
+                annual_provisions: "5000000000000"
+                target_staking_ratio: "0.670000000000000000"
+                actual_staking_ratio: "0.400000000000000000"
+                max_inflation: "0.100000000000000000"
+                min_inflation: "0.020000000000000000"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ---------------------------------------------------------------------------
+  # FeeMarket Module
+  # ---------------------------------------------------------------------------
+  /pos/feemarket/v1/params:
+    get:
+      operationId: FeeMarketParams
+      tags: [FeeMarket]
+      summary: Get fee market parameters
+      description: |
+        Returns the current fee market module parameters including base fee,
+        elasticity multiplier, and treasury address.
+      responses:
+        "200":
+          description: Successful params query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeeMarketParamsResponse"
+              example:
+                params:
+                  base_fee: "100"
+                  elasticity_multiplier: "2"
+                  min_base_fee: "50"
+                  max_base_fee: "10000"
+                  treasury_address: "omni10d07y265gmmuvt4z0w9aw880jnsr700j2gz0r8"
+                  fee_denom: "uomni"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ---------------------------------------------------------------------------
+  # Guard Module
+  # ---------------------------------------------------------------------------
+  /pos/guard/v1/params:
+    get:
+      operationId: GuardParams
+      tags: [Guard]
+      summary: Get guard module parameters
+      description: |
+        Returns the guard/safety module parameters including risk tier thresholds,
+        delay durations, and the timelock integration flag.
+      responses:
+        "200":
+          description: Successful params query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuardParamsResponse"
+              example:
+                params:
+                  low_risk_delay: "0s"
+                  med_risk_delay: "300s"
+                  high_risk_delay: "3600s"
+                  critical_risk_delay: "86400s"
+                  low_risk_threshold: "1000000"
+                  med_risk_threshold: "10000000"
+                  high_risk_threshold: "100000000"
+                  max_epoch_outflow: "500000000"
+                  timelock_integration_enabled: true
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /pos/guard/v1/risk_report:
+    get:
+      operationId: GuardRiskReport
+      tags: [Guard]
+      summary: Get current risk report
+      description: |
+        Returns the current safety engine risk report including pending executions,
+        frozen objects, blocked paths, and invariant status.
+      responses:
+        "200":
+          description: Successful risk report query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RiskReportResponse"
+              example:
+                risk_report:
+                  overall_risk_level: "LOW"
+                  pending_executions: 2
+                  frozen_objects: 0
+                  blocked_paths: 0
+                  invariant_violations: 0
+                  epoch_outflow: "125000000"
+                  max_epoch_outflow: "500000000"
+                  outflow_utilization: "0.250000000000000000"
+                  last_updated_height: "125500"
+                  advisories:
+                    - proposal_id: "3"
+                      report_hash: "a1b2c3d4..."
+                      report_url: "https://reports.omniphi.network/3"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ---------------------------------------------------------------------------
+  # Timelock Module
+  # ---------------------------------------------------------------------------
+  /pos/timelock/v1/queued:
+    get:
+      operationId: TimelockQueued
+      tags: [Timelock]
+      summary: Get queued timelock operations
+      description: |
+        Returns all currently queued timelock operations awaiting execution.
+        Operations progress through the guard pipeline gates:
+        VISIBILITY, SHOCK_ABSORBER, CONDITIONAL_EXECUTION, READY, EXECUTED.
+      parameters:
+        - $ref: "#/components/parameters/PaginationKey"
+        - $ref: "#/components/parameters/PaginationOffset"
+        - $ref: "#/components/parameters/PaginationLimit"
+        - $ref: "#/components/parameters/PaginationCountTotal"
+        - $ref: "#/components/parameters/PaginationReverse"
+      responses:
+        "200":
+          description: Successful queued operations query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueuedOperationsResponse"
+              example:
+                operations:
+                  - operation_id: "op-001"
+                    proposal_id: "5"
+                    risk_tier: "HIGH"
+                    gate: "CONDITIONAL_EXECUTION"
+                    queued_at: "2026-03-20T08:00:00Z"
+                    execute_after: "2026-03-20T09:00:00Z"
+                    messages:
+                      - "@type": /cosmos.bank.v1beta1.MsgSend
+                    status: "pending"
+                pagination:
+                  next_key: null
+                  total: "1"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ---------------------------------------------------------------------------
+  # RewardMult Module
+  # ---------------------------------------------------------------------------
+  /pos/rewardmult/v1/multiplier/{validator}:
+    get:
+      operationId: RewardMultMultiplier
+      tags: [RewardMult]
+      summary: Get reward multiplier for a validator
+      description: |
+        Returns the current reward multiplier for a validator. Multipliers are
+        bounded between [0.85, 1.15] by default (governance limits: [0.50, 2.00]).
+        The raw multiplier is EMA-smoothed (alpha=2/(N+1), N=8) and iteratively
+        normalized to maintain budget neutrality.
+      parameters:
+        - name: validator
+          in: path
+          required: true
+          description: Bech32-encoded validator operator address (omnivaloper1...)
+          schema:
+            type: string
+            example: "omnivaloper1abc123..."
+      responses:
+        "200":
+          description: Successful multiplier query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MultiplierResponse"
+              example:
+                validator: "omnivaloper1abc123..."
+                multiplier: "1.050000000000000000"
+                raw_multiplier: "1.080000000000000000"
+                ema_multiplier: "1.055000000000000000"
+                bonuses:
+                  - type: "high_uptime"
+                    value: "0.050000000000000000"
+                  - type: "poc_credits"
+                    value: "0.030000000000000000"
+                penalties: []
+                epoch: "42"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ---------------------------------------------------------------------------
+  # RepGov Module (Reputation Governance)
+  # ---------------------------------------------------------------------------
+  /pos/repgov/v1/weight/{address}:
+    get:
+      operationId: RepGovWeight
+      tags: [RepGov]
+      summary: Get voter weight for an address
+      description: |
+        Returns the reputation-weighted governance voting power for a given address.
+        Voting weight combines staked amount with reputation score derived from
+        contribution history and governance participation.
+      parameters:
+        - $ref: "#/components/parameters/Address"
+      responses:
+        "200":
+          description: Successful weight query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoterWeightResponse"
+              example:
+                address: "omni1abc123..."
+                total_weight: "12500000"
+                stake_weight: "10000000"
+                reputation_weight: "2500000"
+                reputation_score: "0.250000000000000000"
+                participation_rate: "0.850000000000000000"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ---------------------------------------------------------------------------
+  # Royalty Module
+  # ---------------------------------------------------------------------------
+  /pos/royalty/v1/token/{id}:
+    get:
+      operationId: RoyaltyToken
+      tags: [Royalty]
+      summary: Get royalty token details
+      description: |
+        Returns the details of a programmable ownership object (royalty token).
+        Unlike static NFTs, royalty tokens support programmable ownership with
+        revenue-sharing rules enforced on-chain.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique royalty token identifier
+          schema:
+            type: string
+            example: "royalty-001"
+      responses:
+        "200":
+          description: Successful token query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoyaltyTokenResponse"
+              example:
+                token:
+                  id: "royalty-001"
+                  owner: "omni1abc123..."
+                  creator: "omni1def456..."
+                  name: "OmniTrack Alpha"
+                  royalty_rate: "0.050000000000000000"
+                  revenue_collected: "250000000"
+                  revenue_distributed: "237500000"
+                  status: "active"
+                  frozen: false
+                  created_at: "2026-02-15T12:00:00Z"
+                  metadata:
+                    content_type: "audio"
+                    uri: "ipfs://Qm..."
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ---------------------------------------------------------------------------
+  # UCI Module (Universal Connectivity Interface)
+  # ---------------------------------------------------------------------------
+  /pos/uci/v1/adapters:
+    get:
+      operationId: UCIAdapters
+      tags: [UCI]
+      summary: List DePIN adapters
+      description: |
+        Returns all registered Universal Connectivity Interface adapters.
+        UCI adapters bridge physical infrastructure (DePIN) devices and data
+        streams into the Omniphi blockchain.
+      parameters:
+        - $ref: "#/components/parameters/PaginationKey"
+        - $ref: "#/components/parameters/PaginationOffset"
+        - $ref: "#/components/parameters/PaginationLimit"
+        - $ref: "#/components/parameters/PaginationCountTotal"
+        - $ref: "#/components/parameters/PaginationReverse"
+      responses:
+        "200":
+          description: Successful adapters list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdaptersResponse"
+              example:
+                adapters:
+                  - adapter_id: "adapter-iot-001"
+                    name: "IoT Sensor Bridge"
+                    adapter_type: "sensor_network"
+                    owner: "omni1abc123..."
+                    status: "active"
+                    connected_devices: "1250"
+                    last_heartbeat: "2026-03-27T11:55:00Z"
+                    metadata:
+                      protocol: "MQTT"
+                      region: "us-east-1"
+                pagination:
+                  next_key: null
+                  total: "1"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+# =============================================================================
+# Reusable Components
+# =============================================================================
+components:
+  # ---------------------------------------------------------------------------
+  # Parameters
+  # ---------------------------------------------------------------------------
+  parameters:
+    Address:
+      name: address
+      in: path
+      required: true
+      description: Bech32-encoded account address (omni1...)
+      schema:
+        type: string
+        example: "omni1abc123def456..."
+
+    PaginationKey:
+      name: pagination.key
+      in: query
+      description: Base64-encoded page key for cursor-based pagination
+      schema:
+        type: string
+
+    PaginationOffset:
+      name: pagination.offset
+      in: query
+      description: Zero-based offset for offset-based pagination
+      schema:
+        type: string
+        format: uint64
+
+    PaginationLimit:
+      name: pagination.limit
+      in: query
+      description: Maximum number of results to return (default varies by endpoint)
+      schema:
+        type: string
+        format: uint64
+
+    PaginationCountTotal:
+      name: pagination.count_total
+      in: query
+      description: Set to true to include total count in response (may be slow)
+      schema:
+        type: boolean
+
+    PaginationReverse:
+      name: pagination.reverse
+      in: query
+      description: Set to true to reverse iteration order
+      schema:
+        type: boolean
+
+  # ---------------------------------------------------------------------------
+  # Responses
+  # ---------------------------------------------------------------------------
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            code: 3
+            message: "invalid address: decoding bech32 failed"
+            details: []
+
+    NotFound:
+      description: Requested resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            code: 5
+            message: "not found"
+            details: []
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            code: 13
+            message: "internal error"
+            details: []
+
+  # ---------------------------------------------------------------------------
+  # Schemas
+  # ---------------------------------------------------------------------------
+  schemas:
+    # -- Common ---------------------------------------------------------------
+    Coin:
+      type: object
+      properties:
+        denom:
+          type: string
+          description: Token denomination
+        amount:
+          type: string
+          description: Amount as a string-encoded integer
+      required: [denom, amount]
+
+    Pagination:
+      type: object
+      properties:
+        next_key:
+          type: string
+          nullable: true
+          description: Base64-encoded key for the next page, null if last page
+        total:
+          type: string
+          description: Total number of records (only if count_total was requested)
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          description: gRPC status code
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: array
+          items:
+            type: object
+          description: Additional error details
+
+    # -- Bank -----------------------------------------------------------------
+    BalancesResponse:
+      type: object
+      properties:
+        balances:
+          type: array
+          items:
+            $ref: "#/components/schemas/Coin"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    SupplyResponse:
+      type: object
+      properties:
+        supply:
+          type: array
+          items:
+            $ref: "#/components/schemas/Coin"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    # -- Staking --------------------------------------------------------------
+    ValidatorDescription:
+      type: object
+      properties:
+        moniker:
+          type: string
+        identity:
+          type: string
+        website:
+          type: string
+        security_contact:
+          type: string
+        details:
+          type: string
+
+    CommissionRates:
+      type: object
+      properties:
+        rate:
+          type: string
+        max_rate:
+          type: string
+        max_change_rate:
+          type: string
+
+    Commission:
+      type: object
+      properties:
+        commission_rates:
+          $ref: "#/components/schemas/CommissionRates"
+        update_time:
+          type: string
+          format: date-time
+
+    Validator:
+      type: object
+      properties:
+        operator_address:
+          type: string
+          description: Bech32-encoded validator operator address
+        consensus_pubkey:
+          type: object
+          properties:
+            "@type":
+              type: string
+            key:
+              type: string
+        jailed:
+          type: boolean
+        status:
+          type: string
+          enum:
+            - BOND_STATUS_UNSPECIFIED
+            - BOND_STATUS_UNBONDED
+            - BOND_STATUS_UNBONDING
+            - BOND_STATUS_BONDED
+        tokens:
+          type: string
+        delegator_shares:
+          type: string
+        description:
+          $ref: "#/components/schemas/ValidatorDescription"
+        commission:
+          $ref: "#/components/schemas/Commission"
+        min_self_delegation:
+          type: string
+
+    ValidatorsResponse:
+      type: object
+      properties:
+        validators:
+          type: array
+          items:
+            $ref: "#/components/schemas/Validator"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    Delegation:
+      type: object
+      properties:
+        delegator_address:
+          type: string
+        validator_address:
+          type: string
+        shares:
+          type: string
+
+    DelegationResponse:
+      type: object
+      properties:
+        delegation:
+          $ref: "#/components/schemas/Delegation"
+        balance:
+          $ref: "#/components/schemas/Coin"
+
+    DelegationsResponse:
+      type: object
+      properties:
+        delegation_responses:
+          type: array
+          items:
+            $ref: "#/components/schemas/DelegationResponse"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    # -- Governance -----------------------------------------------------------
+    TallyResult:
+      type: object
+      properties:
+        yes_count:
+          type: string
+        abstain_count:
+          type: string
+        no_count:
+          type: string
+        no_with_veto_count:
+          type: string
+
+    Proposal:
+      type: object
+      properties:
+        id:
+          type: string
+        messages:
+          type: array
+          items:
+            type: object
+        status:
+          type: string
+          enum:
+            - PROPOSAL_STATUS_UNSPECIFIED
+            - PROPOSAL_STATUS_DEPOSIT_PERIOD
+            - PROPOSAL_STATUS_VOTING_PERIOD
+            - PROPOSAL_STATUS_PASSED
+            - PROPOSAL_STATUS_REJECTED
+            - PROPOSAL_STATUS_FAILED
+        final_tally_result:
+          $ref: "#/components/schemas/TallyResult"
+        submit_time:
+          type: string
+          format: date-time
+        deposit_end_time:
+          type: string
+          format: date-time
+        total_deposit:
+          type: array
+          items:
+            $ref: "#/components/schemas/Coin"
+        voting_start_time:
+          type: string
+          format: date-time
+        voting_end_time:
+          type: string
+          format: date-time
+        title:
+          type: string
+        summary:
+          type: string
+
+    ProposalsResponse:
+      type: object
+      properties:
+        proposals:
+          type: array
+          items:
+            $ref: "#/components/schemas/Proposal"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    # -- Transactions ---------------------------------------------------------
+    BroadcastTxRequest:
+      type: object
+      required: [tx_bytes, mode]
+      properties:
+        tx_bytes:
+          type: string
+          description: Base64-encoded signed transaction bytes
+        mode:
+          type: string
+          description: Broadcast mode
+          enum:
+            - BROADCAST_MODE_UNSPECIFIED
+            - BROADCAST_MODE_BLOCK
+            - BROADCAST_MODE_SYNC
+            - BROADCAST_MODE_ASYNC
+
+    TxResponse:
+      type: object
+      properties:
+        height:
+          type: string
+        txhash:
+          type: string
+        codespace:
+          type: string
+        code:
+          type: integer
+          description: "0 indicates success, non-zero indicates error"
+        data:
+          type: string
+        raw_log:
+          type: string
+        logs:
+          type: array
+          items:
+            type: object
+        info:
+          type: string
+        gas_wanted:
+          type: string
+        gas_used:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    BroadcastTxResponse:
+      type: object
+      properties:
+        tx_response:
+          $ref: "#/components/schemas/TxResponse"
+
+    # -- PoC ------------------------------------------------------------------
+    Contribution:
+      type: object
+      properties:
+        id:
+          type: string
+        contributor:
+          type: string
+          description: Bech32-encoded contributor address
+        contribution_type:
+          type: string
+          description: "Type of contribution (e.g., code_review, validation, documentation)"
+        amount:
+          type: string
+          description: Credit amount earned
+        epoch:
+          type: string
+          description: Epoch in which the contribution was recorded
+        timestamp:
+          type: string
+          format: date-time
+        metadata:
+          type: string
+          description: Freeform metadata about the contribution
+
+    ContributionsResponse:
+      type: object
+      properties:
+        contributions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Contribution"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    ContributionResponse:
+      type: object
+      properties:
+        contribution:
+          $ref: "#/components/schemas/Contribution"
+
+    CreditsResponse:
+      type: object
+      properties:
+        address:
+          type: string
+        total_credits:
+          type: string
+          description: Cumulative PoC credits
+        epoch_credits:
+          type: string
+          description: Credits earned in current epoch
+        last_contribution_epoch:
+          type: string
+          description: Last epoch with a recorded contribution
+
+    # -- PoR ------------------------------------------------------------------
+    AppMetadata:
+      type: object
+      properties:
+        description:
+          type: string
+        website:
+          type: string
+      additionalProperties: true
+
+    AppUsageMetrics:
+      type: object
+      properties:
+        total_transactions:
+          type: string
+        unique_users:
+          type: string
+        total_volume:
+          type: string
+
+    App:
+      type: object
+      properties:
+        app_id:
+          type: string
+        name:
+          type: string
+        owner:
+          type: string
+        rank_score:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, suspended]
+        registered_at:
+          type: string
+          format: date-time
+        metadata:
+          $ref: "#/components/schemas/AppMetadata"
+
+    AppDetail:
+      allOf:
+        - $ref: "#/components/schemas/App"
+        - type: object
+          properties:
+            usage_metrics:
+              $ref: "#/components/schemas/AppUsageMetrics"
+
+    AppsResponse:
+      type: object
+      properties:
+        apps:
+          type: array
+          items:
+            $ref: "#/components/schemas/App"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    AppResponse:
+      type: object
+      properties:
+        app:
+          $ref: "#/components/schemas/AppDetail"
+
+    # -- PoSeq ----------------------------------------------------------------
+    Checkpoint:
+      type: object
+      properties:
+        epoch:
+          type: string
+        state_root:
+          type: string
+          description: Hex-encoded Merkle state root
+        batch_index:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [pending, finalized, challenged]
+        signatures_count:
+          type: string
+        total_validators:
+          type: string
+
+    CheckpointResponse:
+      type: object
+      properties:
+        checkpoint:
+          $ref: "#/components/schemas/Checkpoint"
+
+    EpochStateResponse:
+      type: object
+      properties:
+        current_epoch:
+          type: string
+        epoch_start_height:
+          type: string
+        epoch_start_time:
+          type: string
+          format: date-time
+        pending_batches:
+          type: string
+        last_finalized_epoch:
+          type: string
+        bridge_status:
+          type: string
+          enum: [active, paused, halted]
+
+    # -- Tokenomics -----------------------------------------------------------
+    TokenSupplyResponse:
+      type: object
+      properties:
+        total_supply:
+          type: string
+        circulating_supply:
+          type: string
+        staked_supply:
+          type: string
+        burned_supply:
+          type: string
+        community_pool:
+          type: string
+        denom:
+          type: string
+
+    InflationResponse:
+      type: object
+      properties:
+        current_inflation_rate:
+          type: string
+        annual_provisions:
+          type: string
+        target_staking_ratio:
+          type: string
+        actual_staking_ratio:
+          type: string
+        max_inflation:
+          type: string
+        min_inflation:
+          type: string
+
+    # -- FeeMarket ------------------------------------------------------------
+    FeeMarketParams:
+      type: object
+      properties:
+        base_fee:
+          type: string
+        elasticity_multiplier:
+          type: string
+        min_base_fee:
+          type: string
+        max_base_fee:
+          type: string
+        treasury_address:
+          type: string
+        fee_denom:
+          type: string
+
+    FeeMarketParamsResponse:
+      type: object
+      properties:
+        params:
+          $ref: "#/components/schemas/FeeMarketParams"
+
+    # -- Guard ----------------------------------------------------------------
+    GuardParams:
+      type: object
+      properties:
+        low_risk_delay:
+          type: string
+          description: Duration string for low risk delay
+        med_risk_delay:
+          type: string
+          description: Duration string for medium risk delay
+        high_risk_delay:
+          type: string
+          description: Duration string for high risk delay
+        critical_risk_delay:
+          type: string
+          description: Duration string for critical risk delay
+        low_risk_threshold:
+          type: string
+        med_risk_threshold:
+          type: string
+        high_risk_threshold:
+          type: string
+        max_epoch_outflow:
+          type: string
+        timelock_integration_enabled:
+          type: boolean
+
+    GuardParamsResponse:
+      type: object
+      properties:
+        params:
+          $ref: "#/components/schemas/GuardParams"
+
+    Advisory:
+      type: object
+      properties:
+        proposal_id:
+          type: string
+        report_hash:
+          type: string
+          description: SHA256 hash of advisory report (64-char hex)
+        report_url:
+          type: string
+
+    RiskReport:
+      type: object
+      properties:
+        overall_risk_level:
+          type: string
+          enum: [LOW, MED, HIGH, CRITICAL]
+        pending_executions:
+          type: integer
+        frozen_objects:
+          type: integer
+        blocked_paths:
+          type: integer
+        invariant_violations:
+          type: integer
+        epoch_outflow:
+          type: string
+        max_epoch_outflow:
+          type: string
+        outflow_utilization:
+          type: string
+        last_updated_height:
+          type: string
+        advisories:
+          type: array
+          items:
+            $ref: "#/components/schemas/Advisory"
+
+    RiskReportResponse:
+      type: object
+      properties:
+        risk_report:
+          $ref: "#/components/schemas/RiskReport"
+
+    # -- Timelock -------------------------------------------------------------
+    QueuedOperation:
+      type: object
+      properties:
+        operation_id:
+          type: string
+        proposal_id:
+          type: string
+        risk_tier:
+          type: string
+          enum: [LOW, MED, HIGH, CRITICAL]
+        gate:
+          type: string
+          description: "Current gate in the 4-gate pipeline"
+          enum: [VISIBILITY, SHOCK_ABSORBER, CONDITIONAL_EXECUTION, READY, EXECUTED]
+        queued_at:
+          type: string
+          format: date-time
+        execute_after:
+          type: string
+          format: date-time
+        messages:
+          type: array
+          items:
+            type: object
+        status:
+          type: string
+          enum: [pending, ready, executed, cancelled]
+
+    QueuedOperationsResponse:
+      type: object
+      properties:
+        operations:
+          type: array
+          items:
+            $ref: "#/components/schemas/QueuedOperation"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    # -- RewardMult -----------------------------------------------------------
+    MultiplierBonus:
+      type: object
+      properties:
+        type:
+          type: string
+          description: "Bonus type (e.g., high_uptime, poc_credits)"
+        value:
+          type: string
+          description: Decimal bonus value
+
+    MultiplierPenalty:
+      type: object
+      properties:
+        type:
+          type: string
+          description: "Penalty type (e.g., missed_blocks, downtime)"
+        value:
+          type: string
+          description: Decimal penalty value
+
+    MultiplierResponse:
+      type: object
+      properties:
+        validator:
+          type: string
+        multiplier:
+          type: string
+          description: Final clamped and normalized multiplier
+        raw_multiplier:
+          type: string
+          description: "Raw multiplier before EMA smoothing (1 + bonuses - penalties)"
+        ema_multiplier:
+          type: string
+          description: EMA-smoothed multiplier before normalization
+        bonuses:
+          type: array
+          items:
+            $ref: "#/components/schemas/MultiplierBonus"
+        penalties:
+          type: array
+          items:
+            $ref: "#/components/schemas/MultiplierPenalty"
+        epoch:
+          type: string
+
+    # -- RepGov ---------------------------------------------------------------
+    VoterWeightResponse:
+      type: object
+      properties:
+        address:
+          type: string
+        total_weight:
+          type: string
+          description: Combined stake + reputation voting weight
+        stake_weight:
+          type: string
+        reputation_weight:
+          type: string
+        reputation_score:
+          type: string
+          description: Decimal reputation score [0, 1]
+        participation_rate:
+          type: string
+          description: Governance participation rate [0, 1]
+
+    # -- Royalty --------------------------------------------------------------
+    RoyaltyTokenMetadata:
+      type: object
+      properties:
+        content_type:
+          type: string
+        uri:
+          type: string
+      additionalProperties: true
+
+    RoyaltyToken:
+      type: object
+      properties:
+        id:
+          type: string
+        owner:
+          type: string
+        creator:
+          type: string
+        name:
+          type: string
+        royalty_rate:
+          type: string
+          description: Royalty percentage as decimal string
+        revenue_collected:
+          type: string
+        revenue_distributed:
+          type: string
+        status:
+          type: string
+          enum: [active, frozen, retired]
+        frozen:
+          type: boolean
+          description: Whether the safety engine has frozen this token
+        created_at:
+          type: string
+          format: date-time
+        metadata:
+          $ref: "#/components/schemas/RoyaltyTokenMetadata"
+
+    RoyaltyTokenResponse:
+      type: object
+      properties:
+        token:
+          $ref: "#/components/schemas/RoyaltyToken"
+
+    # -- UCI ------------------------------------------------------------------
+    AdapterMetadata:
+      type: object
+      properties:
+        protocol:
+          type: string
+        region:
+          type: string
+      additionalProperties: true
+
+    Adapter:
+      type: object
+      properties:
+        adapter_id:
+          type: string
+        name:
+          type: string
+        adapter_type:
+          type: string
+          description: "Adapter category (e.g., sensor_network, energy_grid, compute_node)"
+        owner:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, suspended]
+        connected_devices:
+          type: string
+        last_heartbeat:
+          type: string
+          format: date-time
+        metadata:
+          $ref: "#/components/schemas/AdapterMetadata"
+
+    AdaptersResponse:
+      type: object
+      properties:
+        adapters:
+          type: array
+          items:
+            $ref: "#/components/schemas/Adapter"
+        pagination:
+          $ref: "#/components/schemas/Pagination"

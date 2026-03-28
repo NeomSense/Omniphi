@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Omniphi Blockchain API Documentation</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+  <style>
+    html {
+      box-sizing: border-box;
+    }
+    *, *::before, *::after {
+      box-sizing: inherit;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      background: #fafafa;
+    }
+    .topbar-wrapper {
+      display: flex;
+      align-items: center;
+    }
+    /* Custom header bar */
+    .omniphi-header {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      color: #e0e0e0;
+      padding: 16px 24px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .omniphi-header h1 {
+      margin: 0 0 4px 0;
+      font-size: 24px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+    .omniphi-header p {
+      margin: 0;
+      font-size: 14px;
+      color: #a0b4c8;
+    }
+    .omniphi-header .env-badges {
+      margin-top: 10px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .omniphi-header .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .badge-local {
+      background: #2d6a4f;
+      color: #b7e4c7;
+    }
+    .badge-mainnet {
+      background: #7b2cbf;
+      color: #e0aaff;
+    }
+    .badge-version {
+      background: #c77dff;
+      color: #10002b;
+    }
+    /* Hide default Swagger UI topbar since we have our own */
+    .swagger-ui .topbar {
+      display: none;
+    }
+    #swagger-ui {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="omniphi-header">
+    <h1>Omniphi Blockchain API</h1>
+    <p>
+      Interactive REST API documentation for the Omniphi chain.
+      Powered by Cosmos SDK with custom modules: PoC, PoR, PoSeq, Guard, RewardMult, RepGov, Royalty, UCI.
+    </p>
+    <div class="env-badges">
+      <span class="badge badge-local">localhost:1317</span>
+      <span class="badge badge-mainnet">api.omniphi.network</span>
+      <span class="badge badge-version">OpenAPI 3.0</span>
+    </div>
+  </div>
+
+  <div id="swagger-ui"></div>
+
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+  <script>
+    window.onload = function () {
+      SwaggerUIBundle({
+        url: "./openapi.yaml",
+        dom_id: "#swagger-ui",
+        deepLinking: true,
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIStandalonePreset
+        ],
+        plugins: [
+          SwaggerUIBundle.plugins.DownloadUrl
+        ],
+        layout: "StandaloneLayout",
+        defaultModelsExpandDepth: 1,
+        defaultModelExpandDepth: 2,
+        docExpansion: "list",
+        filter: true,
+        showExtensions: true,
+        showCommonExtensions: true,
+        tryItOutEnabled: true,
+        validatorUrl: null,
+        tagsSorter: "alpha",
+        operationsSorter: "alpha"
+      });
+    };
+  </script>
+</body>
+</html>
