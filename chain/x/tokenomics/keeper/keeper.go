@@ -268,3 +268,123 @@ func (k Keeper) SetTreasuryAddress(ctx context.Context, addr sdk.AccAddress) err
 	store := k.storeService.OpenKVStore(ctx)
 	return store.Set(types.KeyTreasuryAddress, addr.Bytes())
 }
+
+// ── Distribution tracking methods ───────────────────────────────────────────
+
+// RecordDistribution increments the cumulative distribution for a category
+// and updates the last distribution height.
+func (k Keeper) RecordDistribution(ctx context.Context, category string, amount math.Int) error {
+	store := k.storeService.OpenKVStore(ctx)
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	// Increment cumulative distributed
+	key := types.GetDistributedKey(category)
+	current := k.getIntFromStore(ctx, key)
+	if err := store.Set(key, []byte(current.Add(amount).String())); err != nil {
+		return err
+	}
+
+	// Update last distribution height
+	height := sdkCtx.BlockHeight()
+	heightBytes := sdk.Uint64ToBigEndian(uint64(height))
+	return store.Set(types.KeyLastDistributionHeight, heightBytes)
+}
+
+// GetCumulativeDistributed returns the total distributed amount for a category.
+func (k Keeper) GetCumulativeDistributed(ctx context.Context, category string) math.Int {
+	return k.getIntFromStore(ctx, types.GetDistributedKey(category))
+}
+
+// GetLastDistributionHeight returns the block height of the last distribution.
+func (k Keeper) GetLastDistributionHeight(ctx context.Context) int64 {
+	return k.getHeightFromStore(ctx, types.KeyLastDistributionHeight)
+}
+
+// IncrementBurnCount increments the total burn count.
+func (k Keeper) IncrementBurnCount(ctx context.Context) error {
+	store := k.storeService.OpenKVStore(ctx)
+	current := k.getUint64FromStore(ctx, types.KeyBurnCount)
+	return store.Set(types.KeyBurnCount, sdk.Uint64ToBigEndian(current+1))
+}
+
+// GetBurnCount returns the total number of burns.
+func (k Keeper) GetBurnCount(ctx context.Context) uint64 {
+	return k.getUint64FromStore(ctx, types.KeyBurnCount)
+}
+
+// RecordIBCReward tracks IBC rewards received.
+func (k Keeper) RecordIBCReward(ctx context.Context, amount math.Int) error {
+	store := k.storeService.OpenKVStore(ctx)
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	current := k.getIntFromStore(ctx, types.KeyIBCRewardsReceived)
+	if err := store.Set(types.KeyIBCRewardsReceived, []byte(current.Add(amount).String())); err != nil {
+		return err
+	}
+
+	height := sdkCtx.BlockHeight()
+	return store.Set(types.KeyLastRewardHeight, sdk.Uint64ToBigEndian(uint64(height)))
+}
+
+// GetIBCRewardsReceived returns total IBC rewards received.
+func (k Keeper) GetIBCRewardsReceived(ctx context.Context) math.Int {
+	return k.getIntFromStore(ctx, types.KeyIBCRewardsReceived)
+}
+
+// GetLastRewardHeight returns the last IBC reward block height.
+func (k Keeper) GetLastRewardHeight(ctx context.Context) int64 {
+	return k.getHeightFromStore(ctx, types.KeyLastRewardHeight)
+}
+
+// SetLastBurnReportHeight records the last burn report height.
+func (k Keeper) SetLastBurnReportHeight(ctx context.Context) error {
+	store := k.storeService.OpenKVStore(ctx)
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	height := sdkCtx.BlockHeight()
+	return store.Set(types.KeyLastBurnReportHeight, sdk.Uint64ToBigEndian(uint64(height)))
+}
+
+// GetLastBurnReportHeight returns the last burn report block height.
+func (k Keeper) GetLastBurnReportHeight(ctx context.Context) int64 {
+	return k.getHeightFromStore(ctx, types.KeyLastBurnReportHeight)
+}
+
+// RecordTreasuryInflation tracks treasury inflows from inflation.
+func (k Keeper) RecordTreasuryInflation(ctx context.Context, amount math.Int) error {
+	store := k.storeService.OpenKVStore(ctx)
+	current := k.getIntFromStore(ctx, types.KeyTreasuryFromInflation)
+	return store.Set(types.KeyTreasuryFromInflation, []byte(current.Add(amount).String()))
+}
+
+// GetTreasuryFromInflation returns total treasury inflows from inflation.
+func (k Keeper) GetTreasuryFromInflation(ctx context.Context) math.Int {
+	return k.getIntFromStore(ctx, types.KeyTreasuryFromInflation)
+}
+
+// ── Store helpers ────────────────────────────────────────────────────────────
+
+func (k Keeper) getIntFromStore(ctx context.Context, key []byte) math.Int {
+	store := k.storeService.OpenKVStore(ctx)
+	bz, err := store.Get(key)
+	if err != nil || bz == nil {
+		return math.ZeroInt()
+	}
+	val, ok := math.NewIntFromString(string(bz))
+	if !ok {
+		return math.ZeroInt()
+	}
+	return val
+}
+
+func (k Keeper) getUint64FromStore(ctx context.Context, key []byte) uint64 {
+	store := k.storeService.OpenKVStore(ctx)
+	bz, err := store.Get(key)
+	if err != nil || bz == nil || len(bz) < 8 {
+		return 0
+	}
+	return sdk.BigEndianToUint64(bz)
+}
+
+func (k Keeper) getHeightFromStore(ctx context.Context, key []byte) int64 {
+	return int64(k.getUint64FromStore(ctx, key))
+}

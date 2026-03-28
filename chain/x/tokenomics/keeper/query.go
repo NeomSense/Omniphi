@@ -94,38 +94,38 @@ func (qs queryServer) Emissions(goCtx context.Context, req *types.QueryEmissions
 	// Calculate total annual emissions
 	totalAnnualEmissions := qs.CalculateAnnualProvisions(ctx)
 
-	// Calculate per-category allocations
+	// Calculate per-category allocations with real cumulative tracking
 	allocations := []types.EmissionAllocation{
 		{
-			Category:   "staking",
-			Percentage: params.EmissionSplitStaking,
-			AnnualAmount: params.EmissionSplitStaking.MulInt(totalAnnualEmissions).TruncateInt(),
-			TotalDistributed: math.ZeroInt(), // TODO: Track cumulative distributions
+			Category:         "staking",
+			Percentage:       params.EmissionSplitStaking,
+			AnnualAmount:     params.EmissionSplitStaking.MulInt(totalAnnualEmissions).TruncateInt(),
+			TotalDistributed: qs.GetCumulativeDistributed(ctx, "staking"),
 		},
 		{
-			Category:   "poc",
-			Percentage: params.EmissionSplitPoc,
-			AnnualAmount: params.EmissionSplitPoc.MulInt(totalAnnualEmissions).TruncateInt(),
-			TotalDistributed: math.ZeroInt(),
+			Category:         "poc",
+			Percentage:       params.EmissionSplitPoc,
+			AnnualAmount:     params.EmissionSplitPoc.MulInt(totalAnnualEmissions).TruncateInt(),
+			TotalDistributed: qs.GetCumulativeDistributed(ctx, "poc"),
 		},
 		{
-			Category:   "sequencer",
-			Percentage: params.EmissionSplitSequencer,
-			AnnualAmount: params.EmissionSplitSequencer.MulInt(totalAnnualEmissions).TruncateInt(),
-			TotalDistributed: math.ZeroInt(),
+			Category:         "sequencer",
+			Percentage:       params.EmissionSplitSequencer,
+			AnnualAmount:     params.EmissionSplitSequencer.MulInt(totalAnnualEmissions).TruncateInt(),
+			TotalDistributed: qs.GetCumulativeDistributed(ctx, "sequencer"),
 		},
 		{
-			Category:   "treasury",
-			Percentage: params.EmissionSplitTreasury,
-			AnnualAmount: params.EmissionSplitTreasury.MulInt(totalAnnualEmissions).TruncateInt(),
-			TotalDistributed: math.ZeroInt(),
+			Category:         "treasury",
+			Percentage:       params.EmissionSplitTreasury,
+			AnnualAmount:     params.EmissionSplitTreasury.MulInt(totalAnnualEmissions).TruncateInt(),
+			TotalDistributed: qs.GetCumulativeDistributed(ctx, "treasury"),
 		},
 	}
 
 	return &types.QueryEmissionsResponse{
-		Allocations:          allocations,
-		TotalAnnualEmissions: totalAnnualEmissions,
-		LastDistributionHeight: 0, // TODO: Track last distribution
+		Allocations:            allocations,
+		TotalAnnualEmissions:   totalAnnualEmissions,
+		LastDistributionHeight: qs.GetLastDistributionHeight(ctx),
 	}, nil
 }
 
@@ -212,13 +212,19 @@ func (qs queryServer) BurnsBySource(goCtx context.Context, req *types.QueryBurns
 		currentBurnRate = math.LegacyZeroDec()
 	}
 
-	// Create statistics
+	// Create statistics with real tracked data
+	burnCount := qs.GetBurnCount(ctx)
+	avgBurn := math.LegacyZeroDec()
+	if burnCount > 0 {
+		avgBurn = math.LegacyNewDecFromInt(totalAmount).Quo(math.LegacyNewDec(int64(burnCount)))
+	}
+
 	stats := types.BurnsBySourceStats{
-		Source:           req.Source,
-		TotalAmount:      totalAmount,
-		BurnCount:        0, // TODO: Track count separately
-		CurrentBurnRate:  currentBurnRate,
-		AverageBurnAmount: math.LegacyZeroDec(), // TODO: Calculate from count
+		Source:            req.Source,
+		TotalAmount:       totalAmount,
+		BurnCount:         burnCount,
+		CurrentBurnRate:   currentBurnRate,
+		AverageBurnAmount: avgBurn,
 	}
 
 	// Note: In full implementation, would iterate burn records to collect matching burns
@@ -283,11 +289,17 @@ func (qs queryServer) Treasury(goCtx context.Context, req *types.QueryTreasuryRe
 		totalInflows = math.ZeroInt()
 	}
 
+	fromInflation := qs.GetTreasuryFromInflation(ctx)
+	fromRedirect := totalInflows.Sub(fromInflation)
+	if fromRedirect.IsNegative() {
+		fromRedirect = math.ZeroInt()
+	}
+
 	return &types.QueryTreasuryResponse{
 		TreasuryBalance:         balance.Amount,
 		TotalTreasuryInflows:    totalInflows,
-		FromInflation:           math.ZeroInt(), // TODO: Track separately
-		FromBurnRedirect:        totalInflows,   // Simplified: assume all from redirects
+		FromInflation:           fromInflation,
+		FromBurnRedirect:        fromRedirect,
 		TreasuryBurnRedirectPct: params.TreasuryBurnRedirect,
 		TreasuryAddress:         treasuryAddr.String(),
 	}, nil
@@ -403,15 +415,18 @@ func (qs queryServer) ChainMetrics(goCtx context.Context, req *types.QueryChainM
 		gasConversionRatio = math.LegacyOneDec() // Core chain = 1.0x
 	}
 
+	ibcRewards := qs.GetIBCRewardsReceived(ctx)
+	netFlow := ibcRewards.Sub(totalBurned) // net = rewards_in - burned_out
+
 	return &types.QueryChainMetricsResponse{
-		ChainId:                req.ChainId,
-		TotalBurned:            totalBurned,
-		TotalRewardsReceived:   math.ZeroInt(), // TODO: Track IBC rewards received
-		NetFlow:                math.ZeroInt(), // TODO: Calculate net flow
-		IbcChannel:             ibcChannel,
-		GasConversionRatio:     gasConversionRatio,
-		LastRewardHeight:       0, // TODO: Track last reward
-		LastBurnReportHeight:   0, // TODO: Track last burn report
+		ChainId:              req.ChainId,
+		TotalBurned:          totalBurned,
+		TotalRewardsReceived: ibcRewards,
+		NetFlow:              netFlow,
+		IbcChannel:           ibcChannel,
+		GasConversionRatio:   gasConversionRatio,
+		LastRewardHeight:     qs.GetLastRewardHeight(ctx),
+		LastBurnReportHeight: qs.GetLastBurnReportHeight(ctx),
 	}, nil
 }
 

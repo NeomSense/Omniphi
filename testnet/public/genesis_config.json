@@ -1,0 +1,77 @@
+{
+  "chain_id": "omniphi-public-testnet-1",
+  "genesis_time": "2026-04-01T00:00:00Z",
+  "consensus_params": {
+    "block": {
+      "max_bytes": "22020096",
+      "max_gas": "100000000"
+    },
+    "evidence": {
+      "max_age_num_blocks": "100000",
+      "max_age_duration": "172800000000000",
+      "max_bytes": "1048576"
+    },
+    "validator": {
+      "pub_key_types": ["ed25519"]
+    }
+  },
+  "app_state": {
+    "staking": {
+      "params": {
+        "unbonding_time": "1814400s",
+        "max_validators": 125,
+        "max_entries": 7,
+        "historical_entries": 10000,
+        "bond_denom": "omniphi",
+        "min_commission_rate": "0.050000000000000000"
+      }
+    },
+    "slashing": {
+      "params": {
+        "signed_blocks_window": "30000",
+        "min_signed_per_window": "0.050000000000000000",
+        "downtime_jail_duration": "600s",
+        "slash_fraction_double_sign": "0.050000000000000000",
+        "slash_fraction_downtime": "0.000100000000000000"
+      }
+    },
+    "gov": {
+      "params": {
+        "min_deposit": [{"denom": "omniphi", "amount": "10000000"}],
+        "max_deposit_period": "172800s",
+        "voting_period": "432000s",
+        "quorum": "0.334000000000000000",
+        "threshold": "0.500000000000000000",
+        "veto_threshold": "0.334000000000000000"
+      }
+    },
+    "tokenomics": {
+      "params": {
+        "inflation_year1": "0.030000000000000000",
+        "inflation_decay_per_year": "0.002500000000000000",
+        "inflation_floor": "0.005000000000000000",
+        "total_supply_cap": "10000000000000000",
+        "emission_split_staking": "0.400000000000000000",
+        "emission_split_poc": "0.300000000000000000",
+        "emission_split_sequencer": "0.200000000000000000",
+        "emission_split_treasury": "0.100000000000000000"
+      }
+    }
+  },
+  "validators": {
+    "note": "Validators submit gentx to join. See docs/VALIDATOR_GUIDE.md"
+  },
+  "seed_nodes": [
+    "seed1.testnet.omniphi.network:26656",
+    "seed2.testnet.omniphi.network:26656"
+  ],
+  "rpc_endpoints": [
+    "https://rpc.testnet.omniphi.network:26657",
+    "https://rpc2.testnet.omniphi.network:26657"
+  ],
+  "api_endpoints": [
+    "https://api.testnet.omniphi.network:1317"
+  ],
+  "explorer": "https://explorer.testnet.omniphi.network",
+  "faucet": "https://faucet.testnet.omniphi.network"
+}

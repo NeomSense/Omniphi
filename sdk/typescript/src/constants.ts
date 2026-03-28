@@ -65,10 +65,10 @@ export const DEFAULT_GAS_PRICE = "0.025omniphi";
  * Pre-built default fee suitable for most transactions.
  * 200 000 gas * 0.025 = 5 000 omniphi.
  */
-export const DEFAULT_FEE = {
+export const DEFAULT_FEE: { readonly amount: readonly { readonly denom: string; readonly amount: string }[]; readonly gas: string } = {
   amount: [{ denom: DENOM, amount: "5000" }],
   gas: String(DEFAULT_GAS_LIMIT),
-} as const;
+};
 
 // ---------------------------------------------------------------------------
 // Module names (match Go `ModuleName` constants)

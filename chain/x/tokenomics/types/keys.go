@@ -83,6 +83,29 @@ var (
 
 	// IBC burn report dedup prefix: key = BurnReportDedupPrefix + chain_id + ":" + tx_hash
 	BurnReportDedupPrefix = []byte{0x80}
+
+	// ── Distribution tracking keys (wired to query responses) ──
+
+	// Cumulative distributions per category: key = DistributedPrefix + category_name
+	DistributedPrefix = []byte{0x90}
+
+	// Last distribution block height
+	KeyLastDistributionHeight = []byte{0x91}
+
+	// Burn count (total number of burns)
+	KeyBurnCount = []byte{0x92}
+
+	// IBC rewards received
+	KeyIBCRewardsReceived = []byte{0x93}
+
+	// Last reward height
+	KeyLastRewardHeight = []byte{0x94}
+
+	// Last burn report height
+	KeyLastBurnReportHeight = []byte{0x95}
+
+	// Treasury inflow from inflation
+	KeyTreasuryFromInflation = []byte{0x96}
 )
 
 // Event types
@@ -176,4 +199,9 @@ func GetDailyTxCountKey(dayIndex uint8) []byte {
 // Key format: BurnReportDedupPrefix + chain_id + ":" + tx_hash
 func GetBurnReportDedupKey(chainID, txHash string) []byte {
 	return append(BurnReportDedupPrefix, []byte(chainID+":"+txHash)...)
+}
+
+// GetDistributedKey returns the store key for cumulative distributions per category.
+func GetDistributedKey(category string) []byte {
+	return append(DistributedPrefix, []byte(category)...)
 }
