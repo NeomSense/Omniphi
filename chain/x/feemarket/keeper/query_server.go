@@ -101,12 +101,11 @@ func (qs queryServer) FeeStats(ctx context.Context, req *types.QueryFeeStatsRequ
 		Add(totalToTreasury).
 		Add(totalToValidators)
 
-	// Get treasury address from keeper
+	// Get treasury address from keeper (set during InitGenesis)
 	treasuryAddr := ""
-	params := qs.k.GetParams(ctx)
-	if params.TreasuryFeeRatio.IsPositive() {
-		// Treasury address would be stored in genesis/params
-		treasuryAddr = "" // TODO: Get from genesis or params
+	addr := qs.k.GetTreasuryAddress(ctx)
+	if addr != nil {
+		treasuryAddr = addr.String()
 	}
 
 	return &types.QueryFeeStatsResponse{

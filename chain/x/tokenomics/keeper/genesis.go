@@ -274,12 +274,18 @@ func (k Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 		totalInflows = math.ZeroInt()
 	}
 
+	fromInflation := k.GetTreasuryFromInflation(ctx)
+	fromRedirect := totalInflows.Sub(fromInflation)
+	if fromRedirect.IsNegative() {
+		fromRedirect = math.ZeroInt()
+	}
+
 	treasuryState := types.TreasuryState{
-		TreasuryAddress: treasuryAddr.String(),
-		InitialBalance:  k.bankKeeper.GetBalance(ctx, treasuryAddr, types.BondDenom).Amount,
-		TotalInflows:    totalInflows,
-		FromInflation:   math.ZeroInt(), // TODO: Track separately
-		FromBurnRedirect: totalInflows,
+		TreasuryAddress:  treasuryAddr.String(),
+		InitialBalance:   k.bankKeeper.GetBalance(ctx, treasuryAddr, types.BondDenom).Amount,
+		TotalInflows:     totalInflows,
+		FromInflation:    fromInflation,
+		FromBurnRedirect: fromRedirect,
 	}
 
 	// Export chain states
