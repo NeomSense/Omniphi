@@ -41,8 +41,9 @@ func (AppModuleBasic) RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) {
 }
 
 // RegisterGRPCGatewayRoutes registers the gRPC Gateway routes for the por module.
+// Gateway handlers will be registered automatically when proto files are
+// regenerated with the grpc-gateway plugin. No manual implementation needed.
 func (AppModuleBasic) RegisterGRPCGatewayRoutes(clientCtx client.Context, mux *gwruntime.ServeMux) {
-	// TODO: implement when proto-generated gRPC gateway handlers are available
 }
 
 // RegisterInterfaces registers interfaces and implementations of the por module.

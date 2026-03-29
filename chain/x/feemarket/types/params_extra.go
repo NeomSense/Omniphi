@@ -30,9 +30,9 @@ const (
 	ProtocolMaxBlockGasHardCap int64 = 120_000_000
 
 	// ProtocolMaxTxGasHardCap is the absolute maximum tx gas (10M)
-	// Allows existing chains with higher limits to continue operating
-	// New deployments should use AnchorLaneMaxTxGas (2M) for decentralization
-	// TODO: Lower to 5M via coordinated upgrade once all chains migrate
+	// Allows existing chains with higher limits to continue operating.
+	// New deployments should use AnchorLaneMaxTxGas (2M) for decentralization.
+	// NOTE: Lower to 5M via governance proposal once all chains migrate.
 	ProtocolMaxTxGasHardCap int64 = 10_000_000
 
 	// ProtocolMinBlockGas is the minimum block gas (10M)

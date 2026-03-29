@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/hex"
 	"fmt"
 	"strconv"
 
@@ -123,6 +124,16 @@ func GetCmdReportBurn() *cobra.Command{
 
 			txHash := args[4]
 
+			// Read optional Merkle proof from flag
+			proofHex, _ := cmd.Flags().GetString("proof")
+			var proof []byte
+			if proofHex != "" {
+				proof, err = hex.DecodeString(proofHex)
+				if err != nil {
+					return fmt.Errorf("invalid proof hex: %w", err)
+				}
+			}
+
 			msg := &types.MsgReportBurn{
 				Reporter:    clientCtx.GetFromAddress().String(),
 				Amount:      amount,
@@ -130,13 +141,14 @@ func GetCmdReportBurn() *cobra.Command{
 				ChainId:     chainID,
 				BlockHeight: blockHeight,
 				TxHash:      txHash,
-				Proof:       []byte{}, // TODO: Add Merkle proof support
+				Proof:       proof,
 			}
 
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
 		},
 	}
 
+	cmd.Flags().String("proof", "", "Hex-encoded Merkle proof for cross-chain burn verification (optional)")
 	flags.AddTxFlagsToCmd(cmd)
 	return cmd
 }
