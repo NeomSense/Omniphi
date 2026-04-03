@@ -8,10 +8,10 @@ import (
 
 // Default parameter values
 var (
-	DefaultEnabled                = false
+	DefaultEnabled                = true  // Enabled at mainnet (DePIN adapter framework)
 	DefaultMaxAdapters            int64 = 50
 	DefaultMaxContributionsPerBatch int64 = 100
-	DefaultMinOracleAttestations  int64 = 2
+	DefaultMinOracleAttestations  int64 = 5  // CRIT-05 fix: raised from 2 to 5 (prevents 2-oracle collusion)
 	DefaultOracleTimeoutBlocks    int64 = 50
 	DefaultDefaultRewardShare     = math.LegacyNewDecWithPrec(80, 2)                     // 0.80
 	DefaultAdapterRegistrationFee = math.NewInt(100000)                                   // 100000 omniphi

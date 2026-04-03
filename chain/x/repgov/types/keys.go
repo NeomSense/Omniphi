@@ -42,6 +42,12 @@ var (
 	// KeyPrefixSybilScore stores sybil resistance scores per address
 	// address -> SybilScore (JSON)
 	KeyPrefixSybilScore = []byte{0x07}
+
+	// KeyPrefixDelegatedReputationReverse is a reverse index: delegatee → delegators.
+	// Enables O(k) lookup of all delegators TO a specific delegatee (k = delegators)
+	// instead of O(N) full scan of all voters.
+	// Key: 0x08 | delegatee_address | "/" | delegator_address → []byte{1}
+	KeyPrefixDelegatedReputationReverse = []byte{0x08}
 )
 
 // GetVoterWeightKey returns the store key for an address's governance weight
@@ -59,6 +65,19 @@ func GetDelegatedReputationKey(delegator, delegatee string) []byte {
 // GetDelegatedReputationPrefixKey returns the prefix key for all delegations from a delegator
 func GetDelegatedReputationPrefixKey(delegator string) []byte {
 	key := append(KeyPrefixDelegatedReputation, []byte(delegator)...)
+	return append(key, byte('/'))
+}
+
+// GetDelegatedReputationReverseKey returns the reverse index key: delegatee → delegator
+func GetDelegatedReputationReverseKey(delegatee, delegator string) []byte {
+	key := append(KeyPrefixDelegatedReputationReverse, []byte(delegatee)...)
+	key = append(key, byte('/'))
+	return append(key, []byte(delegator)...)
+}
+
+// GetDelegatedReputationReversePrefixKey returns the prefix for all delegators TO a delegatee
+func GetDelegatedReputationReversePrefixKey(delegatee string) []byte {
+	key := append(KeyPrefixDelegatedReputationReverse, []byte(delegatee)...)
 	return append(key, byte('/'))
 }
 

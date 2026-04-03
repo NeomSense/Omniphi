@@ -7,9 +7,9 @@ import (
 )
 
 var (
-	DefaultEnabled             = false // governance-enabled
-	DefaultTransferEnabled     = false // Phase 2: transferable tokens
-	DefaultFractionalizationEnabled = false // Phase 2: fractional tokens
+	DefaultEnabled             = true  // Enabled at mainnet (passive — no risk)
+	DefaultTransferEnabled     = true  // Transferable royalty tokens
+	DefaultFractionalizationEnabled = false // Phase 2: fractional tokens (needs audit)
 	DefaultMaxFractions        int64 = 100  // max fractions per token
 	DefaultMinRoyaltyShare     = math.LegacyNewDecWithPrec(1, 2)  // 1% minimum royalty share
 	DefaultMaxRoyaltyShare     = math.LegacyNewDecWithPrec(50, 2) // 50% maximum royalty share

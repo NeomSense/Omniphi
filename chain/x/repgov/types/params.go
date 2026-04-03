@@ -8,12 +8,13 @@ import (
 
 // Default parameter values
 var (
-	// DefaultEnabled controls whether reputation weighting is active
-	DefaultEnabled = false // governance-enabled
+	// DefaultEnabled controls whether reputation weighting is active.
+	// Enabled at mainnet launch with conservative 2x max weight cap.
+	DefaultEnabled = true
 
-	// DefaultMaxVotingWeightCap is the maximum multiplier any single voter can have
-	// Prevents whale concentration — no single voter can have more than 5x stake weight
-	DefaultMaxVotingWeightCap = math.LegacyNewDec(5)
+	// DefaultMaxVotingWeightCap is the maximum multiplier any single voter can have.
+	// Conservative 2x cap at launch — governance can increase to 5x later.
+	DefaultMaxVotingWeightCap = math.LegacyNewDec(2)
 
 	// DefaultMinReputationThreshold is the minimum reputation score needed to receive
 	// any governance weight bonus (below this, weight = 1.0x stake only)

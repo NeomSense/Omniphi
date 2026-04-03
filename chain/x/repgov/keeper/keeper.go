@@ -145,7 +145,12 @@ func (k Keeper) SetDelegation(ctx context.Context, d types.DelegatedReputation) 
 		return fmt.Errorf("failed to marshal delegation: %w", err)
 	}
 	key := types.GetDelegatedReputationKey(d.Delegator, d.Delegatee)
-	return kvStore.Set(key, bz)
+	if err := kvStore.Set(key, bz); err != nil {
+		return err
+	}
+	// Maintain reverse index: delegatee → delegator
+	reverseKey := types.GetDelegatedReputationReverseKey(d.Delegatee, d.Delegator)
+	return kvStore.Set(reverseKey, []byte{1})
 }
 
 // GetDelegation retrieves a specific delegation
@@ -164,11 +169,16 @@ func (k Keeper) GetDelegation(ctx context.Context, delegator, delegatee string) 
 	return d, true
 }
 
-// DeleteDelegation removes a delegation
+// DeleteDelegation removes a delegation and its reverse index.
 func (k Keeper) DeleteDelegation(ctx context.Context, delegator, delegatee string) error {
 	kvStore := k.storeService.OpenKVStore(ctx)
 	key := types.GetDelegatedReputationKey(delegator, delegatee)
-	return kvStore.Delete(key)
+	if err := kvStore.Delete(key); err != nil {
+		return err
+	}
+	// Remove reverse index
+	reverseKey := types.GetDelegatedReputationReverseKey(delegatee, delegator)
+	return kvStore.Delete(reverseKey)
 }
 
 // GetDelegationsFrom returns all delegations from a delegator
@@ -382,30 +392,57 @@ func (k Keeper) RecomputeAllWeights(ctx context.Context, epoch int64) error {
 	return nil
 }
 
-// applyDelegations adjusts a voter's weight based on reputation delegations received
+// GetDelegationsTo returns all delegators who delegated reputation TO a specific delegatee.
+// Uses the reverse index (0x08 prefix) for O(k) lookup instead of full O(N) scan.
+func (k Keeper) GetDelegationsTo(ctx context.Context, delegatee string) []types.DelegatedReputation {
+	kvStore := k.storeService.OpenKVStore(ctx)
+	prefix := types.GetDelegatedReputationReversePrefixKey(delegatee)
+	iter, err := kvStore.Iterator(prefix, storetypes.PrefixEndBytes(prefix))
+	if err != nil {
+		return nil
+	}
+	defer iter.Close()
+
+	var delegations []types.DelegatedReputation
+	for ; iter.Valid(); iter.Next() {
+		// Reverse key: 0x08 | delegatee | "/" | delegator → extract delegator
+		fullKey := iter.Key()
+		// The delegator address starts after the prefix
+		delegatorBytes := fullKey[len(prefix):]
+		delegator := string(delegatorBytes)
+
+		// Look up the actual delegation record
+		d, found := k.GetDelegation(ctx, delegator, delegatee)
+		if found {
+			delegations = append(delegations, d)
+		}
+	}
+	return delegations
+}
+
+// applyDelegations adjusts a voter's weight based on reputation delegations received.
+// Uses reverse index for O(k) per voter (k = number of delegators to this voter),
+// not O(N) full scan of all voters.
 func (k Keeper) applyDelegations(ctx context.Context, vw types.VoterWeight, params types.Params) types.VoterWeight {
 	if !params.DelegationEnabled {
 		return vw
 	}
 
-	// Sum delegated reputation received by this address
-	// We iterate all delegations and find ones where delegatee == vw.Address
-	// This is O(n) per voter — acceptable for small sets, should use index for large chains
-	allWeights := k.GetAllVoterWeights(ctx)
+	// Look up only delegations TO this address using the reverse index
+	delegationsReceived := k.GetDelegationsTo(ctx, vw.Address)
 	delegatedTotal := math.LegacyZeroDec()
 
-	for _, other := range allWeights {
-		if other.Address == vw.Address {
+	for _, d := range delegationsReceived {
+		// Get the delegator's composite weight to compute the delegation value
+		delegatorWeight, found := k.GetVoterWeight(ctx, d.Delegator)
+		if !found {
 			continue
 		}
-		d, found := k.GetDelegation(ctx, other.Address, vw.Address)
-		if found {
-			// Add the delegated portion of the other voter's composite weight bonus
-			bonus := other.CompositeWeight.Sub(math.LegacyOneDec())
-			if bonus.IsPositive() {
-				delegatedPortion := bonus.Mul(d.Amount)
-				delegatedTotal = delegatedTotal.Add(delegatedPortion)
-			}
+		// Add the delegated portion of the delegator's composite weight bonus
+		bonus := delegatorWeight.CompositeWeight.Sub(math.LegacyOneDec())
+		if bonus.IsPositive() {
+			delegatedPortion := bonus.Mul(d.Amount)
+			delegatedTotal = delegatedTotal.Add(delegatedPortion)
 		}
 	}
 
