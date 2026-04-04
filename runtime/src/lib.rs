@@ -40,6 +40,9 @@ pub mod randomness;
 // Phase 8: Programmable Ownership Objects
 pub mod ownership;
 
+// 3-Surface Fee Architecture (PoSeq + Runtime + Anchor Lane)
+pub mod fees;
+
 // Phase 9: Explainability Engine
 pub mod explainability;
 
