@@ -402,7 +402,15 @@ impl RuntimeBatchIngester {
                         continue;
                     }
 
-                    // (d) Capability check is deferred to process_batch via
+                    // (d) Fee envelope validation: ensure the payer can
+                    //     cover both sequencing and runtime reserves.
+                    //     Actual fee deduction happens in settlement.
+                    let fee_env = tx.effective_fee_envelope();
+                    if fee_env.validate(envelope.epoch).is_err() {
+                        continue; // invalid fee envelope — skip
+                    }
+
+                    // (e) Capability check is deferred to process_batch via
                     //     the capability_registry (see interface.rs Step 5).
                     //     We only collect structurally valid, authenticated
                     //     transactions here.

@@ -98,8 +98,8 @@ fn bench_settlement(c: &mut Criterion) {
                     ExecutionPlan {
                         tx_id: { let mut t = [0u8; 32]; t[0..4].copy_from_slice(&(i as u32).to_be_bytes()); t },
                         operations: vec![
-                            ObjectOperation::DebitBalance { object_id: sender_id, amount: 100 },
-                            ObjectOperation::CreditBalance { object_id: recip_id, amount: 100 },
+                            ObjectOperation::DebitBalance { balance_id: sender_id, amount: 100 },
+                            ObjectOperation::CreditBalance { balance_id: recip_id, amount: 100 },
                         ],
                         required_capabilities: vec![],
                         object_access: vec![
@@ -174,6 +174,7 @@ fn bench_encrypted_intents(c: &mut Criterion) {
                         sponsor: None, sponsor_signature: None,
                         sponsorship_limits: SponsorshipLimits::default(),
                         fee_policy: FeePolicy::SenderPays,
+                        fee_envelope: None,
                     };
                     let nonce = { let mut n = [0u8; 32]; n[0..4].copy_from_slice(&(i as u32).to_be_bytes()); n };
                     (tx, nonce)

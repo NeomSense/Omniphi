@@ -137,6 +137,78 @@ impl SettlementEngine {
         }
     }
 
+    /// Execute groups with integrated fee accounting.
+    ///
+    /// This is the production entry point that:
+    /// 1. Runs execute_groups (settlement)
+    /// 2. For each successful plan, charges runtime fee via FeeExecutor
+    /// 3. For each failed plan, records partial runtime charge
+    /// 4. Settles refunds for all fee envelopes
+    ///
+    /// Returns (SettlementResult, Vec<FeeSettlement>) where FeeSettlement
+    /// contains per-plan fee accounting.
+    pub fn execute_groups_with_fees(
+        groups: Vec<ExecutionGroup>,
+        store: &mut ObjectStore,
+        epoch: u64,
+        fee_accountings: &mut Vec<crate::fees::accounting::FeeAccounting>,
+        fee_token: &[u8; 32],
+    ) -> SettlementResult {
+        let result = Self::execute_groups(groups, store, epoch);
+
+        // Match receipts to fee accountings and charge runtime fees
+        for (i, receipt) in result.receipts.iter().enumerate() {
+            if i >= fee_accountings.len() { break; }
+            let accounting = &mut fee_accountings[i];
+
+            if receipt.success {
+                // Charge actual runtime gas used
+                let gas_fee = receipt.gas_used;
+                let charge = accounting.charge_runtime(gas_fee);
+                if charge.success {
+                    // Debit payer for runtime portion
+                    if let Some(bal) = store.find_balance_mut(
+                        &accounting.envelope.payer, fee_token
+                    ) {
+                        bal.locked_amount = bal.locked_amount
+                            .saturating_sub(gas_fee as u128);
+                        bal.amount = bal.amount
+                            .saturating_sub(gas_fee as u128);
+                    }
+                }
+            } else {
+                // Runtime reverted — charge for deterministic work done
+                let partial_charge = receipt.gas_used.min(
+                    accounting.envelope.max_runtime_fee / 2
+                ); // at most 50% of reserve on revert
+                accounting.revert_runtime(partial_charge);
+
+                if partial_charge > 0 {
+                    if let Some(bal) = store.find_balance_mut(
+                        &accounting.envelope.payer, fee_token
+                    ) {
+                        bal.locked_amount = bal.locked_amount
+                            .saturating_sub(partial_charge as u128);
+                        bal.amount = bal.amount
+                            .saturating_sub(partial_charge as u128);
+                    }
+                }
+            }
+
+            // Settle refund
+            let refund = accounting.settle_refund();
+            if refund > 0 {
+                let refund_addr = accounting.envelope.effective_refund_address();
+                if let Some(bal) = store.find_balance_mut(&refund_addr, fee_token) {
+                    bal.locked_amount = bal.locked_amount
+                        .saturating_sub(refund as u128);
+                }
+            }
+        }
+
+        result
+    }
+
     /// Applies a single plan atomically against the store.
     /// All-or-nothing: if any operation fails (including gas exhaustion),
     /// no state is mutated.
