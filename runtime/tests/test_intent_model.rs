@@ -49,6 +49,7 @@ fn make_signed_transfer(seed: &[u8; 32], nonce: u64, epoch: u64) -> IntentTransa
             sponsor_signature: None,
             sponsorship_limits: SponsorshipLimits::default(),
             fee_policy: FeePolicy::SenderPays,
+            fee_envelope: None,
     };
     tx.signature = tx.sign(seed);
     tx
@@ -337,6 +338,7 @@ fn test_zero_sender_rejected() {
             sponsor_signature: None,
             sponsorship_limits: SponsorshipLimits::default(),
             fee_policy: FeePolicy::SenderPays,
+            fee_envelope: None,
     };
 
     assert!(tx.validate().is_err());
@@ -362,6 +364,7 @@ fn test_zero_max_fee_rejected() {
             sponsor_signature: None,
             sponsorship_limits: SponsorshipLimits::default(),
             fee_policy: FeePolicy::SenderPays,
+            fee_envelope: None,
     };
 
     assert!(tx.validate().is_err());

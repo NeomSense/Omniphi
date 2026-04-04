@@ -60,6 +60,7 @@ fn make_transfer(sender: [u8; 32], nonce: u64, amount: u128, fee: u64) -> Intent
         sponsor_signature: None,
         sponsorship_limits: SponsorshipLimits::default(),
         fee_policy: FeePolicy::SenderPays,
+            fee_envelope: None,
     }
 }
 

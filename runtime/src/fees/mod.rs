@@ -31,8 +31,10 @@ pub mod poseq_fee;
 pub mod envelope;
 pub mod accounting;
 pub mod routing;
+pub mod executor;
 
 pub use poseq_fee::{PoSeqFeeParams, PoSeqFeeCalculator, PoSeqFeeResult, CongestionState};
 pub use envelope::FeeEnvelope;
 pub use accounting::{FeeAccounting, FeeAccountingState, ChargeResult};
 pub use routing::{FeeRouting, FeeRoutingParams, RoutedFees};
+pub use executor::{FeeExecutor, FeeDestinations, FeeExecutionResult, CongestionTracker, FeeEstimator};

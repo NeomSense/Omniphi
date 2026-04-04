@@ -198,6 +198,7 @@ fn test_ed25519_signature_roundtrip() {
             sponsor_signature: None,
             sponsorship_limits: SponsorshipLimits::default(),
             fee_policy: FeePolicy::SenderPays,
+            fee_envelope: None,
     };
 
     tx.signature = tx.sign(&seed);

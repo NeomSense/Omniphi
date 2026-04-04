@@ -637,10 +637,12 @@ name = "omniphi-runtime"
 version = "0.1.0"
 dependencies = [
  "bincode",
+ "ed25519-dalek",
  "hex",
  "primitive-types",
  "rayon",
  "serde",
+ "serde_json",
  "sha2",
 ]
 

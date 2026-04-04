@@ -79,6 +79,7 @@ fn make_swap_intent(max_fee: u64) -> IntentTransaction {
             sponsor_signature: None,
             sponsorship_limits: SponsorshipLimits::default(),
             fee_policy: FeePolicy::SenderPays,
+            fee_envelope: None,
     }
 }
 

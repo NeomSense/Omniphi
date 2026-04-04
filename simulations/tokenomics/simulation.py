@@ -71,10 +71,10 @@ class SimulationConfig:
     """
 
     # --- Supply ------------------------------------------------------------
-    total_supply_cap: Decimal = D("1_500_000_000")
+    total_supply_cap: Decimal = D("1500000000")
     """Hard cap of 1.5 B OMNI.  Protocol-enforced and immutable."""
 
-    genesis_supply: Decimal = D("375_000_000")
+    genesis_supply: Decimal = D("375000000")
     """375 M OMNI minted at genesis (25% of cap)."""
 
     # --- Inflation schedule ------------------------------------------------
@@ -191,7 +191,7 @@ class SimulationConfig:
     """Fraction of PoC submissions that are low-quality gaming attempts."""
 
     # --- MEV / Sequencer parameters ----------------------------------------
-    daily_tx_volume_omni: Decimal = D("500_000")
+    daily_tx_volume_omni: Decimal = D("500000")
     """Daily transaction volume in OMNI (fee-generating activity)."""
 
     tx_volume_growth_rate: Decimal = D("0.001")

@@ -534,6 +534,7 @@ impl RuntimeBatchIngester {
             sponsor_signature: None,
             sponsorship_limits: SponsorshipLimits::default(),
             fee_policy: FeePolicy::SenderPays,
+            fee_envelope: None,
                 }
             })
             .collect()

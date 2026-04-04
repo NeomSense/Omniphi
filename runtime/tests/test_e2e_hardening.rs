@@ -77,6 +77,7 @@ fn make_intent(sender: [u8; 32], nonce: u64, amount: u128, fee: u64) -> IntentTr
         sponsor_signature: None,
         sponsorship_limits: SponsorshipLimits::default(),
         fee_policy: FeePolicy::SenderPays,
+            fee_envelope: None,
     }
 }
 

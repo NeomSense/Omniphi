@@ -140,6 +140,7 @@ fn make_swap_intent(tx_byte: u8, max_fee: u64) -> IntentTransaction {
             sponsor_signature: None,
             sponsorship_limits: SponsorshipLimits::default(),
             fee_policy: FeePolicy::SenderPays,
+            fee_envelope: None,
     }
 }
 
@@ -165,6 +166,7 @@ fn make_yield_intent(tx_byte: u8, vault_id: ObjectId) -> IntentTransaction {
             sponsor_signature: None,
             sponsorship_limits: SponsorshipLimits::default(),
             fee_policy: FeePolicy::SenderPays,
+            fee_envelope: None,
     }
 }
 
@@ -378,6 +380,7 @@ fn test_fallback_to_internal_resolver() {
             sponsor_signature: None,
             sponsorship_limits: SponsorshipLimits::default(),
             fee_policy: FeePolicy::SenderPays,
+            fee_envelope: None,
     };
     let intent_id = intent.tx_id;
 

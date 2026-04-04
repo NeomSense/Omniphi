@@ -116,6 +116,10 @@ pub struct IntentTransaction {
     pub tx_id: [u8; 32],
     pub sender: [u8; 32],
     pub intent: IntentType,
+    /// Legacy max_fee field. Retained for backward compatibility.
+    /// New code should use `fee_envelope` instead. When fee_envelope is
+    /// Some, max_fee is ignored. When fee_envelope is None, max_fee is
+    /// converted via FeeEnvelope::from_legacy_max_fee().
     pub max_fee: u64,
     pub deadline_epoch: u64,
     pub nonce: u64,
@@ -129,19 +133,40 @@ pub struct IntentTransaction {
     pub execution_mode: ExecutionMode,
 
     // ── Sponsorship fields ──────────────────────────────────────────────
-    /// Sponsor's Ed25519 public key (32 bytes). When set, this party
-    /// agrees to pay fees on behalf of the sender.
     pub sponsor: Option<[u8; 32]>,
-    /// Sponsor's Ed25519 signature over the sponsorship payload.
-    /// Covers: tx_id, sender, max_fee, sponsor, and sponsorship_limits hash.
     pub sponsor_signature: Option<[u8; 64]>,
-    /// Limits on what the sponsor is willing to cover.
     pub sponsorship_limits: SponsorshipLimits,
-    /// Who pays execution fees.
     pub fee_policy: FeePolicy,
+
+    // ── 3-Surface Fee Envelope ──────────────────────────────────────────
+    /// When present, separates sequencing and runtime fee reserves.
+    /// When None, falls back to legacy max_fee conversion (20/80 split).
+    pub fee_envelope: Option<crate::fees::envelope::FeeEnvelope>,
 }
 
 impl IntentTransaction {
+    /// Returns the effective fee envelope for this transaction.
+    /// If a fee_envelope is explicitly set, uses it.
+    /// Otherwise, converts legacy max_fee into a 20/80 split envelope.
+    pub fn effective_fee_envelope(&self) -> crate::fees::envelope::FeeEnvelope {
+        match &self.fee_envelope {
+            Some(env) => env.clone(),
+            None => crate::fees::envelope::FeeEnvelope::from_legacy_max_fee(
+                self.fee_payer(),
+                self.max_fee,
+                self.deadline_epoch,
+            ),
+        }
+    }
+
+    /// Returns the runtime gas limit derived from the effective fee envelope.
+    /// This replaces the old `max_fee * 1000` conversion.
+    pub fn runtime_gas_limit(&self) -> u64 {
+        let env = self.effective_fee_envelope();
+        // 1 fee unit = 1 gas unit (direct mapping for runtime surface)
+        env.max_runtime_fee
+    }
+
     /// Structural validation only — no state access required.
     pub fn validate(&self) -> Result<(), RuntimeError> {
         // Sender must be non-zero

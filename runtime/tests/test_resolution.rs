@@ -51,6 +51,7 @@ fn make_transfer_tx(
             sponsor_signature: None,
             sponsorship_limits: SponsorshipLimits::default(),
             fee_policy: FeePolicy::SenderPays,
+            fee_envelope: None,
     }
 }
 
@@ -84,6 +85,7 @@ fn make_swap_tx(
             sponsor_signature: None,
             sponsorship_limits: SponsorshipLimits::default(),
             fee_policy: FeePolicy::SenderPays,
+            fee_envelope: None,
     }
 }
 

@@ -89,6 +89,7 @@ fn test_full_e2e_batch_with_three_intents() {
             sponsor_signature: None,
             sponsorship_limits: SponsorshipLimits::default(),
             fee_policy: FeePolicy::SenderPays,
+            fee_envelope: None,
     };
 
     // Intent 2: Bob transfers 5,000 asset_a to Carol
@@ -113,6 +114,7 @@ fn test_full_e2e_batch_with_three_intents() {
             sponsor_signature: None,
             sponsorship_limits: SponsorshipLimits::default(),
             fee_policy: FeePolicy::SenderPays,
+            fee_envelope: None,
     };
 
     // Intent 3: Alice swaps 1,000 asset_a → asset_b
@@ -139,6 +141,7 @@ fn test_full_e2e_batch_with_three_intents() {
             sponsor_signature: None,
             sponsorship_limits: SponsorshipLimits::default(),
             fee_policy: FeePolicy::SenderPays,
+            fee_envelope: None,
     };
 
     let batch = OrderedBatch {
@@ -237,6 +240,7 @@ fn test_batch_skips_invalid_intents() {
             sponsor_signature: None,
             sponsorship_limits: SponsorshipLimits::default(),
             fee_policy: FeePolicy::SenderPays,
+            fee_envelope: None,
     };
 
     // Invalid tx: zero amount
@@ -261,6 +265,7 @@ fn test_batch_skips_invalid_intents() {
             sponsor_signature: None,
             sponsorship_limits: SponsorshipLimits::default(),
             fee_policy: FeePolicy::SenderPays,
+            fee_envelope: None,
     };
 
     let batch = OrderedBatch {
@@ -341,6 +346,7 @@ fn test_state_root_deterministic_across_identical_batches() {
             sponsor_signature: None,
             sponsorship_limits: SponsorshipLimits::default(),
             fee_policy: FeePolicy::SenderPays,
+            fee_envelope: None,
         }],
     };
 

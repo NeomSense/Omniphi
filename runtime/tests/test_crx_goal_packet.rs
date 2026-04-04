@@ -136,6 +136,7 @@ fn test_goal_packet_from_intent() {
             sponsor_signature: None,
             sponsorship_limits: SponsorshipLimits::default(),
             fee_policy: FeePolicy::SenderPays,
+            fee_envelope: None,
     };
 
     let packet = goal_packet_from_intent(&intent, 100);
@@ -178,6 +179,7 @@ fn test_goal_packet_from_intent_swap() {
             sponsor_signature: None,
             sponsorship_limits: SponsorshipLimits::default(),
             fee_policy: FeePolicy::SenderPays,
+            fee_envelope: None,
     };
 
     let packet = goal_packet_from_intent(&intent, 100);
