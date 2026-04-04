@@ -102,6 +102,7 @@ fn test_full_pipeline_transfer() {
         submission_ids: vec![tx.tx_id],
         content_hash: [0xBB; 32],
         finalized_at_ms: 1000,
+        fee_settlement: None,
     };
 
     let mut bridge = InMemoryBridge::new();

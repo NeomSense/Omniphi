@@ -54,6 +54,16 @@ impl SettlementEngine {
     /// Within each group, plans are executed sequentially (rayon is available
     /// but state mutation requires sequential application for correctness;
     /// groups themselves are ordered serially).
+    /// Execute groups without fee accounting.
+    ///
+    /// DEPRECATION NOTICE: This method bypasses fee charging entirely.
+    /// Production code MUST use `execute_groups_with_fees()` instead.
+    /// This method is retained only for:
+    /// - Tests that don't need fee behavior
+    /// - Backward compatibility during migration
+    ///
+    /// Post-mainnet, this will be removed and all callers will use
+    /// the fee-enforced path.
     pub fn execute_groups(
         groups: Vec<ExecutionGroup>,
         store: &mut ObjectStore,

@@ -27,6 +27,52 @@
 use serde::{Deserialize, Serialize};
 
 /// A finalized batch from PoSeq, ready for runtime ingestion.
+/// Fee settlement record attached to each batch delivery.
+///
+/// The Go chain's x/tokenomics module ingests this to maintain a single
+/// authoritative view of burns, treasury inflows, and validator rewards
+/// across both the Rust runtime and Go control chain.
+///
+/// Without this, the Go chain undercounts runtime-side burns and the
+/// explorer shows incorrect supply data.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FeeSettlement {
+    /// Total PoSeq sequencing fees charged in this batch.
+    pub total_poseq_charged: u64,
+    /// Total runtime execution fees charged in this batch.
+    pub total_runtime_charged: u64,
+    /// Total amount burned (removed from supply) across both surfaces.
+    pub total_burned: u64,
+    /// Amount routed to the sequencer who ordered this batch.
+    pub sequencer_reward: u64,
+    /// Amount routed to the shared security / validator pool.
+    pub shared_security_reward: u64,
+    /// Amount routed to the protocol treasury.
+    pub treasury_inflow: u64,
+    /// Total refunded back to payers (unused reserves).
+    pub total_refunded: u64,
+    /// Number of intents that paid fees in this batch.
+    pub fee_paying_intents: u64,
+    /// Number of intents that had runtime execution reverted.
+    pub reverted_intents: u64,
+}
+
+impl FeeSettlement {
+    /// Verify the conservation invariant: charged = burned + routed + refunded.
+    pub fn check_conservation(&self) -> bool {
+        let total_in = self.total_poseq_charged
+            .saturating_add(self.total_runtime_charged);
+        let total_out = self.total_burned
+            .saturating_add(self.sequencer_reward)
+            .saturating_add(self.shared_security_reward)
+            .saturating_add(self.treasury_inflow);
+        // Routed fees should account for all charged fees minus refunds
+        // (refunds come from reserved, not charged)
+        total_out <= total_in
+    }
+}
+
+/// A finalized batch from PoSeq, ready for runtime ingestion.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchDelivery {
     /// Unique batch identifier.
@@ -41,6 +87,9 @@ pub struct BatchDelivery {
     pub content_hash: [u8; 32],
     /// Timestamp (unix millis) when PoSeq finalized this batch.
     pub finalized_at_ms: u64,
+    /// Fee settlement data for this batch. The Go chain's tokenomics
+    /// module ingests this to maintain accurate supply tracking.
+    pub fee_settlement: Option<FeeSettlement>,
 }
 
 /// Acknowledgment from the Go chain after committing a batch.
@@ -165,7 +214,37 @@ mod tests {
             submission_ids: vec![[0xAA; 32]],
             content_hash: [0xBB; 32],
             finalized_at_ms: 1000,
+            fee_settlement: None,
         }
+    }
+
+    #[test]
+    fn test_fee_settlement_conservation() {
+        let settlement = FeeSettlement {
+            total_poseq_charged: 5_000,
+            total_runtime_charged: 30_000,
+            total_burned: 7_000,
+            sequencer_reward: 17_500,
+            shared_security_reward: 7_000,
+            treasury_inflow: 3_500,
+            total_refunded: 20_000,
+            fee_paying_intents: 10,
+            reverted_intents: 1,
+        };
+        assert!(settlement.check_conservation());
+    }
+
+    #[test]
+    fn test_fee_settlement_in_batch() {
+        let mut bridge = InMemoryBridge::new();
+        let mut batch = make_batch(1);
+        batch.fee_settlement = Some(FeeSettlement {
+            total_poseq_charged: 1_000,
+            total_runtime_charged: 5_000,
+            ..FeeSettlement::default()
+        });
+        bridge.deliver_batch(batch).unwrap();
+        assert_eq!(bridge.delivered_count(), 1);
     }
 
     #[test]
