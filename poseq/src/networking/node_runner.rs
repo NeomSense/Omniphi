@@ -96,7 +96,9 @@ pub struct NodeState {
     /// Proposed in this slot (leader only)
     pub proposed_this_slot: bool,
     /// Attested per proposal (to prevent double-voting)
-    pub attested_proposals: BTreeMap<[u8; 32], bool>,
+    /// Tracks which proposals this node has attested to.
+    /// Key: proposal_id, Value: (slot, epoch) to prevent double-voting on same slot.
+    pub attested_proposals: BTreeMap<[u8; 32], (u64, u64)>,
     /// Whether this node is in the current committee
     pub in_committee: bool,
     /// Legacy plain-string event log (kept for devnet/test compatibility).
@@ -828,15 +830,35 @@ impl NetworkedNode {
                     slot: proposal.slot,
                 };
                 state.attestations.entry(proposal.proposal_id).or_default().push(self_attestation);
-                state.attested_proposals.insert(proposal.proposal_id, true);
+                state.attested_proposals.insert(proposal.proposal_id, (proposal.slot, proposal.epoch));
                 state.pending_proposals.insert(proposal.proposal_id, proposal.clone());
                 state.log(format!("PROPOSE batch_root=0x{}", hex::encode(&proposal.proposal_id[..4])));
                 let msg = PoSeqMessage::Proposal(proposal);
                 drop(state);
                 let pm = self.peer_manager.lock().await;
                 let addrs = pm.all_peer_addrs();
-                drop(pm);
-                self.broadcast_signed(&addrs, msg).await;
+                // SECURITY: Eclipse protection — refuse to propose if we have
+                // fewer peers than the minimum required for quorum delivery.
+                // Without enough peers, our proposal can't reach enough committee
+                // members, and an attacker controlling our peer set can partition us.
+                let min_peers = std::cmp::max(self.config.quorum_threshold / 2, 1);
+                let peer_count = addrs.len();
+                if peer_count < min_peers {
+                    drop(pm);
+                    let mut st = self.state.lock().await;
+                    let epoch = st.current_epoch;
+                    let slot = st.current_slot;
+                    st.slog.warn(
+                        "proposal.eclipse_protection",
+                        epoch,
+                        Some(slot),
+                        format!("PROPOSAL SUPPRESSED: only {} peers, need {} (eclipse risk)",
+                            peer_count, min_peers),
+                    );
+                } else {
+                    drop(pm);
+                    self.broadcast_signed(&addrs, msg).await;
+                }
             }
             return;
         }
@@ -890,7 +912,7 @@ impl NetworkedNode {
                 slot: proposal.slot,
             };
             state.attestations.entry(proposal.proposal_id).or_default().push(self_attestation);
-            state.attested_proposals.insert(proposal.proposal_id, true);
+            state.attested_proposals.insert(proposal.proposal_id, (proposal.slot, proposal.epoch));
             state.pending_proposals.insert(proposal.proposal_id, proposal.clone());
             state.log(format!("PROPOSE batch_root=0x{}", hex::encode(&proposal.proposal_id[..4])));
             let msg = PoSeqMessage::Proposal(proposal);
@@ -1045,11 +1067,17 @@ impl NetworkedNode {
                 state.pending_proposals.insert(pid, proposal.clone());
                 state.log(format!("RECEIVED PROPOSAL slot={} epoch={}", proposal.slot, proposal.epoch));
 
-                // If in committee and haven't voted, attest
+                // If in committee and haven't voted FOR THIS SLOT, attest.
+                // SECURITY: Key by (slot, epoch) not just proposal_id.
+                // If we keyed by proposal_id alone, two different proposals
+                // for the same (slot, epoch) would allow double-voting.
                 let in_committee = state.in_committee;
-                let already_voted = state.attested_proposals.contains_key(&pid);
-                if in_committee && !already_voted {
-                    state.attested_proposals.insert(pid, true);
+                let slot_key = (proposal.slot, proposal.epoch);
+                let already_voted_slot = state.attested_proposals.values()
+                    .any(|&(s, e)| s == proposal.slot && e == proposal.epoch);
+                let already_voted_pid = state.attested_proposals.contains_key(&pid);
+                if in_committee && !already_voted_slot && !already_voted_pid {
+                    state.attested_proposals.insert(pid, (proposal.slot, proposal.epoch));
                     let attestation = WireAttestation {
                         attestor_id: self.config.node_id,
                         proposal_id: pid,
@@ -1088,6 +1116,31 @@ impl NetworkedNode {
                 }
                 let mut state = self.state.lock().await;
                 let pid = vote.proposal_id;
+
+                // SECURITY: Only count attestations from current committee members.
+                // Without this check, a non-committee node can forge attestations
+                // and contribute to quorum — breaking BFT safety assumptions.
+                if !state.committee.contains(&vote.attestor_id) {
+                    state.log(format!(
+                        "ATTESTATION REJECTED: {:?} not in committee (non-member vote)",
+                        &vote.attestor_id[..4]
+                    ));
+                    return;
+                }
+
+                // SECURITY: Prevent duplicate attestations from same member.
+                // Dedup by (proposal_id, attestor_id) to prevent vote amplification.
+                let already_voted = state.attestations.get(&pid)
+                    .map(|votes| votes.iter().any(|v| v.attestor_id == vote.attestor_id))
+                    .unwrap_or(false);
+                if already_voted {
+                    state.log(format!(
+                        "ATTESTATION REJECTED: {:?} already voted on proposal {:?} (duplicate)",
+                        &vote.attestor_id[..4], &pid[..4]
+                    ));
+                    return;
+                }
+
                 state.attestations.entry(pid).or_default().push(vote.clone());
                 let approvals = state.attestations[&pid].iter().filter(|v| v.approve).count();
                 let quorum = self.config.quorum_threshold;
