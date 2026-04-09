@@ -191,7 +191,9 @@ impl NodeState {
     pub fn compute_batch_id(proposal: &WireProposal) -> [u8; 32] {
         let mut h = Sha256::new();
         h.update(b"batch:");
-        h.update(proposal.proposal_id);
+        h.update(proposal.slot.to_be_bytes());
+        h.update(proposal.epoch.to_be_bytes());
+        h.update(proposal.leader_id);
         h.update(proposal.batch_root);
         h.finalize().into()
     }
@@ -390,6 +392,47 @@ impl NetworkedNode {
             }
         }
 
+        // Pre-populate registry from restored snapshots so signature verification
+        // works immediately on warm restart (before the file-based snapshot poller fires).
+        let initial_registry = {
+            let mut reg = SequencerRegistry::new();
+            for snap in &restored_snapshots {
+                for m in &snap.members {
+                    let node_id_bytes = match hex::decode(&m.node_id) {
+                        Ok(b) if b.len() == 32 => { let mut a = [0u8;32]; a.copy_from_slice(&b); a }
+                        _ => continue,
+                    };
+                    let pubkey_bytes = match hex::decode(&m.public_key) {
+                        Ok(b) if b.len() == 32 => { let mut a = [0u8;32]; a.copy_from_slice(&b); a }
+                        _ => node_id_bytes,
+                    };
+                    reg.apply_registration(crate::identities::registry::SequencerRecord {
+                        node_id: node_id_bytes,
+                        public_key: pubkey_bytes,
+                        moniker: m.moniker.clone(),
+                        operator_address: String::new(),
+                        cosmos_validator_address: None,
+                        registered_epoch: snap.epoch,
+                        is_active: true,
+                        chain_status: crate::identities::registry::ChainSequencerStatus::Active,
+                    });
+                }
+                // Also restore committee from most recent snapshot
+                let new_committee: Vec<[u8; 32]> = snap.members.iter()
+                    .filter_map(|m| {
+                        let bytes = hex::decode(&m.node_id).ok()?;
+                        let mut id = [0u8; 32];
+                        if bytes.len() == 32 { id.copy_from_slice(&bytes); Some(id) } else { None }
+                    })
+                    .collect();
+                if !new_committee.is_empty() {
+                    initial_state.committee = new_committee.clone();
+                    initial_state.in_committee = new_committee.contains(&self_id);
+                }
+            }
+            reg
+        };
+
         Ok(NetworkedNode {
             config,
             state: Arc::new(Mutex::new(initial_state)),
@@ -400,7 +443,7 @@ impl NetworkedNode {
             verify_signatures: false,  // enable via set_verify_signatures() after bind
             runtime_sender: None,      // set via set_runtime_sender() after bind
             hotstuff: Arc::new(Mutex::new(hs_engine)),
-            sequencer_registry: Arc::new(Mutex::new(SequencerRegistry::new())),
+            sequencer_registry: Arc::new(Mutex::new(initial_registry)),
             snapshot_importer: Arc::new(Mutex::new(snapshot_importer)),
             bridge_exporter: Arc::new(Mutex::new(ChainBridgeExporter::new())),
             inbox,
@@ -1045,9 +1088,20 @@ impl NetworkedNode {
                 }
                 let mut state = self.state.lock().await;
                 let pid = proposal.proposal_id;
-                // Verify this came from the expected leader
-                if Some(proposal.leader_id) != state.current_leader {
-                    state.log(format!("PROPOSAL from unexpected leader {:?}", &proposal.leader_id[..4]));
+                // Verify this came from the expected leader for the PROPOSAL'S own slot.
+                // We must check against the proposal's (slot, epoch), not our current slot —
+                // network latency means the proposal can arrive one slot late.
+                let expected_leader_for_proposal = NodeState::elect_leader(
+                    proposal.epoch,
+                    proposal.slot,
+                    &state.committee,
+                );
+                if Some(proposal.leader_id) != expected_leader_for_proposal {
+                    state.log(format!(
+                        "PROPOSAL REJECTED: leader {:?} not elected for slot={} epoch={} (expected {:?})",
+                        &proposal.leader_id[..4], proposal.slot, proposal.epoch,
+                        expected_leader_for_proposal.map(|id| hex::encode(&id[..4])),
+                    ));
                     return;
                 }
                 // Reject proposals with duplicate submission IDs (double-spending prevention).
@@ -1072,7 +1126,13 @@ impl NetworkedNode {
                 // If we keyed by proposal_id alone, two different proposals
                 // for the same (slot, epoch) would allow double-voting.
                 let in_committee = state.in_committee;
-                let slot_key = (proposal.slot, proposal.epoch);
+                // Prune attested_proposals entries older than current epoch to prevent
+                // unbounded growth and to allow voting in new epochs.
+                // Keep only entries from the current epoch (allow ±1 for slot timing).
+                let current_epoch = state.current_epoch;
+                state.attested_proposals.retain(|_, &mut (_, e)| {
+                    e + 1 >= current_epoch
+                });
                 let already_voted_slot = state.attested_proposals.values()
                     .any(|&(s, e)| s == proposal.slot && e == proposal.epoch);
                 let already_voted_pid = state.attested_proposals.contains_key(&pid);
