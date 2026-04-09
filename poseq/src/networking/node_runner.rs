@@ -1550,6 +1550,32 @@ impl NetworkedNode {
                         if bytes.len() == 32 { id.copy_from_slice(&bytes); Some(id) } else { None }
                     })
                     .collect();
+                // Populate sequencer registry from snapshot so we can verify
+                // signed wire messages from committee members immediately.
+                {
+                    let mut reg = self.sequencer_registry.lock().await;
+                    for m in &snap.members {
+                        let node_id_bytes = match hex::decode(&m.node_id) {
+                            Ok(b) if b.len() == 32 => { let mut a = [0u8;32]; a.copy_from_slice(&b); a }
+                            _ => continue,
+                        };
+                        let pubkey_bytes = match hex::decode(&m.public_key) {
+                            Ok(b) if b.len() == 32 => { let mut a = [0u8;32]; a.copy_from_slice(&b); a }
+                            _ => node_id_bytes, // devnet: pubkey == node_id
+                        };
+                        reg.apply_registration(crate::identities::registry::SequencerRecord {
+                            node_id: node_id_bytes,
+                            public_key: pubkey_bytes,
+                            moniker: m.moniker.clone(),
+                            operator_address: String::new(),
+                            cosmos_validator_address: None,
+                            registered_epoch: epoch,
+                            is_active: true,
+                            chain_status: crate::identities::registry::ChainSequencerStatus::Active,
+                        });
+                    }
+                }
+
                 if !new_committee.is_empty() {
                     state.committee = new_committee.clone();
                     state.in_committee = state.committee.contains(&self.config.node_id);
